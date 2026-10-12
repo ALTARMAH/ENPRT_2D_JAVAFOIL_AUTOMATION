@@ -65,6 +65,7 @@ import pandas as pd
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 VERSION = "1.1.2"
+HERE = os.path.dirname(os.path.abspath(__file__))
 
 # =====================================================================
 # SETTINGS (edit these, or override the main ones from the command line)

@@ -17,8 +17,49 @@ Environment overrides (optional):
   AERO_OUT        campaign output folder (default ~/aero_campaign)
 """
 import argparse
+import io
 import os
 import sys
+import time
+
+# Ensure streams are never None (e.g. in PyInstaller windowed mode)
+if sys.stdout is None:
+    try:
+        sys.stdout = open(os.devnull, "w", encoding="utf-8")
+    except Exception:
+        sys.stdout = io.StringIO()
+if sys.stderr is None:
+    try:
+        sys.stderr = open(os.devnull, "w", encoding="utf-8")
+    except Exception:
+        sys.stderr = io.StringIO()
+
+
+def _crash_handler(exc_type, exc_value, exc_tb):
+    import traceback
+    err_msg = "".join(traceback.format_exception(exc_type, exc_value, exc_tb))
+    try:
+        crash_dir = os.path.join(os.path.expanduser("~"), ".aero_auto")
+        os.makedirs(crash_dir, exist_ok=True)
+        with open(os.path.join(crash_dir, "crash.log"), "a", encoding="utf-8") as f:
+            f.write(f"\n[{time.strftime('%Y-%m-%d %H:%M:%S')}] Fatal Error:\n{err_msg}\n")
+    except Exception:
+        pass
+    try:
+        import tkinter as tk
+        from tkinter import messagebox
+        root = tk.Tk()
+        root.withdraw()
+        messagebox.showerror(
+            "AeroAuto Error",
+            f"An unexpected error occurred:\n\n{exc_type.__name__}: {exc_value}\n\nDetails saved to ~/.aero_auto/crash.log"
+        )
+        root.destroy()
+    except Exception:
+        pass
+
+
+sys.excepthook = _crash_handler
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)

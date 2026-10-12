@@ -18,6 +18,39 @@ import tkinter as tk
 from tkinter import ttk, filedialog, simpledialog, messagebox
 import numpy as np
 import pandas as pd
+# Ensure streams are never None (e.g. in PyInstaller windowed mode)
+if sys.stdout is None:
+    try:
+        sys.stdout = open(os.devnull, "w", encoding="utf-8")
+    except Exception:
+        sys.stdout = io.StringIO()
+if sys.stderr is None:
+    try:
+        sys.stderr = open(os.devnull, "w", encoding="utf-8")
+    except Exception:
+        sys.stderr = io.StringIO()
+
+
+def _crash_handler(exc_type, exc_value, exc_tb):
+    import traceback
+    err_msg = "".join(traceback.format_exception(exc_type, exc_value, exc_tb))
+    try:
+        crash_dir = os.path.join(os.path.expanduser("~"), ".aero_auto")
+        os.makedirs(crash_dir, exist_ok=True)
+        with open(os.path.join(crash_dir, "crash.log"), "a", encoding="utf-8") as f:
+            f.write(f"\n[{time.strftime('%Y-%m-%d %H:%M:%S')}] Application Error:\n{err_msg}\n")
+    except Exception:
+        pass
+    try:
+        messagebox.showerror(
+            "Application Error",
+            f"An unexpected error occurred:\n\n{exc_type.__name__}: {exc_value}\n\nDetails saved to ~/.aero_auto/crash.log"
+        )
+    except Exception:
+        pass
+
+
+sys.excepthook = _crash_handler
 
 try:
     from PIL import Image, ImageTk
@@ -319,6 +352,7 @@ def bind_scrollable(canvas):
 class App(tk.Tk):
     def __init__(self):
         super().__init__()
+        self.report_callback_exception = _crash_handler
         self._state = self._read_state()
         s = self._state.get('settings', {}) if isinstance(self._state, dict) else {}
         self._settings = {
@@ -360,13 +394,20 @@ class App(tk.Tk):
         w = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'workers')
         try:
             os.makedirs(w, exist_ok=True)
+        except OSError:
+            w = os.path.join(A.APP_DATA_DIR, 'workers')
+            try:
+                os.makedirs(w, exist_ok=True)
+            except Exception:
+                pass
+        try:
             for j_path in (jf, mh):
                 if j_path and os.path.isfile(j_path):
                     dst = os.path.join(w, os.path.basename(j_path))
                     if not os.path.exists(dst):
                         shutil.copy(j_path, dst)
-        except OSError as e:
-            print(f"(worker dir setup skipped: {e})")
+        except Exception:
+            pass
         A.WORKER_DIRS.put(w)
 
         self.names = sorted(A.AIRFOILS.keys())
@@ -899,6 +940,8 @@ class App(tk.Tk):
             java_desc = "Java JRE MISSING"
         else:
             java_desc = "JavaFoil jar MISSING"
+        cand = self.discover_results() if hasattr(self, 'discover_results') else []
+        latest = cand[0] if cand else ''
         parts = [
             f"v{A.VERSION}",
             f"airfoils: {len(self.names)}",

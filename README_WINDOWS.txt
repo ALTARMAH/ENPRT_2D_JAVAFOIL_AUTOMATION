@@ -6,6 +6,7 @@ HOW TO RUN:
 1. Standalone Application:
    - Extract the zip archive if you received the zipped package.
    - Double-click 'aero_ui.exe' (or 'aero_ui_standalone.exe') to launch.
+   - Optional: launch 'aero_ui_debug.exe' to view live console logs.
    
 2. From Python Source (Alternative):
    - Double-click 'run_ui.bat' or execute in terminal:

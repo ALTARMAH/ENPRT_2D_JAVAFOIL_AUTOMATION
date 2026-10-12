@@ -33,7 +33,7 @@ SOURCE_FILES = [
     "requirements.txt", "pyproject.toml", "aero_ui.spec",
     "run_ui.sh", "run_ui.bat",
     "create_standalone.sh", "create_standalone.bat", "build_dist.py",
-    "README_WINDOWS.txt",
+    "README_WINDOWS.txt", "run_ui_debug.bat",
 ]
 SOURCE_DIRS = ["assets", "docs"]
 SKIP_DIRS = {"__pycache__", "build", "dist", "build_linux", "build_win",
@@ -123,6 +123,11 @@ def main():
         if os.path.isfile(readme_src):
             import shutil
             shutil.copy2(readme_src, os.path.join(app_dir, "README_WINDOWS.txt"))
+        # Copy run_ui_debug.bat
+        debug_bat = os.path.join(HERE, "run_ui_debug.bat")
+        if os.path.isfile(debug_bat):
+            import shutil
+            shutil.copy2(debug_bat, os.path.join(app_dir, "run_ui_debug.bat"))
         ext = "tar.gz" if kind == "tar" else "zip"
         out = os.path.join(DIST, f"{NAME}_{platform}_app_{VERSION}.{ext}")
         _archive(_iter_tree(app_dir, "aero_ui"), out, kind, size_mb=True)
