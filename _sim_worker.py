@@ -56,22 +56,43 @@ Polar.Analyze({RE:g},{RE:g},{RE:g},{a0:g},{a1:g},{st:g},100,100,0,0);
 Polar.Save("{polar_fn}");
 JavaFoil.Exit();
 """)
-            if shutil.which("faketime"):
-                cmd = ["faketime", "-f", A.safe_date_str, "java", "-client", "-Xverify:none", "-XX:TieredStopAtLevel=1",
+            java_bin = A.find_java_executable()
+            jf_jar, mh_jar = A.find_java_jars()
+            dest_jf = os.path.join(wdir, A.JAVAFOIL_JAR)
+            if not os.path.exists(dest_jf) and os.path.isabs(jf_jar) and os.path.isfile(jf_jar):
+                try: shutil.copy(jf_jar, dest_jf)
+                except Exception: pass
+            if mh_jar and os.path.isfile(mh_jar):
+                dest_mh = os.path.join(wdir, "mhclasses.jar")
+                if not os.path.exists(dest_mh):
+                    try: shutil.copy(mh_jar, dest_mh)
+                    except Exception: pass
+
+            if sys.platform != "win32" and shutil.which("faketime"):
+                cmd = ["faketime", "-f", A.safe_date_str, java_bin, "-client", "-Xverify:none", "-XX:TieredStopAtLevel=1",
                        "-jar", A.JAVAFOIL_JAR, f"Script={script_fn}"]
             else:
-                cmd = ["java", "-client", "-Xverify:none", "-XX:TieredStopAtLevel=1",
+                cmd = [java_bin, "-client", "-Xverify:none", "-XX:TieredStopAtLevel=1",
                        "-jar", A.JAVAFOIL_JAR, f"Script={script_fn}"]
             
             timed_out = False
+            popen_kwargs = {"cwd": wdir, "stdout": None, "stderr": subprocess.STDOUT}
+            if sys.platform == "win32":
+                popen_kwargs["creationflags"] = subprocess.CREATE_NO_WINDOW
+            else:
+                popen_kwargs["start_new_session"] = True
             with open(logf, "w") as jl:
-                proc = subprocess.Popen(cmd, cwd=wdir, stdout=jl, stderr=subprocess.STDOUT, start_new_session=True)
+                popen_kwargs["stdout"] = jl
                 try:
-                    proc.wait(timeout=A.RUN_TIMEOUT)
-                except subprocess.TimeoutExpired:
-                    proc.kill()
-                    proc.wait()
-                    timed_out = True
+                    proc = subprocess.Popen(cmd, **popen_kwargs)
+                    try:
+                        proc.wait(timeout=A.RUN_TIMEOUT)
+                    except subprocess.TimeoutExpired:
+                        proc.kill()
+                        proc.wait()
+                        timed_out = True
+                except Exception:
+                    proc = type("Proc", (), {"returncode": -1})()
             
             diag = [f"cwd: {wdir}", f"exit code: {proc.returncode}"]
             try:

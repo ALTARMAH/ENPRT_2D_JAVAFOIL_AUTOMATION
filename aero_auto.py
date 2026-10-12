@@ -657,6 +657,13 @@ def simulate(cfg, wdir, ground_h):
     """Runs one JavaFoil analysis inside the worker folder. Returns (metrics, status, debug lines)."""
     # Ensure airfoils are loaded in worker process
     if not AIRFOILS:
+        seed_airfoil_store()
+        for cand in [
+            os.path.join(os.path.dirname(os.path.abspath(__file__)), "assets", "airfoils"),
+            getattr(sys, "_MEIPASS", "") and os.path.join(sys._MEIPASS, "assets", "airfoils"),
+        ]:
+            if cand and os.path.isdir(cand):
+                AIRFOILS.update(load_all(cand))
         AIRFOILS.update(load_all(AIRFOIL_DIR))
         if os.path.isdir(AIRFOIL_STORE):
             AIRFOILS.update(load_all(AIRFOIL_STORE))
@@ -1252,6 +1259,13 @@ def export_javafoil_graphs(cfg, ground_h, out_dir, run_id=None, re=None, alphas=
     Returns a dict mapping graph keys to the generated PNG paths.
     """
     if not AIRFOILS:
+        seed_airfoil_store()
+        for cand in [
+            os.path.join(os.path.dirname(os.path.abspath(__file__)), "assets", "airfoils"),
+            getattr(sys, "_MEIPASS", "") and os.path.join(sys._MEIPASS, "assets", "airfoils"),
+        ]:
+            if cand and os.path.isdir(cand):
+                AIRFOILS.update(load_all(cand))
         AIRFOILS.update(load_all(AIRFOIL_DIR))
         if os.path.isdir(AIRFOIL_STORE):
             AIRFOILS.update(load_all(AIRFOIL_STORE))
@@ -2592,11 +2606,14 @@ def main():
     if a.seed is not None:
         random.seed(a.seed)
 
-    for tool in ("faketime", "java"):
-        if shutil.which(tool) is None:
-            raise SystemExit(f"'{tool}' not found in PATH")
-    if not os.path.isfile(os.path.join(JAVA_DIR, JAVAFOIL_JAR)):
-        raise SystemExit(f"{JAVAFOIL_JAR} not found in {JAVA_DIR}")
+    java_bin = find_java_executable()
+    if not is_java_available():
+        raise SystemExit(f"Java runtime ('{java_bin}') not found or not working. Please install Java (e.g. from https://adoptium.net).")
+    jf_jar, _ = find_java_jars()
+    if not (os.path.isabs(jf_jar) and os.path.isfile(jf_jar)):
+        raise SystemExit(f"{JAVAFOIL_JAR} not found in {JAVA_DIR} or bundled assets/JavaFoil.")
+    if sys.platform != "win32" and shutil.which("faketime") is None:
+        print("[note] 'faketime' not found; proceeding with system time.")
     init_timebomb()
 
     print(f"Loading airfoils from {AIRFOIL_DIR}")

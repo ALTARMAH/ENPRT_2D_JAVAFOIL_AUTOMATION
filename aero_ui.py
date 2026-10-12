@@ -341,20 +341,30 @@ class App(tk.Tk):
         self.geometry("1240x820")
         self._load_icon()
 
+        A.seed_airfoil_store()
+        for cand in [
+            os.path.join(os.path.dirname(os.path.abspath(__file__)), 'assets', 'airfoils'),
+            getattr(sys, '_MEIPASS', '') and os.path.join(sys._MEIPASS, 'assets', 'airfoils'),
+        ]:
+            if cand and os.path.isdir(cand):
+                A.AIRFOILS.update(A.load_all(cand))
         A.AIRFOILS.update(A.load_all(A.AIRFOIL_DIR))
         if os.path.isdir(A.AIRFOIL_STORE):
             A.AIRFOILS.update(A.load_all(A.AIRFOIL_STORE))
 
         from queue import Queue
         A.WORKER_DIRS = Queue()
+        jf, mh = A.find_java_jars()
+        if os.path.isabs(jf) and os.path.isfile(jf):
+            A.JAVA_DIR = os.path.dirname(jf)
         w = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'workers')
         try:
             os.makedirs(w, exist_ok=True)
-            for j in ('javafoil.jar', 'mhclasses.jar'):
-                src = os.path.join(A.JAVA_DIR, j)
-                dst = os.path.join(w, j)
-                if os.path.exists(src) and not os.path.exists(dst):
-                    shutil.copy(src, dst)
+            for j_path in (jf, mh):
+                if j_path and os.path.isfile(j_path):
+                    dst = os.path.join(w, os.path.basename(j_path))
+                    if not os.path.exists(dst):
+                        shutil.copy(j_path, dst)
         except OSError as e:
             print(f"(worker dir setup skipped: {e})")
         A.WORKER_DIRS.put(w)
@@ -880,14 +890,20 @@ class App(tk.Tk):
     def _update_statusbar(self):
         if not hasattr(self, 'sb_vars') or 'env' not in self.sb_vars:
             return
-        java_jar = os.path.join(A.JAVA_DIR, 'javafoil.jar')
-        latest = self.discover_results()
-        latest = latest[0] if latest else ''
+        jf, _ = A.find_java_jars()
+        has_java = A.is_java_available()
+        has_jf = os.path.isabs(jf) and os.path.isfile(jf)
+        if has_java and has_jf:
+            java_desc = "Java & JavaFoil ready"
+        elif not has_java:
+            java_desc = "Java JRE MISSING"
+        else:
+            java_desc = "JavaFoil jar MISSING"
         parts = [
             f"v{A.VERSION}",
             f"airfoils: {len(self.names)}",
             f"out: {os.path.expanduser(A.OUT_DIR)}",
-            f"java: {os.path.basename(java_jar) if os.path.exists(java_jar) else 'javafoil.jar MISSING'}"
+            f"java: {java_desc}"
         ]
         if latest:
             try:
@@ -1009,10 +1025,12 @@ class App(tk.Tk):
             self.log("results file not present yet: " + p)
 
     def _open_java_dir(self):
-        if os.path.isdir(A.JAVA_DIR):
-            subprocess_open(A.JAVA_DIR)
+        jf, _ = A.find_java_jars()
+        target_dir = os.path.dirname(jf) if (os.path.isabs(jf) and os.path.isfile(jf)) else A.JAVA_DIR
+        if os.path.isdir(target_dir):
+            subprocess_open(target_dir)
         else:
-            self.log(f"JavaFoil folder not found: {A.JAVA_DIR}")
+            self.log(f"JavaFoil folder not found: {target_dir}")
 
     def _show_about(self):
         msg = (
@@ -1509,7 +1527,25 @@ class App(tk.Tk):
                     return
             except ValueError:
                 self.log("ground height must be a number")
-                return
+        if not A.is_java_available():
+            messagebox.showerror(
+                "Java Runtime Required",
+                "Java Runtime (JRE / JDK) is required to run JavaFoil simulations, but was not found on your system.\n\n"
+                "Please download and install Java (e.g. Eclipse Temurin from https://adoptium.net) "
+                "and ensure Java is installed on your computer."
+            )
+            self.log("Simulation aborted: Java runtime not found.")
+            return
+
+        jf, _ = A.find_java_jars()
+        if not (os.path.isabs(jf) and os.path.isfile(jf)):
+            messagebox.showerror(
+                "JavaFoil Jar Not Found",
+                f"Could not locate '{A.JAVAFOIL_JAR}'.\n"
+                f"Please ensure javafoil.jar is located in the app's 'assets/JavaFoil/' folder or set the AERO_JAVA_DIR environment variable."
+            )
+            self.log("Simulation aborted: javafoil.jar not found.")
+            return
 
         reg0 = self.reg_state.get()
         desc = cfg[0]
@@ -2345,6 +2381,26 @@ class App(tk.Tk):
         if not got:
             return
         plan, mains, flaps = got
+        if not A.is_java_available():
+            messagebox.showerror(
+                "Java Runtime Required",
+                "Java Runtime (JRE / JDK) is required to run campaigns, but was not found on your system.\n\n"
+                "Please download and install Java (e.g. Eclipse Temurin from https://adoptium.net) "
+                "and ensure Java is installed on your computer."
+            )
+            self.camp("Campaign aborted: Java runtime not found.")
+            return
+
+        jf, _ = A.find_java_jars()
+        if not (os.path.isabs(jf) and os.path.isfile(jf)):
+            messagebox.showerror(
+                "JavaFoil Jar Not Found",
+                f"Could not locate '{A.JAVAFOIL_JAR}'.\n"
+                f"Please ensure javafoil.jar is located in the app's 'assets/JavaFoil/' folder or set the AERO_JAVA_DIR environment variable."
+            )
+            self.camp("Campaign aborted: javafoil.jar not found.")
+            return
+
         if check_only:
             plan = dict(plan, hours=0)
         self.cam_plan = plan

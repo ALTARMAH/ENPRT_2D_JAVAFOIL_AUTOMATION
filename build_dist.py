@@ -33,6 +33,7 @@ SOURCE_FILES = [
     "requirements.txt", "pyproject.toml", "aero_ui.spec",
     "run_ui.sh", "run_ui.bat",
     "create_standalone.sh", "create_standalone.bat", "build_dist.py",
+    "README_WINDOWS.txt",
 ]
 SOURCE_DIRS = ["assets", "docs"]
 SKIP_DIRS = {"__pycache__", "build", "dist", "build_linux", "build_win",
@@ -111,9 +112,25 @@ def main():
         if os.path.isdir(docs_src):
             import shutil
             shutil.copytree(docs_src, docs_dst, dirs_exist_ok=True)
+        # Ensure assets/ folder (including JavaFoil & airfoils) is directly visible at root level
+        assets_src = os.path.join(HERE, "assets")
+        assets_dst = os.path.join(app_dir, "assets")
+        if os.path.isdir(assets_src):
+            import shutil
+            shutil.copytree(assets_src, assets_dst, dirs_exist_ok=True)
+        # Copy README_WINDOWS.txt
+        readme_src = os.path.join(HERE, "README_WINDOWS.txt")
+        if os.path.isfile(readme_src):
+            import shutil
+            shutil.copy2(readme_src, os.path.join(app_dir, "README_WINDOWS.txt"))
         ext = "tar.gz" if kind == "tar" else "zip"
         out = os.path.join(DIST, f"{NAME}_{platform}_app_{VERSION}.{ext}")
         _archive(_iter_tree(app_dir, "aero_ui"), out, kind, size_mb=True)
+
+    standalone_exe = os.path.join(HERE, "dist_win", "aero_ui_standalone.exe")
+    if os.path.isfile(standalone_exe):
+        shutil.copy2(standalone_exe, os.path.join(DIST, "aero_ui_standalone.exe"))
+        print(f"  dist/aero_ui_standalone.exe  ({os.path.getsize(standalone_exe) / 1024 / 1024:.1f} MB)")
     return 0
 
 

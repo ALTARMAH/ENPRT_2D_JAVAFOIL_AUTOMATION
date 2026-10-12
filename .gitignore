@@ -1,0 +1,44 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# PyInstaller & build scratch directories
+build/
+build_linux/
+build_win/
+build_win_onefile/
+
+# Packaged distribution binaries & folders
+dist/
+dist_linux/
+dist_win/
+*.exe
+*.tar.gz
+*.zip
+
+# Worker execution runtime directory & simulation scratch
+workers/
+work/
+failed/
+*.log
+
+# Simulation output databases / campaign directories
+aero_campaign/
+
+# Virtual environments
+.env
+.venv
+env/
+venv/
+ENV/
+
+# OS and Editor artifacts
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
