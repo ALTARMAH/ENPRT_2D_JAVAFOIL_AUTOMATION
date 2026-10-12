@@ -67,10 +67,11 @@ An automated multi-element aerodynamic optimization and campaign toolchain built
 │   ├── JavaFoil/           # JavaFoil simulation engine jars (javafoil.jar, mhclasses.jar)
 │   └── icon.ico, icon.png  # Branding and interface icons
 └── docs/
-    ├── USER_MANUAL.pdf     # Complete end-user guide and workflow documentation
-    ├── TECHNICAL_GUIDE.pdf # Mathematical models, algorithms, and regulatory rules guide
-    ├── manual.md           # Source documentation text
-    └── make_pdf.py         # ReportLab PDF documentation builder
+    ├── USER_MANUAL.pdf              # Complete end-user guide and workflow documentation
+    ├── TECHNICAL_GUIDE.pdf          # Mathematical models, algorithms, and regulatory rules guide
+    ├── FSAE_OPTIMIZATION_GUIDE.pdf  # FSAE multi-element wing theoretical manual & operational guide (fsea.pdf)
+    ├── manual.md                    # Source documentation text
+    └── make_pdf.py                  # ReportLab PDF documentation builder
 ```
 
 ---
@@ -155,6 +156,7 @@ This creates:
 Full documentation is included in the [`docs/`](docs/) directory and accessible from the GUI Help menu:
 - [**User Manual (PDF)**](docs/USER_MANUAL.pdf): Step-by-step tutorial, tab-by-tab walkthrough, and workflows.
 - [**Technical Guide (PDF)**](docs/TECHNICAL_GUIDE.pdf): Mathematical background, coordinate transformations, regulatory checks, and scoring formulas.
+- [**FSAE Optimization Guide (PDF)**](docs/FSAE_OPTIMIZATION_GUIDE.pdf): Formula Student wing optimization framework, A.M.O. Smith theory, 2D to 3D CAD/CFD workflows, and design playbook. Also available as [fsea.pdf](docs/fsea.pdf).
 
 ---
 

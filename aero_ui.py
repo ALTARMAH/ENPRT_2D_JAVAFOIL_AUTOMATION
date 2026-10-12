@@ -196,16 +196,22 @@ class ToolTip:
         self._pending = None
         self._after = None
         self.enabled = True
-        self.delay = 450
+        self.delay = 350
         self.wraplength = 420
+        self._last_xy = None
 
     def register(self, widget, text):
         if not text:
             return
-        widget.bind('<Enter>', lambda e, w=widget, t=text: self.schedule(w, t), add='+')
+        widget.bind('<Enter>', lambda e, w=widget, t=text: self.schedule(w, t, e), add='+')
+        widget.bind('<Motion>', lambda e, w=widget, t=text: self._on_motion(w, t, e), add='+')
         widget.bind('<Leave>', lambda e: self.hide(), add='+')
         widget.bind('<ButtonPress>', lambda e: self.hide(), add='+')
         widget.bind('<Destroy>', lambda e, w=widget: self._on_destroy(w), add='+')
+
+    def _on_motion(self, widget, text, ev):
+        if ev:
+            self._last_xy = (ev.x_root, ev.y_root)
 
     def _on_destroy(self, widget):
         if self._pending and self._pending[0] is widget:
@@ -221,11 +227,17 @@ class ToolTip:
                 pass
             self._after = None
 
-    def schedule(self, widget, text):
+    def schedule(self, widget, text, ev=None):
         self._cancel()
-        self.hide()
-        if not self.enabled:
+        if not self.enabled or not text:
             return
+        if ev:
+            self._last_xy = (ev.x_root, ev.y_root)
+        else:
+            try:
+                self._last_xy = (widget.winfo_rootx() + 16, widget.winfo_rooty() + widget.winfo_height() + 6)
+            except Exception:
+                self._last_xy = None
         self._pending = (widget, text)
         try:
             self._after = widget.after(int(self.delay), self._show)
@@ -240,7 +252,15 @@ class ToolTip:
         try:
             if not widget.winfo_exists():
                 return
+            if self.tip is not None:
+                try:
+                    self.tip.destroy()
+                except Exception:
+                    pass
+                self.tip = None
+
             self.tip = tk.Toplevel(widget)
+            self.tip.withdraw()
             self.tip.wm_overrideredirect(True)
             try:
                 self.tip.attributes('-topmost', True)
@@ -254,6 +274,8 @@ class ToolTip:
             )
             self.label.pack()
             self._place(widget)
+            self.tip.deiconify()
+            self.tip.lift()
         except Exception:
             pass
 
@@ -264,12 +286,19 @@ class ToolTip:
             th = self.tip.winfo_reqheight()
             sw = widget.winfo_screenwidth()
             sh = widget.winfo_screenheight()
-            x = widget.winfo_rootx() + 16
-            y = widget.winfo_rooty() + widget.winfo_height() + 6
-            if x + tw > sw - 8:
-                x = max(4, widget.winfo_rootx() + widget.winfo_width() - tw)
-            if y + th > sh - 40:
-                y = max(4, widget.winfo_rooty() - th - 6)
+
+            if self._last_xy:
+                mx, my = self._last_xy
+                x = mx + 12
+                y = my + 18
+            else:
+                x = widget.winfo_rootx() + 16
+                y = widget.winfo_rooty() + widget.winfo_height() + 6
+
+            if x + tw > sw - 10:
+                x = max(6, sw - tw - 10)
+            if y + th > sh - 35:
+                y = max(6, (self._last_xy[1] - th - 8) if self._last_xy else (widget.winfo_rooty() - th - 6))
             x = max(4, min(x, sw - tw - 4))
             y = max(4, min(y, sh - th - 4))
             self.tip.wm_geometry(f"+{int(x)}+{int(y)}")
@@ -1024,6 +1053,7 @@ class App(tk.Tk):
         hm = tk.Menu(m, tearoff=0)
         hm.add_command(label="User Manual (PDF)", command=self._open_user_manual)
         hm.add_command(label="Technical Guide (PDF)", command=self._open_technical_guide)
+        hm.add_command(label="FSAE Optimization Guide (PDF)", command=self._open_fsae_guide)
         hm.add_command(label="Open Documentation Folder", command=self._open_docs_dir)
         hm.add_separator()
         hm.add_command(label="About aero_ui", command=self._show_about)
@@ -1112,6 +1142,13 @@ class App(tk.Tk):
             subprocess_open(p)
         else:
             messagebox.showinfo("Technical Guide", "TECHNICAL_GUIDE.pdf not found in docs folder.")
+
+    def _open_fsae_guide(self):
+        p = self._find_doc("FSAE_OPTIMIZATION_GUIDE.pdf") or self._find_doc("fsea.pdf")
+        if p:
+            subprocess_open(p)
+        else:
+            messagebox.showinfo("FSAE Guide", "FSAE_OPTIMIZATION_GUIDE.pdf not found in docs folder.")
 
     def _open_docs_dir(self):
         p = self._find_doc("USER_MANUAL.pdf")
@@ -1462,79 +1499,113 @@ class App(tk.Tk):
                 spine.set_color(RULE)
             if self.figure:
                 self.figure.set_facecolor(PANEL2)
-            if not hasattr(self, '_hover_annot'):
-                self._hover_annot = self.ax.annotate(
-                    '', xy=(0, 0), xytext=(20, 20), textcoords='offset points',
-                    bbox=dict(boxstyle='round', fc='#ffffe0', ec='#333'),
-                    fontsize=9, ha='left', va='bottom', visible=False
-                )
-            else:
-                self._hover_annot.set_visible(False)
+            self._hover_annot = self.ax.annotate(
+                '', xy=(0, 0), xytext=(20, 20), textcoords='offset points',
+                bbox=dict(boxstyle='round,pad=0.5', fc='#1e293b', ec='#f79e0b', lw=1.5),
+                fontsize=9, ha='left', va='bottom', visible=False,
+                color='#f8fafc', zorder=100
+            )
             if not hasattr(self, '_hover_cid'):
                 self._hover_cid = self.canvas.mpl_connect('motion_notify_event', self._on_geometry_hover)
+            if not hasattr(self, '_leave_cid'):
+                self._leave_cid = self.canvas.mpl_connect('figure_leave_event', self._on_geometry_leave)
             self.canvas.draw()
         except Exception as e:
             self.ax.set_title(f"geometry error: {type(e).__name__}", color=TXT)
             self.canvas.draw_idle()
 
-    def _on_geometry_hover(self, event):
-        if event.inaxes != self.ax or not hasattr(self, '_geometry_outs'):
-            if hasattr(self, '_hover_annot'):
-                self._hover_annot.set_visible(False)
+    def _on_geometry_leave(self, event=None):
+        if hasattr(self, '_hover_annot') and self._hover_annot:
+            self._hover_annot.set_visible(False)
+            if self.canvas:
                 self.canvas.draw_idle()
+
+    def _on_geometry_hover(self, event):
+        if event.inaxes != self.ax or not hasattr(self, '_geometry_outs') or not self._geometry_outs:
+            if hasattr(self, '_hover_annot') and self._hover_annot:
+                self._hover_annot.set_visible(False)
+                if self.canvas:
+                    self.canvas.draw_idle()
             return
         x = event.xdata
         y = event.ydata
         if x is None or y is None:
-            self._hover_annot.set_visible(False)
-            self.canvas.draw_idle()
+            if hasattr(self, '_hover_annot') and self._hover_annot:
+                self._hover_annot.set_visible(False)
+                if self.canvas:
+                    self.canvas.draw_idle()
             return
+
+        from matplotlib.path import Path
         best_dist = float('inf')
         best_info = None
+
+        try:
+            chord = float(self.vars['chord'].get() or A.DEFAULT_CHORD_MM)
+        except Exception:
+            chord = A.DEFAULT_CHORD_MM
+
+        threshold = max(25.0, chord * 0.08)
+
         for elem_idx, elem in enumerate(self._geometry_outs):
-            for j in range(len(elem)):
-                px, py = elem[j]
-                dist = np.hypot(px - x, py - y)
-                if dist < best_dist:
-                    best_dist = dist
+            elem = np.asarray(elem, float)
+            dists = np.hypot(elem[:, 0] - x, elem[:, 1] - y)
+            min_d = float(dists.min())
+            is_inside = False
+            try:
+                is_inside = Path(elem).contains_point((x, y))
+            except Exception:
+                pass
+
+            if is_inside or min_d < threshold:
+                effective_dist = 0.0 if is_inside else min_d
+                if effective_dist < best_dist:
+                    best_dist = effective_dist
+                    j = int(dists.argmin())
+                    px, py = elem[j]
                     prev_pt = elem[(j - 1) % len(elem)]
                     next_pt = elem[(j + 1) % len(elem)]
-                    seg1_len = np.hypot(px - prev_pt[0], py - prev_pt[1])
-                    seg2_len = np.hypot(next_pt[0] - px, next_pt[1] - py)
+                    seg1_len = float(np.hypot(px - prev_pt[0], py - prev_pt[1]))
+                    seg2_len = float(np.hypot(next_pt[0] - px, next_pt[1] - py))
                     best_info = {
                         'elem': elem_idx,
-                        'point': (px, py),
+                        'point': (float(px), float(py)),
                         'seg1_len': seg1_len,
-                        'seg2_len': seg2_len
+                        'seg2_len': seg2_len,
+                        'is_inside': is_inside,
                     }
-        if best_info and best_dist < 5:
+
+        if best_info and hasattr(self, '_hover_annot') and self._hover_annot:
             px, py = best_info['point']
             names = ['Main', 'Flap 1', 'Flap 2', 'Flap 3']
             elem_name = names[best_info['elem']] if best_info['elem'] < len(names) else f"Element {best_info['elem'] + 1}"
             limit_text = ''
-            if A.CHORD_MM and A.REG_ENFORCE:
-                role = A.ROLE
+            if A.CHORD_MM and getattr(self, 'reg_state', None) and self.reg_state.get():
+                role = getattr(A, 'ROLE', 'fw')
                 if role == 'fw':
                     limits = [
-                        ('Stack Length', A.REG.get('fw_max_stack_length_mm', 600), 'mm'),
+                        ('Stack Length', A.REG.get('fw_max_stack_length_mm', 500), 'mm'),
                         ('Stack Height', A.REG.get('fw_max_stack_height_mm', 250), 'mm'),
-                        ('Min Clearance', A.REG.get('min_ground_clearance_mm', 35), 'mm')
+                        ('Min Clearance', A.REG.get('min_ground_clearance_mm', 30), 'mm')
                     ]
                 else:
                     limits = [
-                        ('Stack Length', A.REG.get('rw_max_stack_length_mm', 250), 'mm'),
+                        ('Stack Length', A.REG.get('rw_max_stack_length_mm', 350), 'mm'),
                         ('Total Height', A.REG.get('rw_max_total_height_mm', 1100), 'mm'),
-                        ('Min Clearance', A.REG.get('min_ground_clearance_mm', 35), 'mm')
+                        ('Min Clearance', A.REG.get('min_ground_clearance_mm', 30), 'mm')
                     ]
                 limit_text = "\nRegulatory Limits:\n" + "\n".join([f"  {n}: {lim} {u}" for n, lim, u in limits])
-            text = f"{elem_name} Element\nPoint: ({px:.1f}, {py:.1f}) mm\nSegment lengths: {best_info['seg1_len']:.1f} mm | {best_info['seg2_len']:.1f} mm{limit_text}"
-            self._hover_annot.xy = (x, y)
+
+            text = f"{elem_name} Element\nPoint: ({px:.1f}, {py:.1f}) mm\nCursor: ({x:.1f}, {y:.1f}) mm\nSegment lengths: {best_info['seg1_len']:.1f} mm | {best_info['seg2_len']:.1f} mm{limit_text}"
+            self._hover_annot.xy = (px, py)
             self._hover_annot.set_text(text)
             self._hover_annot.set_visible(True)
             self.canvas.draw_idle()
             return
-        self._hover_annot.set_visible(False)
-        self.canvas.draw_idle()
+
+        if hasattr(self, '_hover_annot') and self._hover_annot:
+            self._hover_annot.set_visible(False)
+            self.canvas.draw_idle()
 
     def on_simulate(self):
         cfg = self.read_cfg()
