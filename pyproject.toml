@@ -1,0 +1,36 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "aero-auto"
+version = "1.1.0"
+description = "Multi-element wing design, simulation, and reporting toolchain for formula-student style aero (JavaFoil backend)"
+readme = "docs/manual.md"
+requires-python = ">=3.9"
+license = { text = "MIT" }
+dependencies = [
+    "numpy>=1.23",
+    "pandas>=1.5",
+    "matplotlib>=3.6",
+    "openpyxl>=3.1",
+    "Pillow>=9.0",
+]
+
+[project.optional-dependencies]
+build = ["pyinstaller>=5.0"]
+
+[project.scripts]
+aero-ui = "launcher:launcher"
+aero = "launcher:launcher"
+
+[tool.setuptools]
+py-modules = [
+    "aero_auto",
+    "aero_targets",
+    "aero_report",
+    "flowfield",
+    "aero_ui",
+    "render_field",
+    "launcher",
+]

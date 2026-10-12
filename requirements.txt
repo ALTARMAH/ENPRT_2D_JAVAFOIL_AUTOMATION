@@ -1,0 +1,10 @@
+numpy>=1.23
+pandas>=1.5
+matplotlib>=3.6
+openpyxl>=3.1
+Pillow>=9.0
+
+# optional - build a standalone executable (for version without python installed):
+#   pip install pyinstaller
+# runtime (system, not pip): python 3.9+, tkinter, java (8+), faketime (linux only),
+#   and the airfoil .dat library (aero_auto.user_config / AERO_AIRFOILS env var).

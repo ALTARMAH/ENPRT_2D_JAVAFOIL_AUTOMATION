@@ -1,0 +1,211 @@
+Found 'Oracle Nashorn' scripting engine for 'ECMAScript'.
+*** More than 25 Step Reductions in BL analysis...
+x     = 0.03254515730166873
+dx    = 1.1518908848770051E-11
+d2    = 8.873384339351456E-10
+d3    = 2.954836692173957E-9
+u     = 1.751554706589547E16
+du/dx = 100.0
+turb  = true
+sep   = false
+d3Mid  = 2.954839058991421E-9
+d2Mid  = 8.873390990325129E-10
+H32Mid = 3.329999841338168
+dx = 0.002785509132796461 (new)
+*** More than 50 Step Reductions (50) in BL analysis - leaving !
+*** More than 25 Step Reductions in BL analysis...
+x     = 0.03254515732479724
+dx    = 1.1564257001644259E-11
+d2    = 8.873398823858715E-10
+d3    = 2.954841730050215E-9
+u     = 1.234085640770954E16
+du/dx = 100.0
+turb  = true
+sep   = false
+d3Mid  = 2.9548442489880014E-9
+d2Mid  = 8.873406066110974E-10
+H32Mid = 3.3300000326515513
+dx = 0.0045612757236811975 (new)
+*** More than 50 Step Reductions (50) in BL analysis - leaving !
+*** More than 25 Step Reductions in BL analysis...
+x     = 0.03254515732479724
+dx    = 1.1509276830902444E-11
+d2    = 8.873398823858715E-10
+d3    = 2.954841730050215E-9
+u     = 5.82265700459268E16
+du/dx = -100.0
+turb  = true
+sep   = false
+d3Mid  = 2.9548436658113134E-9
+d2Mid  = 8.873403852931701E-10
+H32Mid = 3.330000205992041
+dx = 0.006584847829102229 (new)
+*** More than 50 Step Reductions (50) in BL analysis - leaving !
+*** More than 25 Step Reductions in BL analysis...
+x     = 0.03254515732479724
+dx    = 1.152678921221136E-11
+d2    = 8.873398823858715E-10
+d3    = 2.954841730050215E-9
+u     = 4.5639711257029928E16
+du/dx = -100.0
+turb  = true
+sep   = false
+d3Mid  = 2.9548437490756638E-9
+d2Mid  = 8.873404153387642E-10
+H32Mid = 3.3300001870731637
+dx = 0.008820709664693773 (new)
+*** More than 50 Step Reductions (50) in BL analysis - leaving !
+*** More than 25 Step Reductions in BL analysis...
+x     = 0.03254515732479724
+dx    = 1.152203330743683E-11
+d2    = 8.873398823858715E-10
+d3    = 2.954841730050215E-9
+u     = 6.0092501589904352E16
+du/dx = -100.0
+turb  = true
+sep   = false
+d3Mid  = 2.954843657795585E-9
+d2Mid  = 8.87340382179647E-10
+H32Mid = 3.3300002086430016
+dx = 0.01123008676341396 (new)
+*** More than 50 Step Reductions (50) in BL analysis - leaving !
+*** More than 25 Step Reductions in BL analysis...
+x     = 0.03254515732479724
+dx    = 1.1512357563331326E-11
+d2    = 8.873398823858715E-10
+d3    = 2.954841730050215E-9
+u     = 2.7156521876326068E16
+du/dx = -100.0
+turb  = true
+sep   = false
+d3Mid  = 2.954843928800128E-9
+d2Mid  = 8.87340482803577E-10
+H32Mid = 3.330000136434907
+dx = 0.0137558158501479 (new)
+*** More than 50 Step Reductions (50) in BL analysis - leaving !
+*** More than 25 Step Reductions in BL analysis...
+x     = 0.03254515732479724
+dx    = 1.151696605109963E-11
+d2    = 8.873398823858715E-10
+d3    = 2.954841730050215E-9
+u     = 1.0E-12
+du/dx = 100.0
+turb  = true
+sep   = false
+d3Mid  = -1.0206168130851884E-5
+d2Mid  = -3.067688445676584E-6
+H32Mid = 3.3269897877784316
+dx = 0.01632679777659625 (new)
+*** More than 50 Step Reductions (50) in BL analysis - leaving !
+*** More than 25 Step Reductions in BL analysis...
+x     = 0.03254515732479724
+dx    = 1.1515528493312754E-11
+d2    = 8.873398823858715E-10
+d3    = 2.954841730050215E-9
+u     = 3.5769068762891156E16
+du/dx = -100.0
+turb  = true
+sep   = false
+d3Mid  = 2.954843830713887E-9
+d2Mid  = 8.87340445787536E-10
+H32Mid = 3.330000164808663
+dx = 0.018890598542015448 (new)
+*** More than 50 Step Reductions (50) in BL analysis - leaving !
+*** More than 25 Step Reductions in BL analysis...
+x     = 0.03254515732479724
+dx    = 1.1508084081370629E-11
+d2    = 8.873398823858715E-10
+d3    = 2.954841730050215E-9
+u     = 1.0E-12
+du/dx = 100.0
+turb  = true
+sep   = false
+d3Mid  = -1.0198294779415422E-5
+d2Mid  = -3.0653219372474064E-6
+H32Mid = 3.3269897871064313
+dx = 0.021412353758421508 (new)
+*** More than 50 Step Reductions (50) in BL analysis - leaving !
+*** More than 25 Step Reductions in BL analysis...
+x     = 0.03254515732479724
+dx    = 1.1510833911541726E-11
+d2    = 8.873398823858715E-10
+d3    = 2.954841730050215E-9
+u     = 4.1255320262997165E17
+du/dx = -100.0
+turb  = true
+sep   = false
+d3Mid  = 2.9548431270104698E-9
+d2Mid  = 8.87340201733326E-10
+H32Mid = 3.330000287644461
+dx = 0.023858192727882147 (new)
+*** More than 50 Step Reductions (50) in BL analysis - leaving !
+*** More than 25 Step Reductions in BL analysis...
+x     = 0.03254515732479724
+dx    = 1.1516723429585698E-11
+d2    = 8.873398823858715E-10
+d3    = 2.954841730050215E-9
+u     = 4.2761507090920986E17
+du/dx = -100.0
+turb  = true
+sep   = false
+d3Mid  = 2.9548431193971052E-9
+d2Mid  = 8.873401992496986E-10
+H32Mid = 3.330000288385006
+dx = 0.026188356381837988 (new)
+*** More than 50 Step Reductions (50) in BL analysis - leaving !
+*** More than 25 Step Reductions in BL analysis...
+x     = 0.03254515732479724
+dx    = 1.1507324198040788E-11
+d2    = 8.873398823858715E-10
+d3    = 2.954841730050215E-9
+u     = 1.0E-12
+du/dx = 100.0
+turb  = true
+sep   = false
+d3Mid  = -1.019762118688031E-5
+d2Mid  = -3.0651194742397482E-6
+H32Mid = 3.326989787048891
+dx = 0.02836121694253429 (new)
+*** More than 50 Step Reductions (50) in BL analysis - leaving !
+*** More than 25 Step Reductions in BL analysis...
+x     = 0.03254515732479724
+dx    = 1.1509733618814422E-11
+d2    = 8.873398823858715E-10
+d3    = 2.954841730050215E-9
+u     = 1.0E-12
+du/dx = 100.0
+turb  = true
+sep   = false
+d3Mid  = -1.019975699876528E-5
+d2Mid  = -3.065761439338056E-6
+H32Mid = 3.326989787231312
+dx = 0.030344239861598697 (new)
+*** More than 50 Step Reductions (50) in BL analysis - leaving !
+*** More than 25 Step Reductions in BL analysis...
+x     = 0.03254515732479724
+dx    = 1.1513028311821682E-11
+d2    = 8.873398823858715E-10
+d3    = 2.954841730050215E-9
+u     = 1.0E-12
+du/dx = 100.0
+turb  = true
+sep   = false
+d3Mid  = -1.0202677553182022E-5
+d2Mid  = -3.0666392760129293E-6
+H32Mid = 3.3269897874806342
+dx = 0.03211414119109478 (new)
+*** More than 50 Step Reductions (50) in BL analysis - leaving !
+*** More than 25 Step Reductions in BL analysis...
+x     = 0.03254515732479724
+dx    = 1.1509774246121017E-11
+d2    = 8.873398823858715E-10
+d3    = 2.954841730050215E-9
+u     = 1.0E-12
+du/dx = 100.0
+turb  = true
+sep   = false
+d3Mid  = -1.019979301251814E-5
+d2Mid  = -3.0657722640612245E-6
+H32Mid = 3.3269897872343877
+dx = 0.03365024807929824 (new)
+*** More than 50 Step Reductions (50) in BL analysis - leaving !
