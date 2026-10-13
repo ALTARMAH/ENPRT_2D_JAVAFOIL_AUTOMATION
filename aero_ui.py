@@ -5020,9 +5020,66 @@ class App(tk.Tk):
             return float(num(row.get('Score_Balanced', row.get('Score', 0.0))))
 
     def _opt_start(self):
-        if not self._opt_base_cfg:
-            messagebox.showerror('Error', 'Load or configure a base wing first')
+        # Auto-resolve base configuration if unset or update from UI inputs
+        base_cfg = None
+        main_opt = getattr(self, 'opt_main_box', None)
+        main_name = main_opt.get().strip() if main_opt else ''
+        opt_flaps = []
+        for vals, cb in getattr(self, 'opt_flap_rows', []):
+            if vals[5].get():  # Enabled checkbox
+                fn = vals[0].get().strip()
+                if fn:
+                    try:
+                        sc = float(vals[1].get())
+                        ang = float(vals[2].get())
+                        xp = float(vals[3].get())
+                        yp = float(vals[4].get())
+                        opt_flaps.append((fn, sc, ang, xp, yp))
+                    except (ValueError, tk.TclError):
+                        pass
+        if main_name and opt_flaps:
+            base_cfg = (main_name, tuple(opt_flaps))
+
+        if not base_cfg and self._opt_base_cfg:
+            base_cfg = self._opt_base_cfg
+
+        if not base_cfg:
+            main_cfg = self.main_box.get().strip() if hasattr(self, 'main_box') else ''
+            cfg_flaps = []
+            for vals, cb in getattr(self, 'flap_rows', []):
+                if vals[5].get():
+                    fn = vals[0].get().strip()
+                    if fn:
+                        try:
+                            sc = float(vals[1].get())
+                            ang = float(vals[2].get())
+                            xp = float(vals[3].get())
+                            yp = float(vals[4].get())
+                            cfg_flaps.append((fn, sc, ang, xp, yp))
+                        except (ValueError, tk.TclError):
+                            pass
+            if main_cfg and cfg_flaps:
+                base_cfg = (main_cfg, tuple(cfg_flaps))
+
+        if not base_cfg:
+            try:
+                res_path = os.path.expanduser(self.opt_res_file.get())
+                if os.path.exists(res_path):
+                    df_res = A.read_results_csv(res_path)
+                    valid_df = df_res[df_res.get('Status', '') == 'Valid']
+                    if not valid_df.empty:
+                        best_row = valid_df.sort_values('Score', ascending=False).iloc[0]
+                        base_cfg = self._row_to_cfg(best_row)
+                        if base_cfg:
+                            self._opt_base_metrics = dict(best_row)
+            except Exception:
+                pass
+
+        if not base_cfg or not base_cfg[1]:
+            messagebox.showerror('Error', 'Please configure at least one flap element (or load a multi-element wing run from Results) to optimize.')
             return
+
+        self._opt_base_cfg = base_cfg
         if self._opt_running:
             return
         try:
@@ -5044,7 +5101,6 @@ class App(tk.Tk):
             ret_pct = 5.0 if '5%' in ret_mode else (10.0 if '10%' in ret_mode else (20.0 if '20%' in ret_mode else 100.0))
             goal_raw = self.opt_goal_mode.get()
             goal_key = 'stability' if 'Stability' in goal_raw else ('downforce' if 'Downforce' in goal_raw else ('efficiency' if 'Efficiency' in goal_raw else ('compact' if 'Compact' in goal_raw else 'balanced')))
-            base_cfg = self._opt_base_cfg
         except (ValueError, tk.TclError) as e:
             messagebox.showerror('Error', f"Check numeric inputs: {e}")
             return
@@ -5068,6 +5124,12 @@ class App(tk.Tk):
             import random, math
             best = None
             best_score = -math.inf
+            try:
+                if getattr(A, 'WORKER_DIRS', None) is None or A.WORKER_DIRS.empty():
+                    A.setup_workers(1)
+            except Exception as e:
+                self._opt_log(f"Worker queue setup note: {e}")
+
             A.RESULTS_FILE[0] = results_path
             A.RE = re_val
             A.SPEED = speed_val
@@ -5078,50 +5140,87 @@ class App(tk.Tk):
             A.REAL_WING_ENFORCE = enforce_real
             A.set_ground_h(gh0_val)
 
-            # Ensure we have baseline metrics
+            # Check baseline validity and evaluate baseline telemetry
+            base_geom_ok = A.geometry_ok(base_cfg)
+            if not base_geom_ok:
+                self._opt_log("⚠️ Note: Baseline wing does not meet current geometric/regulatory constraints. Perturbations will search for compliant arrangements.")
+
             base_metrics = getattr(self, '_opt_base_metrics', None)
-            if not base_metrics:
-                self._opt_log("Evaluating baseline wing telemetry...")
+            if not base_metrics and base_geom_ok:
+                self._opt_log("Evaluating baseline wing telemetry in JavaFoil...")
                 try:
                     base_row = A.run_one(base_cfg, 'base', gh0_val)
                     if base_row.get('Status') == 'Valid':
                         base_metrics = dict(base_row)
                         self._opt_base_metrics = base_metrics
+                        best = base_cfg
+                        best_score = self._calculate_optimizer_score(base_metrics, goal_key, base_metrics, ret_pct)
+                        df_val = float(base_row.get('Downforce_N', 0) or 0)
+                        ld_val = float(base_row.get('Max_LD', 0) or 0)
+                        st_val = base_row.get('Stall_Angle', 0)
+                        marg_val = A.DESIGN_ALPHA - float(st_val) if st_val is not None else 0.0
+                        self._opt_log(f"Baseline Telemetry: DF={df_val:.1f}N | L/D={ld_val:.1f} | Margin={marg_val:.1f}° | Base Score={best_score:.2f}")
                 except Exception as e:
-                    self._opt_log(f"Baseline evaluation failed: {e}")
+                    self._opt_log(f"Baseline evaluation note: {e}")
+            elif base_metrics and base_geom_ok:
+                best = base_cfg
+                best_score = self._calculate_optimizer_score(base_metrics, goal_key, base_metrics, ret_pct)
+                df_val = float(base_metrics.get('Downforce_N', 0) or 0)
+                ld_val = float(base_metrics.get('Max_LD', 0) or 0)
+                self._opt_log(f"Using baseline telemetry: DF={df_val:.1f}N | L/D={ld_val:.1f} | Base Score={best_score:.2f}")
 
             for i in range(iters_val):
                 if self._opt_stop_flag:
                     break
-                main = base_cfg[0]
-                flaps = list(base_cfg[1])
-                new_flaps = []
-                for fname, s, a, x, y in flaps:
-                    ns = max(10, min(100, s + random.uniform(-1, 1) * (perturb_val * 25)))
-                    na = max(-60, min(20, a + random.uniform(-1, 1) * (perturb_val * 40)))
-                    nx = max(80, min(220, x + random.uniform(-1, 1) * (perturb_val * 30)))
-                    ny = max(-30, min(50, y + random.uniform(-1, 1) * (perturb_val * 25)))
-                    new_flaps.append((fname, round(ns, 1), round(na, 1), round(nx, 1), round(ny, 1)))
-                cfg = (main, tuple(new_flaps))
-                if not A.geometry_ok(cfg):
+                candidate_cfg = None
+                center_cfg = best if (best is not None and random.random() < 0.70) else base_cfg
+                for attempt in range(25):
+                    main = center_cfg[0]
+                    flaps = list(center_cfg[1])
+                    new_flaps = []
+                    eff_scale = 1.0 if attempt < 12 else 0.5
+                    eff_perturb = perturb_val * eff_scale
+                    for fname, s, a, x, y in flaps:
+                        ns = max(10, min(100, s + random.uniform(-1, 1) * (eff_perturb * 25)))
+                        na = max(-60, min(20, a + random.uniform(-1, 1) * (eff_perturb * 40)))
+                        nx = max(80, min(220, x + random.uniform(-1, 1) * (eff_perturb * 30)))
+                        ny = max(-30, min(50, y + random.uniform(-1, 1) * (eff_perturb * 25)))
+                        new_flaps.append((fname, round(ns, 1), round(na, 1), round(nx, 1), round(ny, 1)))
+                    cand = (main, tuple(new_flaps))
+                    if A.geometry_ok(cand):
+                        candidate_cfg = cand
+                        break
+
+                if candidate_cfg is None:
+                    self._opt_log(f"  Iter {i + 1}/{iters_val}: Skipped (candidate geometries failed physical/regulatory constraints)")
+                    self.ui_q.put(('opt_prog', i + 1))
+                    self.ui_q.put(('opt_status', f"Iteration {i + 1}/{iters_val} (skipped)"))
+                    time.sleep(0.01)
                     continue
+
                 try:
-                    row = A.run_one(cfg, 'opt', gh0_val)
+                    row = A.run_one(candidate_cfg, 'opt', gh0_val)
                     if row.get('Status') == 'Valid':
                         score = self._calculate_optimizer_score(row, goal_key, base_metrics, ret_pct)
+                        df_val = float(row.get('Downforce_N', 0) or 0)
+                        ld_val = float(row.get('Max_LD', 0) or 0)
+                        st_val = row.get('Stall_Angle', 0)
+                        marg_val = A.DESIGN_ALPHA - float(st_val) if st_val is not None else 0.0
                         if score > best_score:
-                            best = cfg
+                            best = candidate_cfg
                             best_score = score
-                            df_val = float(row.get('Downforce_N', 0) or 0)
-                            ld_val = float(row.get('Max_LD', 0) or 0)
-                            st_val = row.get('Stall_Angle', 0)
-                            marg_val = A.DESIGN_ALPHA - float(st_val) if st_val is not None else 0.0
-                            self._opt_log(f"  Iter {i + 1}: 🌟 New Best Score {score:.2f} (DF: {df_val:.1f}N, L/D: {ld_val:.1f}, Margin: {marg_val:.1f}°)")
+                            self._opt_log(f"  Iter {i + 1}/{iters_val}: 🌟 New Best Score {score:.2f} (DF: {df_val:.1f}N, L/D: {ld_val:.1f}, Margin: {marg_val:.1f}°)")
+                        else:
+                            self._opt_log(f"  Iter {i + 1}/{iters_val}: Score {score:.2f} (DF: {df_val:.1f}N, L/D: {ld_val:.1f}, Margin: {marg_val:.1f}°)")
+                    else:
+                        self._opt_log(f"  Iter {i + 1}/{iters_val}: JavaFoil status {row.get('Status')}")
                 except Exception as e:
-                    self._opt_log(f"  Iter {i + 1} error: {e}")
+                    self._opt_log(f"  Iter {i + 1}/{iters_val} error: {e}")
+
                 self.ui_q.put(('opt_prog', i + 1))
                 self.ui_q.put(('opt_status', f"Iteration {i + 1}/{iters_val}"))
                 time.sleep(0.01)
+
             try:
                 A.write_run_meta(run_dir, n_runs=iters_val)
             except Exception:
@@ -5160,7 +5259,22 @@ class App(tk.Tk):
             return
         main, flaps = self._opt_best_cfg
         self.main_box.set(main)
+        if hasattr(self, 'opt_main_box'):
+            self.opt_main_box.set(main)
         for i, vals_cb in enumerate(self.flap_rows):
+            vals, cb = vals_cb
+            if i < len(flaps):
+                fname, s, a, x, y = flaps[i]
+                vals[0].set(fname)
+                vals[1].set(str(s))
+                vals[2].set(str(a))
+                vals[3].set(str(x))
+                vals[4].set(str(y))
+                vals[5].set(True)
+            else:
+                vals[0].set('')
+                vals[5].set(False)
+        for i, vals_cb in enumerate(getattr(self, 'opt_flap_rows', [])):
             vals, cb = vals_cb
             if i < len(flaps):
                 fname, s, a, x, y = flaps[i]

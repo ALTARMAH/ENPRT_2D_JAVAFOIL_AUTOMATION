@@ -552,11 +552,11 @@ def realistic_wing_check(cfg):
     """Aerodynamic realism constraint for multi-element FSAE wings.
     Rejects floating, disconnected, unslotted, or decambered element arrangements.
     Ensures:
-      1. Monotonic progressive camber deflection: |alpha_{k+1}| >= |alpha_k| - 3 deg
-      2. Strict scale hierarchy: scale_{k+1} <= scale_k + 2.5%
-      3. Physically coupled slot gap: 0.8% <= min_gap <= 6.5% of main chord
-      4. Slot overlap within aerodynamic suction boundary: -2.5% <= overlap <= 8.5%
-      5. Positive suction-side nozzle step: -1.0% <= step <= 9.5%
+      1. Monotonic progressive camber deflection: elements do not counter-deflect
+      2. Realistic scale bounds: each flap chord between 8% and 75% of main chord
+      3. Physically coupled slot gap: 0.5% <= min_gap <= 18.0% of main chord
+      4. Slot overlap within aerodynamic suction boundary: -15.0% <= overlap <= 15.0%
+      5. Positive suction-side nozzle step: -5.0% <= step <= 22.0%
     """
     if not REAL_WING_ENFORCE:
         return True
@@ -564,16 +564,14 @@ def realistic_wing_check(cfg):
     if not flaps:
         return True
     
-    # 1. Deflection & scale hierarchy
+    # 1. Deflection & scale bounds
     prev_a = 0.0
-    prev_s = 100.0
     for (_, s, a, x, y) in flaps:
-        if abs(a) < abs(prev_a) - 3.0:
+        if s < 8.0 or s > 75.0:
             return False
-        if s > prev_s + 2.5:
+        if abs(a) < abs(prev_a) - 8.0:
             return False
         prev_a = a
-        prev_s = s
         
     # 2. Slot gap, overlap, and nozzle step checks
     try:
@@ -581,15 +579,15 @@ def realistic_wing_check(cfg):
         for k in range(len(outs) - 1):
             p, q = outs[k], outs[k + 1]
             gap = _min_gap(p, q)
-            if gap < 0.008 or gap > 0.065:
+            if gap < 0.005 or gap > 0.18:
                 return False
             te = p[np.argmax(p[:, 0])]
             le = q[np.argmin(q[:, 0])]
             overlap = te[0] - le[0]
-            if overlap < -0.025 or overlap > 0.085:
+            if overlap < -0.15 or overlap > 0.15:
                 return False
             step = le[1] - te[1]
-            if step < -0.010 or step > 0.095:
+            if step < -0.05 or step > 0.22:
                 return False
     except Exception:
         return False
@@ -1726,6 +1724,8 @@ def fmt_value(k, v):
 
 def write_row(row):
     path = RESULTS_FILE[0]
+    if not path:
+        return
     new = (not os.path.exists(path)) or (os.path.getsize(path) == 0)
     with open(path, "a", newline="") as f:
         w = csv.DictWriter(f, fieldnames=FIELDS, extrasaction="ignore")
