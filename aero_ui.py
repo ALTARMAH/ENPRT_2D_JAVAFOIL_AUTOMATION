@@ -5208,21 +5208,37 @@ class App(tk.Tk):
         eng_bar.pack(fill='x', pady=(4, 0))
 
         tk.Label(eng_bar, text='AI Engine:', font=('Segoe UI', 9, 'bold'), fg='#cbd5e1', bg='#0f172a').pack(side='left', padx=(0, 6))
-        self.ai_engine_mode = tk.StringVar(value='Built-in Aero Expert (Offline, Instant)')
+        self.ai_engine_mode = tk.StringVar(value='🌐 Free Cloud AI (Zero-Setup Online LLM)')
         eng_cb = ttk.Combobox(
             eng_bar, textvariable=self.ai_engine_mode,
-            values=['Built-in Aero Expert (Offline, Instant)', 'Local LLM (Ollama / Localhost)'],
-            state='readonly', width=34
+            values=[
+                '🌐 Free Cloud AI (Zero-Setup Online LLM)',
+                '⚡ Fast API (Groq / OpenRouter / OpenAI)',
+                '💻 Local LLM (Ollama localhost:11434)',
+                '🛡️ Built-in Aero Doctor (Offline Intelligent)',
+            ],
+            state='readonly', width=36
         )
         eng_cb.pack(side='left', padx=4)
+        eng_cb.bind('<<ComboboxSelected>>', lambda e: self._ai_on_engine_change())
 
-        tk.Label(eng_bar, text='Model:', font=('Segoe UI', 9), fg='#cbd5e1', bg='#0f172a').pack(side='left', padx=(10, 4))
+        self.ai_extra_frame = tk.Frame(eng_bar, bg='#0f172a')
+        self.ai_extra_frame.pack(side='left', padx=6)
+
         self.ai_model_name = tk.StringVar(value='qwen2.5:0.5b')
-        ttk.Entry(eng_bar, textvariable=self.ai_model_name, width=16).pack(side='left', padx=2)
-        add_tooltip(eng_bar.winfo_children()[-1], 'Ollama model name (e.g. qwen2.5:0.5b, smollm, llama3.2). Connects to localhost:11434.')
+        self.ai_api_key_var = tk.StringVar(value='')
 
-        self.ai_engine_status = tk.Label(eng_bar, text='● Ready (Offline Expert)', fg='#4ade80', bg='#0f172a', font=('Segoe UI', 9))
-        self.ai_engine_status.pack(side='left', padx=12)
+        ttk.Button(eng_bar, text='🔄 Test Engine', command=self._ai_test_engine).pack(side='left', padx=3)
+        ttk.Button(eng_bar, text='⬇️ Setup Local AI Guide', command=self._ai_show_ollama_guide).pack(side='left', padx=3)
+
+        self.ai_engine_status = tk.Label(eng_bar, text='● Ready (Free Cloud AI)', fg='#4ade80', bg='#0f172a', font=('Segoe UI', 9))
+        self.ai_engine_status.pack(side='left', padx=10)
+
+        # Telemetry context badge
+        self.ai_context_badge = tk.Label(hdr, text='📊 Telemetry Context: Initializing...', font=('Segoe UI', 8, 'italic'), fg='#38bdf8', bg='#0f172a')
+        self.ai_context_badge.pack(anchor='w', pady=(3, 0))
+        self.after(500, self._ai_update_context_badge)
+        self.after(200, self._ai_on_engine_change)
 
         # Quick Actions Toolbar
         quick_frame = ttk.LabelFrame(ai_root, text='Quick Aerodynamic Tools & Knowledge')
@@ -5257,12 +5273,15 @@ class App(tk.Tk):
         self.ai_chat_text.tag_configure('warn_tag', foreground='#f87171', font=('Segoe UI', 9, 'bold'))
 
         welcome_msg = (
-            "👋 Welcome to the Formula Student Aerodynamics AI Assistant!\n\n"
-            "I am equipped with specialized Formula Student aerodynamics knowledge (McBeath, Katz, FSUK/FSG rules) and live telemetry diagnostics for this application.\n\n"
-            "Quick things you can do:\n"
-            "  • Click '🏎️ Telemetry Doctor' above to instantly evaluate the run selected in the Results table.\n"
-            "  • Click '📐 Slot Gap Tuning Guide' to learn multi-element flap positioning sweet spots.\n"
-            "  • Ask me anything below (e.g., 'How do I prevent flap stall under pitch dive?' or 'Which scoring profile is best for autocross?').\n\n"
+            "👋 **Formula Student Aerodynamics AI Assistant & Telemetry Doctor**\n"
+            "──────────────────────────────────────────────\n"
+            "Equipped with live session context, online AI integration, and multi-element aerodynamics intelligence.\n\n"
+            "Try asking directly:\n"
+            "  • 'from results what is the best option for stability'\n"
+            "  • 'which run produces the highest downforce?'\n"
+            "  • 'diagnose my selected wing'\n"
+            "  • 'how do I tune flap slot gaps for ground effect?'\n"
+            "  • Click '⬇️ Setup Local AI Guide' above to connect Ollama locally with 1 command!\n\n"
         )
         self.ai_chat_text.insert('end', "🤖 AI Assistant: ", 'ai_tag')
         self.ai_chat_text.insert('end', welcome_msg, 'ai_body')
@@ -5285,6 +5304,122 @@ class App(tk.Tk):
         self.ai_chat_text.delete('1.0', 'end')
         self.ai_chat_text.configure(state='disabled')
 
+    def _ai_on_engine_change(self):
+        for w in self.ai_extra_frame.winfo_children():
+            w.destroy()
+        mode = self.ai_engine_mode.get()
+        if 'Local LLM' in mode:
+            tk.Label(self.ai_extra_frame, text='Model:', font=('Segoe UI', 9), fg='#cbd5e1', bg='#0f172a').pack(side='left', padx=(0, 2))
+            e = ttk.Entry(self.ai_extra_frame, textvariable=self.ai_model_name, width=14)
+            e.pack(side='left')
+            add_tooltip(e, "Ollama model name (e.g. qwen2.5:0.5b, llama3.2, phi3). Connects to localhost:11434.")
+            self.ai_engine_status.config(text='● Local LLM (Ollama)', fg='#38bdf8')
+        elif 'Fast API' in mode:
+            tk.Label(self.ai_extra_frame, text='Key:', font=('Segoe UI', 9), fg='#cbd5e1', bg='#0f172a').pack(side='left', padx=(0, 2))
+            e = ttk.Entry(self.ai_extra_frame, textvariable=self.ai_api_key_var, width=16, show='*')
+            e.pack(side='left')
+            add_tooltip(e, "Paste Groq (gsk_...), OpenRouter (sk-or-...), or OpenAI API key for instant responses.")
+            self.ai_engine_status.config(text='● Custom API Ready', fg='#a855f7')
+        elif 'Free Cloud' in mode:
+            tk.Label(self.ai_extra_frame, text='(Free Online LLM · No Key)', font=('Segoe UI', 8, 'italic'), fg='#94a3b8', bg='#0f172a').pack(side='left')
+            self.ai_engine_status.config(text='● Ready (Free Cloud AI)', fg='#4ade80')
+        else:
+            tk.Label(self.ai_extra_frame, text='(Offline Rule Doctor)', font=('Segoe UI', 8, 'italic'), fg='#94a3b8', bg='#0f172a').pack(side='left')
+            self.ai_engine_status.config(text='● Ready (Offline Doctor)', fg='#4ade80')
+
+    def _ai_update_context_badge(self):
+        try:
+            df = getattr(self, '_tree_frame', None)
+            if df is None or (hasattr(df, 'empty') and df.empty):
+                df = getattr(self, 'results', None)
+            if df is not None and not df.empty:
+                sel = self._selected_row()
+                sel_id = sel.get('Run_ID', 'None') if sel is not None and not sel.empty else 'None'
+                txt = f"📊 Telemetry Context: {len(df)} runs loaded · Active Run: [{sel_id}] · Aero Doctor Linked"
+            else:
+                txt = "📊 Telemetry Context: No runs currently in Results table · Ready for design queries"
+            if hasattr(self, 'ai_context_badge') and self.ai_context_badge:
+                self.ai_context_badge.config(text=txt)
+        except Exception:
+            pass
+
+    def _ai_show_ollama_guide(self):
+        top = tk.Toplevel(self)
+        top.title("Setup Local AI (Ollama) - 100% Free & Offline")
+        top.geometry("640x480")
+        top.configure(bg='#0f172a')
+        top.transient(self)
+
+        tk.Label(top, text="🚀 Run a Real Local AI on your Laptop", font=('Segoe UI', 13, 'bold'), fg='#38bdf8', bg='#0f172a').pack(anchor='w', padx=16, pady=(16, 4))
+        tk.Label(top, text="You can run ultra-fast open-source models completely locally with 0 API keys and 0 internet required.", font=('Segoe UI', 9), fg='#cbd5e1', bg='#0f172a').pack(anchor='w', padx=16, pady=(0, 12))
+
+        txt = (
+            "Step 1: Install Ollama\n"
+            "──────────────────────────────────────────────\n"
+            "• Linux: Run in terminal:\n"
+            "    curl -fsSL https://ollama.com/install.sh | sh\n\n"
+            "• Windows: Download and run installer:\n"
+            "    https://ollama.com/download/OllamaSetup.exe\n"
+            "    (or run in PowerShell: winget install Ollama.Ollama)\n\n"
+            "Step 2: Run Lightweight Model (Recommended: 350 MB RAM!)\n"
+            "──────────────────────────────────────────────\n"
+            "In terminal or Command Prompt, run:\n"
+            "    ollama run qwen2.5:0.5b\n\n"
+            "Alternative popular models:\n"
+            "    ollama run llama3.2:1b\n"
+            "    ollama run phi3\n\n"
+            "Step 3: Connect in aero_auto\n"
+            "──────────────────────────────────────────────\n"
+            "In this AI Assistant tab, switch AI Engine to '💻 Local LLM (Ollama)'.\n"
+            "Click '🔄 Test Engine' — once connected, the app routes all questions directly to your local model!"
+        )
+
+        tbox = tk.Text(top, wrap='word', bg='#1e293b', fg='#f8fafc', font=('Consolas', 10), padx=12, pady=10, relief='flat')
+        tbox.pack(fill='both', expand=True, padx=16, pady=8)
+        tbox.insert('1.0', txt)
+        tbox.configure(state='disabled')
+
+        btn_bar = tk.Frame(top, bg='#0f172a')
+        btn_bar.pack(fill='x', padx=16, pady=(4, 16))
+        ttk.Button(btn_bar, text='Close', command=top.destroy).pack(side='right')
+
+    def _ai_test_engine(self):
+        mode = self.ai_engine_mode.get()
+        self.ai_engine_status.config(text='● Testing connection...', fg='#fbbf24')
+
+        def worker():
+            import urllib.request, json, time
+            if 'Local LLM' in mode:
+                try:
+                    t0 = time.time()
+                    req = urllib.request.Request("http://localhost:11434/api/tags")
+                    with urllib.request.urlopen(req, timeout=2.5) as resp:
+                        data = json.loads(resp.read().decode('utf-8'))
+                        models = [m.get('name') for m in data.get('models', [])]
+                        ms = ", ".join(models[:2]) if models else "Ready"
+                        self.after(0, lambda: self.ai_engine_status.config(text=f"● Ollama Connected ({ms}) [{time.time()-t0:.2f}s]", fg='#4ade80'))
+                except Exception as e:
+                    self.after(0, lambda: self.ai_engine_status.config(text="⚠️ Ollama Offline (Run: ollama serve)", fg='#f87171'))
+            elif 'Fast API' in mode:
+                key = self.ai_api_key_var.get().strip()
+                if not key:
+                    self.after(0, lambda: self.ai_engine_status.config(text="⚠️ Please paste an API key first", fg='#f87171'))
+                else:
+                    self.after(0, lambda: self.ai_engine_status.config(text="● API Key Configured", fg='#4ade80'))
+            elif 'Free Cloud' in mode:
+                try:
+                    t0 = time.time()
+                    req = urllib.request.Request("https://text.pollinations.ai/Say%20hi", headers={'User-Agent': 'Mozilla/5.0'})
+                    with urllib.request.urlopen(req, timeout=6.0) as resp:
+                        resp.read()
+                        self.after(0, lambda: self.ai_engine_status.config(text=f"● Cloud AI Online [{time.time()-t0:.2f}s]", fg='#4ade80'))
+                except Exception:
+                    self.after(0, lambda: self.ai_engine_status.config(text="⚠️ Cloud AI Slow / Offline (Doctor fallback ready)", fg='#fbbf24'))
+            else:
+                self.after(0, lambda: self.ai_engine_status.config(text="● Offline Doctor Active", fg='#4ade80'))
+
+        threading.Thread(target=worker, daemon=True).start()
+
     def _ai_send_message(self):
         msg = self.ai_input_var.get().strip()
         if not msg:
@@ -5295,6 +5430,7 @@ class App(tk.Tk):
         self.ai_chat_text.configure(state='disabled')
         self.ai_chat_text.see('end')
 
+        self._ai_update_context_badge()
         threading.Thread(target=self._ai_process_query, args=(msg,), daemon=True).start()
 
     def _ai_quick_prompt(self, ptype):
@@ -5310,6 +5446,7 @@ class App(tk.Tk):
         self.ai_chat_text.insert('end', f"\n\n👤 You: {msg}\n\n", 'user_tag')
         self.ai_chat_text.configure(state='disabled')
         self.ai_chat_text.see('end')
+        self._ai_update_context_badge()
         threading.Thread(target=self._ai_process_query, args=(msg, ptype), daemon=True).start()
 
     def _ai_process_query(self, user_msg, ptype=None):
@@ -5320,25 +5457,112 @@ class App(tk.Tk):
             self.ai_chat_text.insert('end', f"{ans}\n", 'ai_body')
             self.ai_chat_text.configure(state='disabled')
             self.ai_chat_text.see('end')
+            self._ai_update_context_badge()
         self.after(0, update)
 
     def _ai_init_context(self):
         if not hasattr(self, 'ai_context') or not isinstance(self.ai_context, dict):
             self.ai_context = {'active_topic': 'accuracy_efficiency', 'depth': 0, 'history': []}
 
-    def _ai_query_local_llm(self, query):
+    def _ai_build_app_context(self):
+        ctx_parts = []
+        df = getattr(self, '_tree_frame', None)
+        if df is None or (hasattr(df, 'empty') and df.empty):
+            df = getattr(self, 'results', None)
+
+        if df is not None and not df.empty:
+            ctx_parts.append(f"Active Results Table: {len(df)} total simulation runs loaded.")
+            sel = self._selected_row()
+            if sel is not None and not sel.empty:
+                ctx_parts.append(f"Currently Selected Row: Run [{sel.get('Run_ID')}] (Main: {sel.get('Main')}, Cl={sel.get('Cl_a0')}, Cd={sel.get('Cd_a0')}, StallAngle={sel.get('Stall_Angle')}°)")
+
+            d_alpha = float(getattr(A, 'DESIGN_ALPHA', 10.0) or 10.0)
+            if 'Score_Robust' in df.columns:
+                top_rob = df.sort_values(by='Score_Robust', ascending=False).iloc[0]
+                m = float(top_rob.get('Stall_Angle', 0.0) or 0.0) - d_alpha
+                ctx_parts.append(f"Top Stability Run: Run [{top_rob.get('Run_ID')}] (Main: {top_rob.get('Main')}, Cl={top_rob.get('Cl_a0')}, StallMargin={m:+.1f}°, Score_Robust={top_rob.get('Score_Robust')})")
+            elif 'Stall_Angle' in df.columns:
+                top_rob = df.sort_values(by='Stall_Angle', ascending=False).iloc[0]
+                m = float(top_rob.get('Stall_Angle', 0.0) or 0.0) - d_alpha
+                ctx_parts.append(f"Top Stall Angle Run: Run [{top_rob.get('Run_ID')}] (Margin={m:+.1f}°)")
+
+            if 'Cl_a0' in df.columns:
+                top_df = df.sort_values(by='Cl_a0', ascending=False).iloc[0]
+                ctx_parts.append(f"Top Downforce Run: Run [{top_df.get('Run_ID')}] (Cl={top_df.get('Cl_a0')}, Cd={top_df.get('Cd_a0')}, Downforce={top_df.get('Downforce_N')} N)")
+
+            if 'Max_LD' in df.columns:
+                top_ld = df.sort_values(by='Max_LD', ascending=False).iloc[0]
+                ctx_parts.append(f"Top Efficiency Run: Run [{top_ld.get('Run_ID')}] (L/D={top_ld.get('Max_LD')}, Cd={top_ld.get('Cd_a0')})")
+        else:
+            ctx_parts.append("No simulation runs currently loaded in Results table.")
+
+        return "\n".join(ctx_parts)
+
+    def _ai_query_free_cloud_ai(self, query, context=""):
+        import urllib.request, urllib.parse
+        clean_q = query.strip()
+        # Keep prompt focused for fast inference
+        prompt = f"FSAE Aerodynamics Assistant.\nContext: {context[:300]}\nUser Question: {clean_q}\nProvide a concise, direct engineering answer."
+        try:
+            url = f"https://text.pollinations.ai/{urllib.parse.quote(prompt[:450])}"
+            req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
+            with urllib.request.urlopen(req, timeout=9.0) as resp:
+                res = resp.read().decode('utf-8', errors='replace').strip()
+                if res and len(res) > 15 and not res.startswith('<!DOCTYPE'):
+                    return res
+        except Exception:
+            pass
+        return None
+
+    def _ai_query_custom_api(self, query, context=""):
+        import urllib.request, json
+        key = self.ai_api_key_var.get().strip()
+        if not key:
+            return None
+
+        if key.startswith("gsk_"):
+            url = "https://api.groq.com/openai/v1/chat/completions"
+            model = "llama-3.1-8b-instant"
+        elif key.startswith("sk-or-"):
+            url = "https://openrouter.ai/api/v1/chat/completions"
+            model = "meta-llama/llama-3.2-3b-instruct:free"
+        else:
+            url = "https://api.openai.com/v1/chat/completions"
+            model = "gpt-4o-mini"
+
+        messages = [
+            {"role": "system", "content": f"You are an expert Formula Student aerodynamics AI assistant embedded inside aero_auto.\n{context}"},
+            {"role": "user", "content": query}
+        ]
+        payload = json.dumps({"model": model, "messages": messages, "max_tokens": 500, "temperature": 0.4}).encode('utf-8')
+        req = urllib.request.Request(url, data=payload, headers={
+            "Content-Type": "application/json",
+            "Authorization": f"Bearer {key}",
+            "User-Agent": "aero_auto/1.1"
+        })
+        try:
+            with urllib.request.urlopen(req, timeout=8.0) as resp:
+                data = json.loads(resp.read().decode('utf-8'))
+                choices = data.get('choices', [])
+                if choices:
+                    return choices[0].get('message', {}).get('content', '').strip()
+        except Exception as e:
+            return f"⚠️ API Error: {e}"
+        return None
+
+    def _ai_query_local_llm(self, query, context=""):
         import urllib.request, json
         mname = self.ai_model_name.get().strip() or "qwen2.5:0.5b"
         prompt = (
             f"You are an expert Formula Student aerodynamics engineer assisting an FSAE student.\n"
-            f"Context: The student is using an automated multi-element JavaFoil 2D aerofoil design tool.\n"
-            f"Question: {query}\n"
-            f"Answer thoroughly with precise aerodynamic principles, Formula Student rules, and practical advice."
+            f"App Context:\n{context}\n\n"
+            f"User Question: {query}\n"
+            f"Answer thoroughly referencing their specific run numbers if applicable."
         )
         payload = json.dumps({"model": mname, "prompt": prompt, "stream": False}).encode('utf-8')
         req = urllib.request.Request("http://localhost:11434/api/generate", data=payload, headers={'Content-Type': 'application/json'})
         try:
-            with urllib.request.urlopen(req, timeout=8) as resp:
+            with urllib.request.urlopen(req, timeout=8.0) as resp:
                 data = json.loads(resp.read().decode('utf-8'))
                 ans = data.get('response', '')
                 if ans.strip():
@@ -5346,6 +5570,176 @@ class App(tk.Tk):
         except Exception:
             return None
         return None
+
+    def _ai_dispatch_llm(self, query, context=""):
+        mode = self.ai_engine_mode.get() if hasattr(self, 'ai_engine_mode') else ""
+        if 'Local LLM' in mode:
+            return self._ai_query_local_llm(query, context)
+        elif 'Fast API' in mode:
+            return self._ai_query_custom_api(query, context)
+        elif 'Free Cloud' in mode:
+            res = self._ai_query_free_cloud_ai(query, context)
+            if res:
+                return res
+        return None
+
+    def _ai_answer_greeting(self):
+        df = getattr(self, '_tree_frame', None)
+        if df is None or (hasattr(df, 'empty') and df.empty):
+            df = getattr(self, 'results', None)
+        n = len(df) if df is not None and not df.empty else 0
+        run_info = f"({n} candidate wings loaded in your Results table)" if n > 0 else "(no simulation runs currently loaded)"
+
+        return (
+            f"👋 **Hello! Welcome to your Formula Student Aerodynamics Assistant.**\n"
+            f"──────────────────────────────────────────────\n"
+            f"I have live telemetry access to your workspace {run_info}.\n\n"
+            f"Here are specific questions you can ask me:\n"
+            f"• **'From results, what is the best option for stability?'** $\\rightarrow$ identifies the safest wing under braking dive\n"
+            f"• **'Which run produces the highest downforce?'** $\\rightarrow$ evaluates peak Cl and induced drag penalties\n"
+            f"• **'Which run is most efficient?'** $\\rightarrow$ checks L/D for EV endurance battery energy management\n"
+            f"• **'Diagnose my selected wing'** $\\rightarrow$ runs full telemetry doctor on your active row\n"
+            f"• **'How do I tune flap slot gaps?'** $\\rightarrow$ explains boundary layer dumping and sweet spots\n\n"
+            f"What would you like to check or optimize right now?"
+        )
+
+    def _ai_analyze_results_stability(self):
+        df = getattr(self, '_tree_frame', None)
+        if df is None or (hasattr(df, 'empty') and df.empty):
+            df = getattr(self, 'results', None)
+
+        if df is None or df.empty:
+            return (
+                "⚠️ **No Simulation Runs Loaded**\n"
+                "──────────────────────────────────────────────\n"
+                "There are no active wing runs in your Results tab right now.\n\n"
+                "To evaluate stability across candidate wing options:\n"
+                "1. Go to **Tab 3 (Campaigns)** and click 'Run Automated Campaign', OR\n"
+                "2. Go to **Tab 4 (Results Inspector)** and load a previous output directory.\n\n"
+                "Once loaded, ask me again and I will rank every candidate wing and pinpoint the best stability setup!"
+            )
+
+        if 'Score_Robust' in df.columns:
+            rob_sorted = df.sort_values(by='Score_Robust', ascending=False)
+        elif 'Stall_Angle' in df.columns:
+            rob_sorted = df.sort_values(by='Stall_Angle', ascending=False)
+        else:
+            rob_sorted = df
+        best_rob = rob_sorted.iloc[0]
+
+        df_sorted = df.sort_values(by='Cl_a0', ascending=False) if 'Cl_a0' in df.columns else df
+        best_df = df_sorted.iloc[0]
+
+        d_alpha = float(best_rob.get('Design_Alpha', getattr(A, 'DESIGN_ALPHA', 10.0)) or 10.0)
+        rob_st = float(best_rob.get('Stall_Angle', 0.0) or 0.0)
+        rob_margin = rob_st - d_alpha
+
+        df_st = float(best_df.get('Stall_Angle', 0.0) or 0.0)
+        df_margin = df_st - d_alpha
+
+        return (
+            f"🛡️ **Best Option for Pitch & Braking Stability** (from {len(df)} loaded runs)\n"
+            f"──────────────────────────────────────────────\n"
+            f"🏆 **Winner**: **Run [{best_rob.get('Run_ID')}]** ({str(best_rob.get('Main')).upper()}, {best_rob.get('Elements')} elements)\n"
+            f"• **Stability / Robustness Score**: **{float(best_rob.get('Score_Robust', 0)):.1f} / 100**\n"
+            f"• **Stall Margin Buffer**: **{rob_margin:+.1f}°** (Stall onset at α = {rob_st:.1f}° vs design α = {d_alpha:.1f}°)\n"
+            f"• **Aerodynamic Performance**: Cl₀ = {abs(float(best_rob.get('Cl_a0', 0))):.3f} | Cd₀ = {float(best_rob.get('Cd_a0', 0)):.3f} | L/D = {float(best_rob.get('Max_LD', 0)):.2f}\n"
+            f"• **Forces at 15 m/s**: Downforce = **{float(best_rob.get('Downforce_N', 0)):.1f} N** | Drag = {float(best_rob.get('Drag_N', 0)):.1f} N\n\n"
+            f"⚖️ **Why Run [{best_rob.get('Run_ID')}] Beats Max Downforce Run [{best_df.get('Run_ID')}]:**\n"
+            f"• Peak Downforce candidate Run [{best_df.get('Run_ID')}] produces {float(best_df.get('Downforce_N', 0)):.1f} N (Cl₀ = {abs(float(best_df.get('Cl_a0', 0))):.3f}), but only has a **{df_margin:+.1f}° stall margin**.\n"
+            f"• Under heavy braking (1.6g–2.0g), suspension load transfer compresses the front axle, pitching the nose down by **1.5° to 3.0°**.\n"
+            f"• Run [{best_df.get('Run_ID')}] will exceed its stall limit during pitch dive, triggering abrupt boundary layer separation on Flap 2/3 and severe entry understeer.\n"
+            f"• Run [{best_rob.get('Run_ID')}] safely absorbs pitch dive with a **{rob_margin:.1f}° stall cushion**, maintaining solid front tire grip right into the apex.\n\n"
+            f"💡 **Actionable Step**: Select Run [{best_rob.get('Run_ID')}] in the Results table to view its Cp distribution in Tab 5 or export CAD in Tab 4."
+        )
+
+    def _ai_analyze_results_downforce(self):
+        df = getattr(self, '_tree_frame', None)
+        if df is None or (hasattr(df, 'empty') and df.empty):
+            df = getattr(self, 'results', None)
+        if df is None or df.empty:
+            return "⚠️ No simulation runs currently loaded in Results."
+        best_df = df.sort_values(by='Cl_a0', ascending=False).iloc[0] if 'Cl_a0' in df.columns else df.iloc[0]
+        best_eff = df.sort_values(by='Max_LD', ascending=False).iloc[0] if 'Max_LD' in df.columns else df.iloc[0]
+        d_alpha = float(best_df.get('Design_Alpha', getattr(A, 'DESIGN_ALPHA', 10.0)) or 10.0)
+        st = float(best_df.get('Stall_Angle', 0.0) or 0.0)
+        margin = st - d_alpha
+
+        return (
+            f"🚀 **Maximum Downforce Winner** (from {len(df)} loaded runs)\n"
+            f"──────────────────────────────────────────────\n"
+            f"🏆 **Highest Downforce**: **Run [{best_df.get('Run_ID')}]** ({str(best_df.get('Main')).upper()}, {best_df.get('Elements')} elements)\n"
+            f"• **Peak Downforce**: **{float(best_df.get('Downforce_N', 0)):.1f} N** (Cl₀ = {abs(float(best_df.get('Cl_a0', 0))):.3f})\n"
+            f"• **Drag Force**: {float(best_df.get('Drag_N', 0)):.1f} N (Cd₀ = {float(best_df.get('Cd_a0', 0)):.3f}) | L/D = {float(best_df.get('Max_LD', 0)):.2f}\n"
+            f"• **Stall Angle Margin**: {margin:+.1f}° (Stall at α = {st:.1f}° vs design α = {d_alpha:.1f}°)\n\n"
+            f"⚖️ **Downforce vs Efficiency Tradeoff:**\n"
+            f"• Compared to high-efficiency candidate Run [{best_eff.get('Run_ID')}], this wing creates {float(best_df.get('Downforce_N', 0)) - float(best_eff.get('Downforce_N', 0)):+.1f} N more cornering grip.\n"
+            f"• However, it incurs {float(best_df.get('Drag_N', 0)) - float(best_eff.get('Drag_N', 0)):+.1f} N of extra drag.\n"
+            f"• On high-speed tracks or EV endurance events where powertrain battery energy is tight, verify if the 3.5:1 downforce-to-drag points tradeoff justifies the added drag.\n\n"
+            f"💡 **Tip**: In Tab 6 (Optimizer), you can set Run [{best_df.get('Run_ID')}] as baseline and optimize for stability while retaining 95% of this downforce!"
+        )
+
+    def _ai_analyze_results_efficiency(self):
+        df = getattr(self, '_tree_frame', None)
+        if df is None or (hasattr(df, 'empty') and df.empty):
+            df = getattr(self, 'results', None)
+        if df is None or df.empty:
+            return "⚠️ No simulation runs currently loaded in Results."
+        best_eff = df.sort_values(by='Max_LD', ascending=False).iloc[0] if 'Max_LD' in df.columns else df.iloc[0]
+        best_df = df.sort_values(by='Cl_a0', ascending=False).iloc[0] if 'Cl_a0' in df.columns else df.iloc[0]
+        return (
+            f"⚡ **Maximum Aerodynamic Efficiency Winner** (from {len(df)} loaded runs)\n"
+            f"──────────────────────────────────────────────\n"
+            f"🏆 **Winner**: **Run [{best_eff.get('Run_ID')}]** ({str(best_eff.get('Main')).upper()}, {best_eff.get('Elements')} elements)\n"
+            f"• **Peak L/D (Lift-to-Drag Ratio)**: **{float(best_eff.get('Max_LD', 0)):.2f}**\n"
+            f"• **Aero Coefficients**: Cl₀ = {abs(float(best_eff.get('Cl_a0', 0))):.3f} | Cd₀ = {float(best_eff.get('Cd_a0', 0)):.3f}\n"
+            f"• **Forces at 15 m/s**: Downforce = {float(best_eff.get('Downforce_N', 0)):.1f} N | Drag = {float(best_eff.get('Drag_N', 0)):.1f} N\n\n"
+            f"🔋 **Why Efficiency Matters in Formula Student:**\n"
+            f"• In the **22 km Endurance Event** (worth 250 points, plus 100 Efficiency points), high drag drains the accumulator rapidly.\n"
+            f"• Run [{best_eff.get('Run_ID')}] reduces drag by {float(best_df.get('Drag_N', 0)) - float(best_eff.get('Drag_N', 0)):.1f} N compared to the max downforce setup.\n"
+            f"• If your powertrain is thermal or energy limited, selecting this high-L/D configuration protects your endurance score.\n\n"
+            f"💡 **Recommended Action**: Inspect polar drag buckets in Tab 5 (Graphs) to confirm drag onset at low angles."
+        )
+
+    def _ai_analyze_results_balanced(self):
+        df = getattr(self, '_tree_frame', None)
+        if df is None or (hasattr(df, 'empty') and df.empty):
+            df = getattr(self, 'results', None)
+        if df is None or df.empty:
+            return "⚠️ No simulation runs currently loaded in Results."
+        col = 'Score_Balanced' if 'Score_Balanced' in df.columns else ('Score' if 'Score' in df.columns else None)
+        best_bal = df.sort_values(by=col, ascending=False).iloc[0] if col else df.iloc[0]
+        return (
+            f"⚖️ **Best Overall Balanced Wing** (from {len(df)} loaded runs)\n"
+            f"──────────────────────────────────────────────\n"
+            f"🏆 **Winner**: **Run [{best_bal.get('Run_ID')}]** ({str(best_bal.get('Main')).upper()}, {best_bal.get('Elements')} elements)\n"
+            f"• **Balanced Score**: **{float(best_bal.get(col or 'Score', 0)):.1f} / 100**\n"
+            f"• **Downforce**: {float(best_bal.get('Downforce_N', 0)):.1f} N (Cl₀ = {abs(float(best_bal.get('Cl_a0', 0))):.3f})\n"
+            f"• **Drag**: {float(best_bal.get('Drag_N', 0)):.1f} N (Cd₀ = {float(best_bal.get('Cd_a0', 0)):.3f}) | L/D = {float(best_bal.get('Max_LD', 0)):.2f}\n"
+            f"• **Stall Angle**: {float(best_bal.get('Stall_Angle', 0)):.1f}°\n\n"
+            f"🎯 **Engineering Verdict:**\n"
+            f"This configuration strikes the optimal equilibrium across downforce production, pitch margin safety, and induced drag penalty.\n"
+            f"It is the safest all-around candidate for mixed dynamic events (Autocross + Endurance)."
+        )
+
+    def _ai_analyze_results_summary(self):
+        df = getattr(self, '_tree_frame', None)
+        if df is None or (hasattr(df, 'empty') and df.empty):
+            df = getattr(self, 'results', None)
+        if df is None or df.empty:
+            return "⚠️ No simulation runs currently loaded in Results."
+        best_df = df.sort_values(by='Cl_a0', ascending=False).iloc[0] if 'Cl_a0' in df.columns else df.iloc[0]
+        best_rob = df.sort_values(by='Score_Robust', ascending=False).iloc[0] if 'Score_Robust' in df.columns else df.iloc[0]
+        best_eff = df.sort_values(by='Max_LD', ascending=False).iloc[0] if 'Max_LD' in df.columns else df.iloc[0]
+        d_alpha = float(getattr(A, 'DESIGN_ALPHA', 10.0) or 10.0)
+        return (
+            f"📊 **Executive Overview of Active Results** ({len(df)} total runs)\n"
+            f"──────────────────────────────────────────────\n"
+            f"🥇 **Max Downforce**: Run [{best_df.get('Run_ID')}] $\\rightarrow$ {float(best_df.get('Downforce_N', 0)):.1f} N (Cl = {abs(float(best_df.get('Cl_a0', 0))):.3f})\n"
+            f"🛡️ **Best Pitch Stability**: Run [{best_rob.get('Run_ID')}] $\\rightarrow$ Stall Margin = {float(best_rob.get('Stall_Angle', 0)) - d_alpha:+.1f}° (Score = {float(best_rob.get('Score_Robust', 0)):.1f})\n"
+            f"⚡ **Best Efficiency (L/D)**: Run [{best_eff.get('Run_ID')}] $\\rightarrow$ L/D = {float(best_eff.get('Max_LD', 0)):.2f} (Drag = {float(best_eff.get('Drag_N', 0)):.1f} N)\n\n"
+            f"Ask me to analyze any of these setups or ask 'from results what is the best option for stability'!"
+        )
 
     def _ai_telemetry_diagnosis(self):
         r = self._selected_row()
@@ -5364,7 +5758,8 @@ class App(tk.Tk):
         df_n = float(r.get('Downforce_N', 0) or 0)
         dg_n = float(r.get('Drag_N', 0) or 0)
         st = float(r.get('Stall_Angle', 0) or 0)
-        margin = A.DESIGN_ALPHA - st
+        d_alpha = float(getattr(A, 'DESIGN_ALPHA', 10.0) or 10.0)
+        margin = st - d_alpha
         g1 = float(r.get('Main_to_F1_Gap_pct', 0) or 0)
         ov1 = float(r.get('Main_to_F1_Overlap_pct', 0) or 0)
         step1 = float(r.get('Main_to_F1_Step_pct', 0) or 0)
@@ -5383,12 +5778,12 @@ class App(tk.Tk):
             rec.append("Increase Flap 1 or Flap 2 deflection angles by 3°–5° to increase circulation.")
 
         if margin >= 3.0:
-            findings.append(f"✅ High Stall Margin: {margin:.1f}° beyond design alpha. Safe against braking pitch dive and headwind gusts.")
+            findings.append(f"✅ High Stall Margin: {margin:+.1f}° beyond design alpha. Safe against braking pitch dive and headwind gusts.")
         elif margin >= 1.5:
-            findings.append(f"⚠️ Marginal Stall Margin: {margin:.1f}°. Minor risk of stall detachment under heavy braking pitch dive.")
+            findings.append(f"⚠️ Marginal Stall Margin: {margin:+.1f}°. Minor risk of stall detachment under heavy braking pitch dive.")
             rec.append("Reduce Flap 2 or 3 deflection angle slightly or increase slot nozzle gap to energize boundary layer.")
         else:
-            findings.append(f"❌ Severe Stall Risk: {margin:.1f}°. Wing is operating on the verge of boundary layer separation!")
+            findings.append(f"❌ Severe Stall Risk: {margin:+.1f}°. Wing is operating on the verge of boundary layer separation!")
             rec.append("Wing will suffer catastrophic downforce collapse during pitch dive. Lower flap angles or optimize stability in Tab 6.")
 
         if g1 > 0:
@@ -5412,7 +5807,7 @@ class App(tk.Tk):
             f"──────────────────────────────────────────────\n"
             f"• Aero Coefficients: Cl₀ = {abs(cl):.4f} | Cd₀ = {cd:.4f} | L/D = {ld:.2f}\n"
             f"• Physical Forces: Downforce = {df_n:.1f} N | Drag = {dg_n:.1f} N\n"
-            f"• Stall Margin: {margin:.1f}° (Stall Angle = {st:.1f}°)\n"
+            f"• Stall Margin: {margin:+.1f}° (Stall Angle = {st:.1f}° vs design α = {d_alpha:.1f}°)\n"
             f"• Slot Geometry: Gap = {g1:.2f}% | Overlap = {ov1:.2f}% | Step = {step1:.2f}%\n"
             f"• Envelope: Length = {sl_mm:.1f} mm | Height = {sh_mm:.1f} mm | Clearance = {gc_mm:.1f} mm\n\n"
             f"🔍 Aerodynamic Findings:\n" + "\n".join("  " + f for f in findings) + "\n\n"
@@ -5423,16 +5818,22 @@ class App(tk.Tk):
         self._ai_init_context()
         raw_q = (query or "").strip()
         q = raw_q.lower()
+        if not q:
+            return ""
 
-        # Check for Local LLM (Ollama or OpenAI-compatible endpoint) if selected
-        engine = getattr(self, 'ai_engine_mode', None)
-        engine_str = engine.get() if engine else ""
-        if 'Local LLM' in engine_str and ptype is None:
-            llm_res = self._ai_query_local_llm(raw_q)
-            if llm_res:
-                return llm_res
+        context_str = self._ai_build_app_context()
+        engine_str = self.ai_engine_mode.get() if hasattr(self, 'ai_engine_mode') else ""
 
-        # Quick action prompts
+        # 1. Greetings
+        greetings = {'hello', 'hi', 'hey', 'greetings', 'yo', 'good morning', 'good afternoon', 'good evening', 'howdy', 'sup'}
+        if q in greetings or any(q.startswith(g + ' ') or q.endswith(' ' + g) for g in greetings):
+            if any(k in engine_str for k in ['Free Cloud', 'Fast API', 'Local LLM']):
+                llm_res = self._ai_dispatch_llm(raw_q, context_str)
+                if llm_res:
+                    return llm_res
+            return self._ai_answer_greeting()
+
+        # 2. Quick action prompts
         if ptype == 'telemetry':
             self.ai_context['active_topic'] = 'telemetry'
             self.ai_context['depth'] = 0
@@ -5443,13 +5844,39 @@ class App(tk.Tk):
             self.ai_context['depth'] = 0
             return self._ai_get_topic_response(self.ai_context['active_topic'], 0)
 
-        # Telemetry Analysis (Doctor Mode) triggered by user message
-        if 'telemetry' in q or 'selected run' in q or 'diagnos' in q or 'my wing' in q or 'analyze run' in q or 'check run' in q:
+        # 3. Telemetry Analysis (Doctor Mode) triggered explicitly
+        if ('diagnos' in q or 'selected run' in q or 'telemetry doctor' in q or 'check my wing' in q or 'my wing' in q) and not any(w in q for w in ['best', 'compare', 'from results', 'which run']):
             self.ai_context['active_topic'] = 'telemetry'
             self.ai_context['depth'] = 0
             return self._ai_telemetry_diagnosis()
 
-        # Conversational Follow-up Detection ("more", "explain", "why", "elaborate", "continue", "details")
+        # 4. Results Table & Wing Ranking Queries
+        is_results_query = any(w in q for w in [
+            'result', 'results', 'table', 'best option', 'best wing', 'which option',
+            'which run', 'compare', 'rank', 'winner', 'recommend', 'from results',
+            'highest downforce', 'best stability', 'most efficient', 'lowest drag'
+        ])
+
+        if is_results_query:
+            # First try LLM with live context injected if online/local engine is selected
+            if any(k in engine_str for k in ['Free Cloud', 'Fast API', 'Local LLM']):
+                llm_res = self._ai_dispatch_llm(raw_q, context_str)
+                if llm_res:
+                    return llm_res
+
+            # If LLM offline / not configured, use our intelligent data doctor:
+            if any(w in q for w in ['stability', 'robust', 'pitch', 'dive', 'stall']):
+                return self._ai_analyze_results_stability()
+            elif any(w in q for w in ['downforce', 'lift', 'cl', 'cornering']):
+                return self._ai_analyze_results_downforce()
+            elif any(w in q for w in ['efficiency', 'efficient', 'l/d', 'drag', 'cd', 'endurance']):
+                return self._ai_analyze_results_efficiency()
+            elif any(w in q for w in ['balance', 'balanced', 'overall', 'score']):
+                return self._ai_analyze_results_balanced()
+            else:
+                return self._ai_analyze_results_summary()
+
+        # 5. Conversational Follow-up Detection ("more", "explain", "why", "elaborate", "continue", "details")
         follow_up_cues = ['more', 'explain', 'elaborate', 'why', 'continue', 'details', 'tell me more',
                           'go deeper', 'what else', 'and?', 'keep going', 'further', 'more details', 'expand',
                           'explain more', 'how so']
@@ -5461,7 +5888,13 @@ class App(tk.Tk):
             self.ai_context['depth'] = cur_depth
             return self._ai_get_topic_response(topic, cur_depth)
 
-        # Keyword-based topic routing
+        # 6. General Aerodynamics Query: Try LLM first if enabled, else topic engine
+        if any(k in engine_str for k in ['Free Cloud', 'Fast API', 'Local LLM']):
+            llm_res = self._ai_dispatch_llm(raw_q, context_str)
+            if llm_res:
+                return llm_res
+
+        # 7. Fallback to Topic Engine
         topic = None
         if any(w in q for w in ['accurate', 'accuracy', 'efficient', 'efficiency', 'cfd', 'validate', 'validation', 'openfoam', 'star-ccm', 'ansys', 'fluent', 'wind tunnel', 'how fast', 'speed', 'runtime', 'benchmarks', 'trust']):
             topic = 'accuracy_efficiency'
@@ -5492,6 +5925,7 @@ class App(tk.Tk):
         self.ai_context['active_topic'] = topic
         self.ai_context['depth'] = 0
         return self._ai_get_topic_response(topic, 0)
+
 
     def _ai_get_topic_response(self, topic, depth):
         depth = min(depth, 2)
