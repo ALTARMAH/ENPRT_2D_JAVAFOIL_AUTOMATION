@@ -184,12 +184,18 @@ CONSEC_FAILS = [0]
 T0 = [time.time()]
 START_COUNT = [0]
 
+def frange(lo, hi, step):
+    n = int(math.floor((hi - lo) / step + 1e-9)) + 1
+    return [round(lo + i * step, 6) for i in range(n)]
+
 def init_grid():
     """Initialize GRID from RANGES. Call before running campaigns."""
     global GRID
     GRID.clear()
     for k, r in RANGES.items():
         GRID[k] = {p: frange(*r[p]) for p in ("scale", "angle", "x", "y")}
+
+init_grid()
 LAST_PRINT = [0.0]
 safe_date_str = "@2020-01-01 12:00:00"
 
@@ -216,10 +222,6 @@ def plan_span(plan, role=None):
 # =====================================================================
 # AIRFOIL LOADING
 # =====================================================================
-def frange(lo, hi, step):
-    n = int(math.floor((hi - lo) / step + 1e-9)) + 1
-    return [round(lo + i * step, 6) for i in range(n)]
-
 def load_airfoil(path):
     """Returns (coords, info). Handles Selig and Lednicer, any chord length. coords=None if unusable."""
     pts = []
@@ -2575,6 +2577,127 @@ def run_scenario(sc, budget_h, mains, flaps_pool, plan, check_only, no_check):
         if WORKERS > 1:
             shutil.rmtree(os.path.join(RUN_DIR, "work"), ignore_errors=True)
 
+def run_plan(plan, mains=None, flaps_pool=None, check_only=False, no_check=False, resume=True, on_event=None):
+    """Executes an entire multi-scenario campaign plan as configured by the GUI or CLI.
+
+    Args:
+        plan (dict): Campaign plan dictionary containing keys such as 'role', 'flow',
+                     'hours', 'workers', 'heights', 'chord', 'span', 'out', 'enforce'.
+        mains (list, optional): List of main airfoil profile names. Defaults to all available.
+        flaps_pool (list, optional): List of flap airfoil profile names. Defaults to all available.
+        check_only (bool): If True, only executes the self-check tests for each scenario.
+        no_check (bool): If True, skips the pre-scenario self-check.
+        resume (bool): Whether to resume previous runs if results.csv exists.
+        on_event (callable, optional): Callback with signature on_event(kind, payload).
+
+    Returns:
+        list: Summary of tuples (scenario, status, run_count).
+    """
+    global AIRFOIL_DIR, OUT_DIR, WORKERS, REG_ENFORCE, CHORD_MM, ROLE
+
+    init_grid()
+    init_timebomb()
+
+    if not AIRFOILS:
+        AIRFOILS.update(load_all(AIRFOIL_DIR))
+        if os.path.isdir(AIRFOIL_STORE):
+            AIRFOILS.update(load_all(AIRFOIL_STORE))
+
+    if mains is None:
+        mains = [n for n in AIRFOILS if MAIN_INCLUDE is None or n in MAIN_INCLUDE]
+    if flaps_pool is None:
+        flaps_pool = [n for n in AIRFOILS if FLAP_INCLUDE is None or n in FLAP_INCLUDE]
+
+    if not mains or not flaps_pool:
+        raise ValueError("No usable airfoils in mains or flaps pool.")
+
+    chord = plan.get("chord") or DEFAULT_CHORD_MM
+    if isinstance(plan.get("heights"), str):
+        if plan.get("flow") in ("ground", "both") and plan["heights"].strip():
+            try:
+                plan["heights"] = parse_heights(plan["heights"], chord)
+            except Exception:
+                plan["heights"] = [100.0]
+        else:
+            plan["heights"] = []
+    elif not plan.get("heights"):
+        plan["heights"] = [100.0] if plan.get("flow") in ("ground", "both") else []
+
+    WORKERS = max(1, int(plan.get("workers", 1)))
+    REG_ENFORCE = bool(plan.get("enforce", True))
+    if "out" in plan and plan["out"]:
+        OUT_DIR = os.path.expanduser(plan["out"])
+    os.makedirs(OUT_DIR, exist_ok=True)
+
+    apply_plan_numbers(plan)
+    scs = plan_scenarios(plan)
+    if not scs:
+        raise ValueError("Plan contains no valid scenarios.")
+
+    print("\n=== PLAN (executing campaign) ===")
+    print(plan_text(plan))
+    print(f"  {len(mains)} main-plane candidates, {len(flaps_pool)} flap candidates, Re {RE:,}, alpha {ALPHA[0]} to {ALPHA[1]}")
+    if REG_ENFORCE and CHORD_MM:
+        print("  FSUK/FSG physical size checks are ON (mm limits above); size-breaking configs are rejected before JavaFoil.")
+    elif REG_ENFORCE:
+        print("  FSUK/FSG size checks are ON but no chord was given, so only the dimensionless checks run (no mm limits).")
+    else:
+        print("  FSUK/FSG size checks are OFF (--no-reg).")
+    print("  Before each scenario a self-check runs; if it fails, that scenario is skipped and the next one starts.")
+
+    try:
+        with open(os.path.join(OUT_DIR, "last_plan.json"), "w") as f:
+            json.dump(plan, f)
+    except Exception:
+        pass
+
+    total_hours = float(plan.get("hours", 0.1))
+    t_end = time.time() + total_hours * 3600
+    overview = []
+
+    for i, sc in enumerate(scs):
+        if INTERRUPT.is_set() or STOP.is_set():
+            overview.append((sc, "not started (stopped)", 0))
+            continue
+
+        remaining_scenarios = len(scs) - i
+        budget = (t_end - time.time()) / 3600 / remaining_scenarios if remaining_scenarios > 0 else 0.01
+        if budget < 0.001 and not check_only:
+            overview.append((sc, "not started (no time left)", 0))
+            continue
+
+        sc_label = scenario_label(sc, plan.get('chord'))
+        if on_event:
+            try:
+                on_event('scenario_start', {'index': i, 'total': len(scs), 'name': sc_label})
+            except Exception:
+                pass
+
+        status, n = run_scenario(sc, max(budget, 0.01), mains, flaps_pool, plan, check_only, no_check)
+
+        ok = ("pass" in status.lower() or status == "finished" or n > 0)
+        if on_event:
+            try:
+                on_event('scenario_done', {
+                    'index': i,
+                    'total': len(scs),
+                    'name': sc_label,
+                    'ok': ok,
+                    'runs': n,
+                    'status': status
+                })
+            except Exception:
+                pass
+
+        overview.append((sc, status, n))
+
+    print("\n" + "=" * 78 + "\nALL DONE")
+    for sc, status, n in overview:
+        print(f"  {scenario_label(sc, plan.get('chord')):<60} {status}" + (f", {n} runs" if n else "") + f"\n      {scenario_dir(sc)}")
+
+    return overview
+
+
 def main():
     global AIRFOIL_DIR, OUT_DIR, WORKERS, REG_ENFORCE
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -2623,47 +2746,12 @@ def main():
     flaps_pool = [n for n in AIRFOILS if FLAP_INCLUDE is None or n in FLAP_INCLUDE]
     if not mains or not flaps_pool:
         raise SystemExit("No usable airfoils (check the folder and MAIN_INCLUDE / FLAP_INCLUDE).")
-    for k, r in RANGES.items():
-        GRID[k] = {p: frange(*r[p]) for p in ("scale", "angle", "x", "y")}
 
     plan = build_plan(a)
-    WORKERS = plan["workers"]
-    apply_plan_numbers(plan)
-    scs = plan_scenarios(plan)
-    print("\n=== PLAN (nothing more will be asked after this) ===")
-    print(plan_text(plan))
-    print(f"  {len(mains)} main-plane candidates, {len(flaps_pool)} flap candidates, Re {RE:,}, alpha {ALPHA[0]} to {ALPHA[1]}")
-    if REG_ENFORCE and CHORD_MM:
-        print("  FSUK/FSG physical size checks are ON (mm limits above); size-breaking configs are rejected before JavaFoil.")
-    elif REG_ENFORCE:
-        print("  FSUK/FSG size checks are ON but no chord was given, so only the dimensionless checks run (no mm limits).")
-    else:
-        print("  FSUK/FSG size checks are OFF (--no-reg).")
-    print("  Before each scenario a ~1 minute self-check runs; if it fails, that scenario is skipped and the next one starts.")
-    print("  Ground-effect runs are slower than unbounded ones, so expect fewer runs in those scenarios.")
     if not a.yes and ask_text("\nStart now? [Y/n]: ", "y").lower() in ("n", "no"):
         raise SystemExit("Cancelled.")
-    os.makedirs(OUT_DIR, exist_ok=True)
-    with open(os.path.join(OUT_DIR, "last_plan.json"), "w") as f:
-        json.dump(plan, f)
     print("\nRunning. Ctrl+C stops safely; run the same command again to resume (it offers to reuse these answers).")
-
-    t_end = time.time() + plan["hours"] * 3600
-    overview = []
-    for i, sc in enumerate(scs):
-        if INTERRUPT.is_set():
-            overview.append((sc, "not started (stopped)", 0))
-            continue
-        budget = (t_end - time.time()) / 3600 / (len(scs) - i)
-        if budget < 0.005 and not a.test:
-            overview.append((sc, "not started (no time left)", 0))
-            continue
-        status, n = run_scenario(sc, max(budget, 0.01), mains, flaps_pool, plan, a.test, a.no_check)
-        overview.append((sc, status, n))
-
-    print("\n" + "=" * 78 + "\nALL DONE")
-    for sc, status, n in overview:
-        print(f"  {scenario_label(sc, plan.get('chord')):<60} {status}" + (f", {n} runs" if n else "") + f"\n      {scenario_dir(sc)}")
+    run_plan(plan, mains, flaps_pool, check_only=a.test, no_check=a.no_check)
 
 
 if __name__ == "__main__":

@@ -2473,12 +2473,27 @@ class App(tk.Tk):
         except (KeyError, ValueError):
             chord = A.DEFAULT_CHORD_MM
 
+        if gnd:
+            raw_h = self.cam_heights.get().strip()
+            if not raw_h:
+                if log_fail:
+                    self.camp("enter at least one ground height (e.g. 30, 50, 100)")
+                return None
+            try:
+                heights = A.parse_heights(raw_h, chord)
+            except Exception as e:
+                if log_fail:
+                    self.camp(f"invalid ground heights: {e}")
+                return None
+        else:
+            heights = []
+
         plan = {
             'role': role,
             'flow': flow,
             'hours': hrs,
             'workers': w,
-            'heights': self.cam_heights.get() if gnd else '',
+            'heights': heights,
             'chord': chord,
             'span': span,
             'out': os.path.expanduser(self.cam_out.get()),
@@ -2539,10 +2554,11 @@ class App(tk.Tk):
             label = f"{plan['role']}_{plan['flow']}"
             try:
                 self._camp_run_dir = A.new_run_dir('campaign', label, base=self._lib_base())
+                h_str = ", ".join(f"{h:g}" for h in plan['heights']) if isinstance(plan['heights'], (list, tuple)) else str(plan['heights'])
                 A.write_run_meta(
                     self._camp_run_dir, kind='campaign', label=label,
                     hours=plan['hours'], workers=plan['workers'],
-                    role=plan['role'], flow=plan['flow'], heights=plan['heights'],
+                    role=plan['role'], flow=plan['flow'], heights=h_str,
                     mains=mains, flaps=flaps,
                     n_scenarios=len(A.plan_scenarios(plan)), n_runs=0
                 )
@@ -2550,6 +2566,11 @@ class App(tk.Tk):
                 self._camp_run_dir = None
                 self.camp(f"could not create run folder: {e}")
             out_dir = os.path.expanduser(self.cam_out.get())
+
+        self._cam_scen_dirs = {
+            A.scenario_label(sc, plan.get('chord')): A.scenario_dir(sc)
+            for sc in A.plan_scenarios(plan)
+        }
 
         run_check = self.cam_check.get()
         resume = self.cam_resume.get()
@@ -2565,16 +2586,20 @@ class App(tk.Tk):
             old_out = A.OUT_DIR
             A.OUT_DIR = out_dir
             buf = _QueueWriter(self.ui_q, 'camp')
-            old = sys.stdout
+            old_stdout = sys.stdout
+            old_stderr = sys.stderr
             sys.stdout = buf
+            sys.stderr = buf
             try:
                 A.run_plan(plan, mains, flaps, check_only=check_only, no_check=not run_check, resume=resume, on_event=on_event)
                 self.ui_q.put(('cam_done', True))
-            except Exception:
+            except Exception as e:
                 traceback.print_exc()
+                self.ui_q.put(('camp', f"\n[ERROR] Campaign failed: {type(e).__name__}: {e}\n"))
                 self.ui_q.put(('cam_done', False))
             finally:
-                sys.stdout = old
+                sys.stdout = old_stdout
+                sys.stderr = old_stderr
                 A.OUT_DIR = old_out
                 A.RUN_DIR = old_run
 

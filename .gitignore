@@ -26,6 +26,7 @@ failed/
 
 # Simulation output databases / campaign directories
 aero_campaign/
+runs/
 
 # Virtual environments
 .env
