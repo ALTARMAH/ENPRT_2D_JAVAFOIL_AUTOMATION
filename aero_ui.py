@@ -1021,6 +1021,7 @@ class App(tk.Tk):
         self.tab_res = ttk.Frame(self.notebook)
         self.tab_gr = ttk.Frame(self.notebook)
         self.tab_opt = ttk.Frame(self.notebook)
+        self.tab_ai = ttk.Frame(self.notebook)
         self.tab_set = ttk.Frame(self.notebook)
         self.notebook.add(self.tab_cfg, text="  Configure  ")
         self.notebook.add(self.tab_af, text="  Airfoils  ")
@@ -1028,6 +1029,7 @@ class App(tk.Tk):
         self.notebook.add(self.tab_res, text="  Results  ")
         self.notebook.add(self.tab_gr, text="  Graphs  ")
         self.notebook.add(self.tab_opt, text="  Optimizer  ")
+        self.notebook.add(self.tab_ai, text="  🤖 AI Assistant  ")
         self.notebook.add(self.tab_set, text="  Themes & Settings  ")
         self.build_configure()
         self.build_airfoils()
@@ -1035,6 +1037,7 @@ class App(tk.Tk):
         self.build_results()
         self.build_graphs()
         self.build_optimizer()
+        self.build_ai()
         self.build_settings()
         self.notebook.bind('<<NotebookTabChanged>>', lambda e: tip_hide(), add='+')
 
@@ -1062,6 +1065,7 @@ class App(tk.Tk):
             ('Results', self.tab_res),
             ('Graphs', self.tab_gr),
             ('Optimizer', self.tab_opt),
+            ('AI Assistant', self.tab_ai),
             ('Themes & Settings', self.tab_set)
         ]
         for i, (name, tab) in enumerate(tabs, start=1):
@@ -2967,6 +2971,24 @@ class App(tk.Tk):
         ttk.Button(top2, text='⚙️ Load to Configure', command=self.on_apply_to_config).pack(side='right', padx=2)
         ttk.Button(top2, text='🚀 Send to Optimizer', command=self.on_send_to_optimizer).pack(side='right', padx=2)
         ttk.Label(top2, text='(Right-click row for CAD & options)', foreground=MUTED).pack(side='right', padx=4)
+
+        # Multi-Objective Scoring Profile Selector Bar
+        prof_frame = ttk.Frame(table_frame)
+        prof_frame.pack(fill='x', padx=4, pady=(2, 4))
+        ttk.Label(prof_frame, text='🏆 Ranking Metric:', font=('Helvetica', 9, 'bold')).pack(side='left', padx=(2, 4))
+        first_prof = list(A.SCORING_PROFILES.values())[0]
+        self.res_scoring_profile = tk.StringVar(value=first_prof['name'])
+        prof_names = [p['name'] for p in A.SCORING_PROFILES.values()]
+        self.prof_combo = ttk.Combobox(prof_frame, textvariable=self.res_scoring_profile, values=prof_names, state='readonly', width=38)
+        self.prof_combo.pack(side='left', padx=2)
+        self.prof_combo.bind('<<ComboboxSelected>>', lambda e: self._on_scoring_profile_change())
+        add_tooltip(self.prof_combo, 'Select an FSAE competition scoring metric to instantly re-rank all wing runs.')
+        
+        self.prof_desc_lbl = tk.Label(
+            prof_frame, text=first_prof['description'],
+            bg='#1e293b', fg='#94a3b8', font=('Segoe UI', 8), padx=8, pady=3, relief='flat'
+        )
+        self.prof_desc_lbl.pack(side='left', fill='x', expand=True, padx=(6, 2))
         
         # Dedicated Grid Container for Treeview + Scrollbars (enables true horizontal scrolling)
         tree_container = ttk.Frame(table_frame)
@@ -3193,6 +3215,11 @@ class App(tk.Tk):
         'Run_ID': ('center', 100),
         'Rank': ('center', 65),
         'Score': ('e', 80),
+        'Score_Balanced': ('e', 85),
+        'Score_Autocross': ('e', 85),
+        'Score_Efficiency': ('e', 85),
+        'Score_Robust': ('e', 85),
+        'Score_LapTime': ('e', 85),
         'Tier': ('center', 60),
         'Status': ('center', 80),
         'Cl_a0': ('e', 85),
@@ -3255,7 +3282,7 @@ class App(tk.Tk):
         
         all_cols = list(self.results.columns)
         PRIORITY = [
-            'Run_ID', 'Rank', 'Score', 'Tier', 'Status',
+            'Run_ID', 'Rank', 'Score', 'Score_Balanced', 'Score_Autocross', 'Score_Efficiency', 'Score_Robust', 'Score_LapTime', 'Tier', 'Status',
             'Cl_a0', 'Cd_a0', 'Cm_a0', 'Max_LD', 'Downforce_N', 'Drag_N',
             'Cl_peak', 'Cd_peak', 'Stall_Angle', 'Cl_am2', 'Cl_ap2',
             'Elements', 'Main', 'Flow', 'Height_pct',
@@ -3272,7 +3299,7 @@ class App(tk.Tk):
         
         if mode_val == 'Aerodynamics & Performance':
             subset = [
-                'Run_ID', 'Rank', 'Score', 'Tier', 'Status',
+                'Run_ID', 'Rank', 'Score', 'Score_Balanced', 'Score_Autocross', 'Score_Efficiency', 'Score_Robust', 'Score_LapTime', 'Tier', 'Status',
                 'Cl_a0', 'Cd_a0', 'Cm_a0', 'Max_LD', 'Downforce_N', 'Drag_N',
                 'Cl_peak', 'Cd_peak', 'Stall_Angle', 'Cl_am2', 'Cl_ap2',
                 'Speed_ms', 'Duration_s', 'Date'
@@ -3324,7 +3351,7 @@ class App(tk.Tk):
             v = float(val)
             if col in ('Cl_a0', 'Cd_a0', 'Cm_a0', 'Cd_peak', 'Cl_peak', 'Cl_am2', 'Cl_ap2'):
                 return f"{v:.4f}"
-            elif col in ('Max_LD', 'Score'):
+            elif col in ('Max_LD', 'Score', 'Score_Balanced', 'Score_Autocross', 'Score_Efficiency', 'Score_Robust', 'Score_LapTime'):
                 return f"{v:.2f}"
             elif col in ('Downforce_N', 'Drag_N', 'Duration_s'):
                 return f"{v:.1f}"
@@ -3361,6 +3388,17 @@ class App(tk.Tk):
             self.res_file.set(p)
         try:
             self.results = A.read_results_csv(p)
+            if not self.results.empty:
+                for col in A.SCORE_FIELDS:
+                    if col not in self.results.columns:
+                        self.results[col] = float('nan')
+                # If historical CSV doesn't have the multi-profile scores, backfill them on the fly
+                if 'Score_Autocross' in self.results.columns and (self.results['Score_Autocross'].isna().all() or self.results['Score_Autocross'].isnull().all()):
+                    for idx, row in self.results.iterrows():
+                        rated = A.rate_all_profiles(row.to_dict(), str(row.get('Status', '')))
+                        for k, v in rated.items():
+                            if k.startswith('Score'):
+                                self.results.at[idx, k] = v
             self._tree_frame = self.results.reset_index(drop=True)
             self._sort_col = None
             self._sort_asc = True
@@ -3390,11 +3428,37 @@ class App(tk.Tk):
             self._sort_col = col
             # When ranking by performance metrics, high values are top -> start descending
             high_first = {
-                'Score', 'Downforce_N', 'Max_LD', 'Cl_a0', 'Cl_peak',
+                'Score', 'Score_Balanced', 'Score_Autocross', 'Score_Efficiency', 'Score_Robust', 'Score_LapTime',
+                'Downforce_N', 'Max_LD', 'Cl_a0', 'Cl_peak',
                 'Elements', 'F1_Scale', 'F2_Scale', 'F3_Scale'
             }
             self._sort_asc = False if col in high_first else True
         self._apply_results_view()
+
+    def _on_scoring_profile_change(self):
+        sel_name = self.res_scoring_profile.get() if hasattr(self, 'res_scoring_profile') else ""
+        target_col = "Score_Balanced"
+        target_desc = ""
+        for k, p in A.SCORING_PROFILES.items():
+            if p["name"] == sel_name:
+                if k == "balanced": target_col = "Score_Balanced"
+                elif k == "autocross": target_col = "Score_Autocross"
+                elif k == "efficiency": target_col = "Score_Efficiency"
+                elif k == "robust": target_col = "Score_Robust"
+                elif k == "laptime": target_col = "Score_LapTime"
+                target_desc = p["description"]
+                break
+        if hasattr(self, 'prof_desc_lbl'):
+            self.prof_desc_lbl.configure(text=target_desc)
+        if hasattr(self, '_tree_frame') and self._tree_frame is not None and not self._tree_frame.empty:
+            if target_col in self._tree_frame.columns:
+                self._sort_col = target_col
+                self._sort_asc = False
+                self._apply_results_view()
+            elif 'Score' in self._tree_frame.columns:
+                self._sort_col = 'Score'
+                self._sort_asc = False
+                self._apply_results_view()
 
     def _apply_results_view(self):
         if not hasattr(self, '_tree_frame') or self._tree_frame is None or self._tree_frame.empty:
@@ -3856,9 +3920,9 @@ class App(tk.Tk):
         """
         dlg = tk.Toplevel(self.winfo_toplevel())
         dlg.title(f"Graphs Ready — Run {rid}")
-        dlg.resizable(False, False)
+        dlg.geometry("560x280")
+        dlg.minsize(500, 260)
         dlg.transient(self.winfo_toplevel())
-        dlg.grab_set()
 
         bg_col = '#0f172a'
         fg_col = '#f8fafc'
@@ -3948,14 +4012,20 @@ class App(tk.Tk):
             ph = self.winfo_toplevel().winfo_height()
             px = self.winfo_toplevel().winfo_rootx()
             py = self.winfo_toplevel().winfo_rooty()
-            w = dlg.winfo_reqwidth()
-            h = dlg.winfo_reqheight()
+            w = max(560, dlg.winfo_reqwidth())
+            h = max(280, dlg.winfo_reqheight())
             cx = max(0, px + (pw - w) // 2)
             cy = max(0, py + (ph - h) // 2)
-            dlg.geometry(f"+{cx}+{cy}")
+            dlg.geometry(f"{w}x{h}+{cx}+{cy}")
         except Exception:
             pass
 
+        dlg.deiconify()
+        dlg.lift()
+        try:
+            dlg.grab_set()
+        except Exception:
+            pass
         b_inside.focus_set()
 
     def on_import_existing(self):
@@ -4651,67 +4721,74 @@ class App(tk.Tk):
         ttk.Entry(gframe, textvariable=self.opt_gh_state, width=8).pack(side='left', padx=4)
         gframe.pack(fill='x', padx=6, pady=4)
         
-        # Objectives
-        obj_frame = ttk.LabelFrame(scrollable_frame, text='Optimization Objectives')
-        obj_frame.pack(fill='x', pady=6)
-        obj_desc = (
-            'Select objectives to optimize (weighted sum):\n'
-            '  Lift (Cl) - maximize lift coefficient\n'
-            '  Efficiency (Cl/Cd) - maximize lift-to-drag ratio\n'
-            '  Stability - minimize Cl variation over alpha range\n'
-            '  Total height - minimize stack height (mm)\n'
-            '  Total length - minimize stack length (mm)\n'
-            '  Gap size - target specific gap between elements\n'
-            '  Downforce - maximize downforce at design speed\n'
-            '  Efficiency @ target Cl - maximize Cl/Cd at target Cl'
-        )
-        ttk.Label(obj_frame, text=obj_desc, justify='left').pack(anchor='w', padx=6, pady=4)
-        self.opt_objectives = {}
-        obj_list = [
-            ('lift', 'Maximize Lift (Cl)', True),
-            ('efficiency', 'Maximize Efficiency (Cl/Cd)', True),
-            ('stability', 'Minimize Cl variation (stability)', False),
-            ('height', 'Minimize Stack Height', False),
-            ('length', 'Minimize Stack Length', False),
-            ('gap', 'Target Gap Size', False),
-            ('downforce', 'Maximize Downforce', False),
-            ('target_eff', 'Max Efficiency @ Target Cl', False),
-        ]
-        for key, label, default in obj_list:
-            var = tk.BooleanVar(value=default)
-            self.opt_objectives[key] = var
-            ttk.Checkbutton(obj_frame, text=label, variable=var).pack(anchor='w', padx=6, pady=2)
-            
-        target_frame = ttk.LabelFrame(scrollable_frame, text='Target Values')
-        target_frame.pack(fill='x', pady=6)
-        ttk.Label(target_frame, text='Target Cl:').grid(row=0, column=0, sticky='w')
-        self.opt_target_cl = tk.DoubleVar(value=1.5)
-        ttk.Entry(target_frame, textvariable=self.opt_target_cl, width=8).grid(row=0, column=1, padx=4)
-        ttk.Label(target_frame, text='Target Gap (%):').grid(row=0, column=2, sticky='w', padx=(10, 0))
-        self.opt_target_gap = tk.DoubleVar(value=3)
-        ttk.Entry(target_frame, textvariable=self.opt_target_gap, width=8).grid(row=0, column=3, padx=4)
-        ttk.Label(target_frame, text='Max Height (mm):').grid(row=1, column=0, sticky='w')
-        self.opt_max_height = tk.DoubleVar(value=250)
-        ttk.Entry(target_frame, textvariable=self.opt_max_height, width=8).grid(row=1, column=1, padx=4)
-        ttk.Label(target_frame, text='Max Length (mm):').grid(row=1, column=2, sticky='w', padx=(10, 0))
-        self.opt_max_length = tk.DoubleVar(value=600)
-        ttk.Entry(target_frame, textvariable=self.opt_max_length, width=8).grid(row=1, column=3, padx=4)
+        # Optimization Strategy & Baseline Preservation
+        strat_frame = ttk.LabelFrame(scrollable_frame, text='Optimization Strategy & Baseline Preservation')
+        strat_frame.pack(fill='x', pady=6)
         
+        row_strat = ttk.Frame(strat_frame)
+        row_strat.pack(fill='x', padx=6, pady=4)
+        ttk.Label(row_strat, text='Target Goal:', font=('Helvetica', 9, 'bold')).pack(side='left')
+        self.opt_goal_mode = tk.StringVar(value='🛡️ Maximize Stability (Preserve Base DF & Maximize Pitch Robustness)')
+        goal_choices = [
+            '🛡️ Maximize Stability (Preserve Base DF & Maximize Pitch Robustness)',
+            '🏎️ Maximize Downforce (Respect Stall Margin & Rules)',
+            '⚡ Maximize Aerodynamic Efficiency (L/D, Keep Downforce)',
+            '🎯 Balanced Multi-Objective Refinement',
+            '📐 Compact Packaging (Minimize Envelope, Keep DF)',
+        ]
+        goal_combo = ttk.Combobox(row_strat, textvariable=self.opt_goal_mode, values=goal_choices, state='readonly', width=58)
+        goal_combo.pack(side='left', padx=6)
+        goal_combo.bind('<<ComboboxSelected>>', lambda e: self._on_opt_goal_changed())
+        add_tooltip(goal_combo, 'Select engineering objective. Stability mode strictly protects base downforce while eliminating stall spikes.')
+
+        self.opt_goal_desc = tk.Label(
+            strat_frame, text='Stability Priority: Keeps baseline Downforce/Cl within retention tolerance while maximizing stall margin (>=3°) and minimizing pitch sensitivity (smooth Cl curve across +-2° pitch dive).',
+            bg='#1e293b', fg='#94a3b8', font=('Segoe UI', 8), padx=8, pady=4, relief='flat', justify='left', wraplength=700
+        )
+        self.opt_goal_desc.pack(fill='x', padx=6, pady=2)
+
+        row_ret = ttk.Frame(strat_frame)
+        row_ret.pack(fill='x', padx=6, pady=4)
+        ttk.Label(row_ret, text='Downforce Retention:').pack(side='left')
+        self.opt_retention_mode = tk.StringVar(value='Strict (±5% of Base)')
+        ret_combo = ttk.Combobox(
+            row_ret, textvariable=self.opt_retention_mode,
+            values=['Strict (±5% of Base)', 'Balanced (±10% of Base)', 'Flexible (±20% of Base)', 'Free (Unconstrained)'],
+            state='readonly', width=24
+        )
+        ret_combo.pack(side='left', padx=4)
+        add_tooltip(ret_combo, 'Enforces that candidate wings retain baseline downforce without collapsing lift to cheat stability scores.')
+
+        self.opt_reg_v = tk.BooleanVar(value=True)
+        ttk.Checkbutton(row_ret, text='Enforce FSUK/FSG Rules (Bounding Box & Ground Clearance)', variable=self.opt_reg_v).pack(side='left', padx=12)
+
+        row_real = ttk.Frame(strat_frame)
+        row_real.pack(fill='x', padx=6, pady=4)
+        self.opt_real_v = tk.BooleanVar(value=True)
+        ttk.Checkbutton(row_real, text='Enforce Real-World Aerodynamic Slot Integration (1.5-4.5% Gap, Overlap & Camber Hierarchy)', variable=self.opt_real_v).pack(side='left')
+
+        # Optimization Parameters
         params = ttk.LabelFrame(scrollable_frame, text='Optimization Parameters')
         params.pack(fill='x', pady=6)
         pframe = ttk.Frame(params)
         pframe.pack(fill='x', padx=6, pady=6)
         ttk.Label(pframe, text='Iterations:').grid(row=0, column=0, sticky='w')
-        self.opt_iters = tk.IntVar(value=50)
+        self.opt_iters = tk.IntVar(value=30)
         ttk.Entry(pframe, textvariable=self.opt_iters, width=8).grid(row=0, column=1, padx=4)
-        ttk.Label(pframe, text='Step size:').grid(row=0, column=2, sticky='w', padx=(10, 0))
-        self.opt_step = tk.DoubleVar(value=0.1)
-        ttk.Entry(pframe, textvariable=self.opt_step, width=8).grid(row=0, column=3, padx=4)
-        ttk.Label(pframe, text='Perturb scale:').grid(row=0, column=4, sticky='w', padx=(10, 0))
-        self.opt_perturb = tk.DoubleVar(value=0.05)
-        ttk.Entry(pframe, textvariable=self.opt_perturb, width=8).grid(row=0, column=5, padx=4)
-        self.opt_reg_v = tk.BooleanVar(value=True)
-        ttk.Checkbutton(params, text='Enforce regulations', variable=self.opt_reg_v).pack(anchor='w', padx=6, pady=2)
+        ttk.Label(pframe, text='Search Resolution:').grid(row=0, column=2, sticky='w', padx=(10, 0))
+        self.opt_step_preset = tk.StringVar(value='Fine (±1.5% Gap & ±1.5° Angle)')
+        step_combo = ttk.Combobox(
+            pframe, textvariable=self.opt_step_preset,
+            values=[
+                'Fine (±1.5% Gap & ±1.5° Angle)',
+                'Medium (±3.0% Gap & ±3.0° Angle)',
+                'Broad (±5.0% Gap & ±5.0° Angle)'
+            ],
+            state='readonly', width=28
+        )
+        step_combo.grid(row=0, column=3, padx=4)
+        add_tooltip(step_combo, 'Scale of perturbation around base flap slots. Fine tuning discovers high-efficiency sweet spots.')
+        self.opt_perturb = tk.DoubleVar(value=0.015)
         
         prog = ttk.Frame(scrollable_frame)
         prog.pack(fill='x', pady=6)
@@ -4733,6 +4810,22 @@ class App(tk.Tk):
         self._opt_base_cfg = None
         self._opt_best_cfg = None
         self._opt_best_score = -1e+09
+        self._opt_base_metrics = None
+
+    def _on_opt_goal_changed(self):
+        goal = self.opt_goal_mode.get()
+        if 'Stability' in goal:
+            msg = '🛡️ Stability Priority: Keeps baseline Downforce/Cl within retention tolerance while maximizing stall margin (>=3°) and minimizing pitch sensitivity (smooth Cl curve across +-2° pitch dive).'
+        elif 'Downforce' in goal:
+            msg = '🏎️ Max Downforce Priority: Searches flap geometries that maximize peak downforce within FSUK/FSG bounding limits and >=2° stall margin.'
+        elif 'Efficiency' in goal:
+            msg = '⚡ Aerodynamic Efficiency Priority: Maximizes L/D ratio while ensuring total downforce does not drop below 85% of baseline.'
+        elif 'Compact' in goal:
+            msg = '📐 Packaging Priority: Minimizes wing stack length and height envelope while preserving >=90% of baseline downforce.'
+        else:
+            msg = '🎯 Balanced Refinement: Optimizes Formula Student multi-objective score (DF, Margin, L/D, and Robustness).'
+        if hasattr(self, 'opt_goal_desc'):
+            self.opt_goal_desc.configure(text=msg)
 
     def _opt_browse(self):
         p = filedialog.askopenfilename(initialfile='results.csv')
@@ -4760,6 +4853,7 @@ class App(tk.Tk):
                 return
             self._opt_base_cfg = cfg
             self._opt_best_cfg = cfg
+            self._opt_base_metrics = dict(best)
             self.opt_main_box.set(cfg[0])
             for i, vals_cb in enumerate(self.opt_flap_rows):
                 vals, cb = vals_cb
@@ -4786,6 +4880,7 @@ class App(tk.Tk):
                 return False
             self._opt_base_cfg = cfg
             self._opt_best_cfg = cfg
+            self._opt_base_metrics = dict(row)
             if hasattr(self, 'opt_main_box'):
                 self.opt_main_box.set(cfg[0])
             for i, vals_cb in enumerate(getattr(self, 'opt_flap_rows', [])):
@@ -4812,7 +4907,6 @@ class App(tk.Tk):
             self.log(f"Failed to set base from row: {e}")
             return False
 
-
     def _row_to_cfg(self, row):
         try:
             main = row.get('Main', '')
@@ -4835,30 +4929,110 @@ class App(tk.Tk):
             return None
 
     def _update_opt_info(self, row):
+        df_n = row.get('Downforce_N', 0)
+        dg_n = row.get('Drag_N', 0)
+        cl = row.get('Cl_a0', 0)
+        cd = row.get('Cd_a0', 0)
+        ld = row.get('Max_LD', 0)
+        st = row.get('Stall_Angle', 0)
+        margin = A.DESIGN_ALPHA - float(st) if (st is not None and str(st) != '' and not pd.isna(st)) else 0.0
+        try: cl_f = float(cl)
+        except Exception: cl_f = 0.0
+        try: cd_f = float(cd)
+        except Exception: cd_f = 0.0
+        try: ld_f = float(ld)
+        except Exception: ld_f = 0.0
+        try: df_f = float(df_n)
+        except Exception: df_f = 0.0
+        try: dg_f = float(dg_n)
+        except Exception: dg_f = 0.0
         txt = (
-            f"Run_ID: {row.get('Run_ID', '')}\n"
-            f"Main: {row.get('Main', '')} | Score: {row.get('Score', 0):.2f}\n"
-            f"Cl_a0: {row.get('Cl_a0', 0):.4f} | Cd_a0: {row.get('Cd_a0', 0):.5f} | "
-            f"Max_LD: {row.get('Max_LD', 0):.2f} | Downforce_N: {row.get('Downforce_N', 0):.1f}"
+            f"Base Wing: {row.get('Run_ID', 'Run')} | Main: {row.get('Main', '')} ({row.get('Elements', 1)} elements)\n"
+            f"Baseline Aero: Cl₀: {cl_f:.4f} | Cd₀: {cd_f:.4f} | L/D: {ld_f:.2f}\n"
+            f"Baseline Forces: Downforce: {df_f:.1f} N | Drag: {dg_f:.1f} N | Stall Margin: {margin:.1f}°"
         )
         self.opt_base_info.configure(state='normal')
         self.opt_base_info.delete('1.0', 'end')
         self.opt_base_info.insert('1.0', txt)
         self.opt_base_info.configure(state='disabled')
 
+    def _calculate_optimizer_score(self, row, goal_mode, base_metrics, retention_pct=5.0):
+        def num(val, default=0.0):
+            try:
+                v = float(val)
+                return v if math.isfinite(v) else default
+            except (TypeError, ValueError):
+                return default
+
+        cl = abs(num(row.get('Cl_a0', 0.0)))
+        cd = num(row.get('Cd_a0', 0.0))
+        ld = num(row.get('Max_LD', 0.0))
+        df = num(row.get('Downforce_N', 0.0))
+        st = num(row.get('Stall_Angle', -999.0))
+        cl_m2 = abs(num(row.get('Cl_am2', 0.0)))
+        cl_p2 = abs(num(row.get('Cl_ap2', 0.0)))
+
+        b_cl = abs(num(base_metrics.get('Cl_a0', 0.0))) if base_metrics else cl
+        b_cd = num(base_metrics.get('Cd_a0', 0.0)) if base_metrics else cd
+        b_ld = num(base_metrics.get('Max_LD', 0.0)) if base_metrics else ld
+        b_df = num(base_metrics.get('Downforce_N', 0.0)) if base_metrics else df
+
+        # Baseline downforce retention constraint
+        retention_penalty = 0.0
+        if b_cl > 0.1:
+            cl_drop = (b_cl - cl) / b_cl
+            if cl_drop > (retention_pct / 100.0):
+                retention_penalty = 150.0 * (cl_drop - (retention_pct / 100.0))
+            elif cl_drop < -0.15 and goal_mode == 'stability':
+                # Mild penalty if downforce increases too much when purely optimizing stability
+                retention_penalty = 15.0 * abs(cl_drop + 0.15)
+
+        # Drag inflation penalty
+        drag_penalty = 0.0
+        if b_cd > 0.01 and cd > b_cd * 1.10:
+            drag_penalty = 100.0 * (cd - b_cd * 1.10) / b_cd
+
+        if goal_mode == 'stability':
+            min_pitch_ratio = min(cl_m2, cl_p2) / max(cl, 0.01) if (cl_m2 > 0 and cl_p2 > 0) else 0.8
+            pitch_var = abs(cl_m2 - cl) + abs(cl_p2 - cl)
+            margin = max(0.0, A.DESIGN_ALPHA - st)
+            margin_score = min(50.0, margin * 10.0)
+            robust_score = min(40.0, min_pitch_ratio * 40.0)
+            stability_score = 100.0 + margin_score + robust_score - (15.0 * pitch_var) - retention_penalty - drag_penalty
+            return float(stability_score)
+
+        elif goal_mode == 'downforce':
+            margin = max(0.0, A.DESIGN_ALPHA - st)
+            margin_penalty = 0.0 if margin >= 2.0 else 50.0 * (2.0 - margin)
+            return float(100.0 * (cl / max(b_cl, 1.0)) - margin_penalty - drag_penalty)
+
+        elif goal_mode == 'efficiency':
+            df_floor_penalty = 0.0
+            if b_cl > 0.1 and cl < b_cl * 0.85:
+                df_floor_penalty = 100.0 * (b_cl * 0.85 - cl) / b_cl
+            return float(10.0 * ld - df_floor_penalty)
+
+        elif goal_mode == 'compact':
+            sl = num(row.get('Stack_Length_mm', 300.0))
+            sh = num(row.get('Stack_Height_mm', 200.0))
+            df_penalty = 0.0
+            if b_cl > 0.1 and cl < b_cl * 0.90:
+                df_penalty = 80.0 * (b_cl * 0.90 - cl) / b_cl
+            return float(200.0 - (sl / 5.0) - (sh / 3.0) - df_penalty)
+
+        else: # balanced
+            return float(num(row.get('Score_Balanced', row.get('Score', 0.0))))
+
     def _opt_start(self):
         if not self._opt_base_cfg:
-            messagebox.showerror('Error', 'Load a base wing first')
+            messagebox.showerror('Error', 'Load or configure a base wing first')
             return
         if self._opt_running:
             return
-        active_objs = [k for k, v in self.opt_objectives.items() if v.get()]
-        if not active_objs:
-            messagebox.showerror('Error', 'Select at least one optimization objective')
-            return
         try:
             iters_val = int(self.opt_iters.get())
-            perturb_val = float(self.opt_perturb.get())
+            preset = self.opt_step_preset.get()
+            perturb_val = 0.015 if 'Fine' in preset else (0.03 if 'Medium' in preset else 0.05)
             chord_val = float(self.opt_vars['chord'].get())
             speed_val = float(self.opt_vars['speed'].get())
             re_val = float(self.opt_vars['re'].get())
@@ -4866,19 +5040,17 @@ class App(tk.Tk):
             if self.opt_ge_v.get() and self.opt_gh_state.get().strip() not in ('', 'none', 'None'):
                 gh0_val = float(self.opt_gh_state.get())
                 if gh0_val <= 0:
-                    messagebox.showerror('Error', 'ground height must be positive (% of the main chord)')
+                    messagebox.showerror('Error', 'Ground height must be positive (% chord)')
                     return
-            targets = dict(
-                target_cl=float(self.opt_target_cl.get()),
-                target_gap=float(self.opt_target_gap.get()),
-                max_height=float(self.opt_max_height.get()),
-                max_length=float(self.opt_max_length.get())
-            )
-            enforce_val = bool(self.opt_reg_v.get())
-            objs = list(active_objs)
+            enforce_reg = bool(self.opt_reg_v.get())
+            enforce_real = bool(self.opt_real_v.get())
+            ret_mode = self.opt_retention_mode.get()
+            ret_pct = 5.0 if '5%' in ret_mode else (10.0 if '10%' in ret_mode else (20.0 if '20%' in ret_mode else 100.0))
+            goal_raw = self.opt_goal_mode.get()
+            goal_key = 'stability' if 'Stability' in goal_raw else ('downforce' if 'Downforce' in goal_raw else ('efficiency' if 'Efficiency' in goal_raw else ('compact' if 'Compact' in goal_raw else 'balanced')))
             base_cfg = self._opt_base_cfg
         except (ValueError, tk.TclError) as e:
-            messagebox.showerror('Error', f"Check the numeric fields: {e}")
+            messagebox.showerror('Error', f"Check numeric inputs: {e}")
             return
         try:
             run_dir, results_path = self._new_run(
@@ -4887,20 +5059,41 @@ class App(tk.Tk):
                 main=str(base_cfg[0])
             )
         except Exception as e:
-            messagebox.showerror('Error', f"could not create run folder: {e}")
+            messagebox.showerror('Error', f"Could not create run folder: {e}")
             return
         self._opt_running = True
         self._opt_stop_flag = False
         self.opt_status.set('Running...')
         self.opt_progress['value'] = 0
         self.opt_progress['maximum'] = iters_val
-        self._opt_log('Starting optimization...')
+        self._opt_log(f"Starting optimization [{goal_key.upper()}] with Base Wing: {A.describe(base_cfg)}...")
 
         def work():
             import random, math
             best = None
             best_score = -math.inf
             A.RESULTS_FILE[0] = results_path
+            A.RE = re_val
+            A.SPEED = speed_val
+            A.CHORD_MM = chord_val
+            A.ROLE = 'fw'
+            A.REG = A.default_reg()
+            A.REG_ENFORCE = enforce_reg
+            A.REAL_WING_ENFORCE = enforce_real
+            A.set_ground_h(gh0_val)
+
+            # Ensure we have baseline metrics
+            base_metrics = getattr(self, '_opt_base_metrics', None)
+            if not base_metrics:
+                self._opt_log("Evaluating baseline wing telemetry...")
+                try:
+                    base_row = A.run_one(base_cfg, 'base', gh0_val)
+                    if base_row.get('Status') == 'Valid':
+                        base_metrics = dict(base_row)
+                        self._opt_base_metrics = base_metrics
+                except Exception as e:
+                    self._opt_log(f"Baseline evaluation failed: {e}")
+
             for i in range(iters_val):
                 if self._opt_stop_flag:
                     break
@@ -4908,29 +5101,26 @@ class App(tk.Tk):
                 flaps = list(base_cfg[1])
                 new_flaps = []
                 for fname, s, a, x, y in flaps:
-                    ns = max(10, min(100, s + random.uniform(-perturb_val, perturb_val) * 100))
-                    na = max(-50, min(50, a + random.uniform(-perturb_val, perturb_val) * 100))
-                    nx = max(10, min(200, x + random.uniform(-perturb_val, perturb_val) * 100))
-                    ny = max(-50, min(50, y + random.uniform(-perturb_val, perturb_val) * 100))
-                    new_flaps.append((fname, ns, na, nx, ny))
+                    ns = max(10, min(100, s + random.uniform(-1, 1) * (perturb_val * 25)))
+                    na = max(-60, min(20, a + random.uniform(-1, 1) * (perturb_val * 40)))
+                    nx = max(80, min(220, x + random.uniform(-1, 1) * (perturb_val * 30)))
+                    ny = max(-30, min(50, y + random.uniform(-1, 1) * (perturb_val * 25)))
+                    new_flaps.append((fname, round(ns, 1), round(na, 1), round(nx, 1), round(ny, 1)))
                 cfg = (main, tuple(new_flaps))
                 if not A.geometry_ok(cfg):
                     continue
                 try:
-                    A.RE = re_val
-                    A.SPEED = speed_val
-                    A.CHORD_MM = chord_val
-                    A.ROLE = 'fw'
-                    A.REG = A.default_reg()
-                    A.REG_ENFORCE = enforce_val
-                    A.set_ground_h(gh0_val)
                     row = A.run_one(cfg, 'opt', gh0_val)
                     if row.get('Status') == 'Valid':
-                        score = self._calculate_objective_score(row, objs, targets)
+                        score = self._calculate_optimizer_score(row, goal_key, base_metrics, ret_pct)
                         if score > best_score:
                             best = cfg
                             best_score = score
-                            self._opt_log(f"  Iter {i + 1}: New best score {score:.2f} ({A.describe(cfg)})")
+                            df_val = float(row.get('Downforce_N', 0) or 0)
+                            ld_val = float(row.get('Max_LD', 0) or 0)
+                            st_val = row.get('Stall_Angle', 0)
+                            marg_val = A.DESIGN_ALPHA - float(st_val) if st_val is not None else 0.0
+                            self._opt_log(f"  Iter {i + 1}: 🌟 New Best Score {score:.2f} (DF: {df_val:.1f}N, L/D: {ld_val:.1f}, Margin: {marg_val:.1f}°)")
                 except Exception as e:
                     self._opt_log(f"  Iter {i + 1} error: {e}")
                 self.ui_q.put(('opt_prog', i + 1))
@@ -4960,48 +5150,13 @@ class App(tk.Tk):
         self._opt_running = False
         if best_cfg and best_score is not None and best_score > -1e+08:
             self.opt_status.set(f"Done - best score {best_score:.2f}")
-            self._opt_log(f"Optimization complete. Best score: {best_score:.2f}")
+            self._opt_log(f"Optimization complete. Best score: {best_score:.2f} ({A.describe(best_cfg)})")
             self._opt_best_cfg = best_cfg
             self._opt_best_score = best_score
         else:
             self.opt_status.set('Done - no valid configuration found')
             self._opt_log('Optimization finished without a valid configuration (all candidates failed geometry/size checks or JavaFoil).')
         self._refresh_runs()
-
-    def _calculate_objective_score(self, row, objs, targets):
-        def num(key):
-            v = row.get(key)
-            try:
-                v = float(v)
-                if math.isfinite(v):
-                    return v
-                return 0.0
-            except (TypeError, ValueError):
-                return 0.0
-
-        terms = []
-        if 'lift' in objs:
-            terms.append(num('Cl_a0') * -1.0)
-        if 'efficiency' in objs:
-            terms.append(0.2 * num('Max_LD'))
-        if 'stability' in objs:
-            var = (num('Cl_am2') - num('Cl_a0')) ** 2 + (num('Cl_ap2') - num('Cl_a0')) ** 2
-            terms.append(-math.sqrt(var))
-        if 'height' in objs:
-            terms.append(-num('Stack_Height_mm') / 100.0)
-        if 'length' in objs:
-            terms.append(-num('Stack_Length_mm') / 100.0)
-        if 'gap' in objs:
-            g = num('Main_to_F1_Gap_pct')
-            if g <= 0 and len(objs) == 1:
-                return 0.0
-            terms.append(-abs(g - targets['target_gap']))
-        if 'downforce' in objs:
-            terms.append(num('Downforce_N') / 300.0)
-        if 'target_eff' in objs:
-            delta = abs(num('Cl_a0') + targets['target_cl'])
-            terms.append(0.2 * num('Max_LD') / (1.0 + delta))
-        return float(sum(terms))
 
     def _opt_apply_best(self):
         if not self._opt_best_cfg:
@@ -5027,6 +5182,365 @@ class App(tk.Tk):
 
     def _opt_log(self, msg):
         self.ui_q.put(('opt_log', msg))
+
+    # =====================================================================
+    # TAB 8: AI ASSISTANT & TELEMETRY DOCTOR
+    # =====================================================================
+    def build_ai(self):
+        ai_root = ttk.Frame(self.tab_ai)
+        ai_root.pack(fill='both', expand=True, padx=10, pady=8)
+
+        # Header Frame
+        hdr = tk.Frame(ai_root, bg='#0f172a', padx=14, pady=10, relief='groove', bd=1)
+        hdr.pack(fill='x', pady=(0, 6))
+
+        tk.Label(
+            hdr, text='🤖 FSAE Aerodynamic AI Assistant & Telemetry Doctor',
+            font=('Segoe UI', 13, 'bold'), fg='#38bdf8', bg='#0f172a'
+        ).pack(anchor='w')
+        tk.Label(
+            hdr, text='Instant aerodynamic diagnostics, boundary layer slot tuning, FSUK/FSG rule compliance, and Formula Student competition strategy.',
+            font=('Segoe UI', 9), fg='#94a3b8', bg='#0f172a'
+        ).pack(anchor='w', pady=(2, 6))
+
+        # Engine selector bar
+        eng_bar = tk.Frame(hdr, bg='#0f172a')
+        eng_bar.pack(fill='x', pady=(4, 0))
+
+        tk.Label(eng_bar, text='AI Engine:', font=('Segoe UI', 9, 'bold'), fg='#cbd5e1', bg='#0f172a').pack(side='left', padx=(0, 6))
+        self.ai_engine_mode = tk.StringVar(value='Built-in Aero Expert (Offline, Instant)')
+        eng_cb = ttk.Combobox(
+            eng_bar, textvariable=self.ai_engine_mode,
+            values=['Built-in Aero Expert (Offline, Instant)', 'Local LLM (Ollama / Localhost)'],
+            state='readonly', width=34
+        )
+        eng_cb.pack(side='left', padx=4)
+
+        tk.Label(eng_bar, text='Model:', font=('Segoe UI', 9), fg='#cbd5e1', bg='#0f172a').pack(side='left', padx=(10, 4))
+        self.ai_model_name = tk.StringVar(value='qwen2.5:0.5b')
+        ttk.Entry(eng_bar, textvariable=self.ai_model_name, width=16).pack(side='left', padx=2)
+        add_tooltip(eng_bar.winfo_children()[-1], 'Ollama model name (e.g. qwen2.5:0.5b, smollm, llama3.2). Connects to localhost:11434.')
+
+        self.ai_engine_status = tk.Label(eng_bar, text='● Ready (Offline Expert)', fg='#4ade80', bg='#0f172a', font=('Segoe UI', 9))
+        self.ai_engine_status.pack(side='left', padx=12)
+
+        # Quick Actions Toolbar
+        quick_frame = ttk.LabelFrame(ai_root, text='Quick Aerodynamic Tools & Knowledge')
+        quick_frame.pack(fill='x', pady=4)
+        qbar = ttk.Frame(quick_frame)
+        qbar.pack(fill='x', padx=6, pady=4)
+
+        ttk.Button(qbar, text='🏎️ Telemetry Doctor (Analyze Selected Run)', command=lambda: self._ai_quick_prompt('telemetry')).pack(side='left', padx=3)
+        ttk.Button(qbar, text='📐 Slot Gap Tuning Guide', command=lambda: self._ai_quick_prompt('slot_gap')).pack(side='left', padx=3)
+        ttk.Button(qbar, text='📋 FSAE Rulebook Check (FSUK/FSG)', command=lambda: self._ai_quick_prompt('rules')).pack(side='left', padx=3)
+        ttk.Button(qbar, text='🏆 Competition Strategy & Scoring Profiles', command=lambda: self._ai_quick_prompt('strategy')).pack(side='left', padx=3)
+        ttk.Button(qbar, text='💡 Complete App Workflow Guide', command=lambda: self._ai_quick_prompt('guide')).pack(side='left', padx=3)
+
+        # Chat display area
+        chat_frame = ttk.Frame(ai_root)
+        chat_frame.pack(fill='both', expand=True, pady=4)
+
+        self.ai_chat_text = tk.Text(
+            chat_frame, wrap='word', bg='#111827', fg='#f8fafc',
+            font=('Segoe UI', 10), padx=12, pady=10, relief='flat', bd=0
+        )
+        chat_vsb = ttk.Scrollbar(chat_frame, orient='vertical', command=self.ai_chat_text.yview)
+        self.ai_chat_text.configure(yscrollcommand=chat_vsb.set)
+        self.ai_chat_text.pack(side='left', fill='both', expand=True)
+        chat_vsb.pack(side='right', fill='y')
+
+        # Formatting tags
+        self.ai_chat_text.tag_configure('user_tag', foreground='#38bdf8', font=('Segoe UI', 10, 'bold'))
+        self.ai_chat_text.tag_configure('ai_tag', foreground='#4ade80', font=('Segoe UI', 10, 'bold'))
+        self.ai_chat_text.tag_configure('ai_body', foreground='#f1f5f9', font=('Segoe UI', 10))
+        self.ai_chat_text.tag_configure('code_tag', foreground='#fbbf24', font=('Consolas', 9), background='#1e293b')
+        self.ai_chat_text.tag_configure('warn_tag', foreground='#f87171', font=('Segoe UI', 9, 'bold'))
+
+        welcome_msg = (
+            "👋 Welcome to the Formula Student Aerodynamics AI Assistant!\n\n"
+            "I am equipped with specialized Formula Student aerodynamics knowledge (McBeath, Katz, FSUK/FSG rules) and live telemetry diagnostics for this application.\n\n"
+            "Quick things you can do:\n"
+            "  • Click '🏎️ Telemetry Doctor' above to instantly evaluate the run selected in the Results table.\n"
+            "  • Click '📐 Slot Gap Tuning Guide' to learn multi-element flap positioning sweet spots.\n"
+            "  • Ask me anything below (e.g., 'How do I prevent flap stall under pitch dive?' or 'Which scoring profile is best for autocross?').\n\n"
+        )
+        self.ai_chat_text.insert('end', "🤖 AI Assistant: ", 'ai_tag')
+        self.ai_chat_text.insert('end', welcome_msg, 'ai_body')
+        self.ai_chat_text.configure(state='disabled')
+
+        # Input Frame
+        in_frame = ttk.Frame(ai_root)
+        in_frame.pack(fill='x', pady=(6, 2))
+
+        self.ai_input_var = tk.StringVar()
+        self.ai_entry = ttk.Entry(in_frame, textvariable=self.ai_input_var, font=('Segoe UI', 10))
+        self.ai_entry.pack(side='left', fill='x', expand=True, padx=(0, 6))
+        self.ai_entry.bind('<Return>', lambda e: self._ai_send_message())
+
+        ttk.Button(in_frame, text='Send 🚀', command=self._ai_send_message).pack(side='left', padx=2)
+        ttk.Button(in_frame, text='Clear Chat', command=self._ai_clear_chat).pack(side='left', padx=2)
+
+    def _ai_clear_chat(self):
+        self.ai_chat_text.configure(state='normal')
+        self.ai_chat_text.delete('1.0', 'end')
+        self.ai_chat_text.configure(state='disabled')
+
+    def _ai_send_message(self):
+        msg = self.ai_input_var.get().strip()
+        if not msg:
+            return
+        self.ai_input_var.set('')
+        self.ai_chat_text.configure(state='normal')
+        self.ai_chat_text.insert('end', f"\n\n👤 You: {msg}\n\n", 'user_tag')
+        self.ai_chat_text.configure(state='disabled')
+        self.ai_chat_text.see('end')
+
+        threading.Thread(target=self._ai_process_query, args=(msg,), daemon=True).start()
+
+    def _ai_quick_prompt(self, ptype):
+        prompts = {
+            'telemetry': "Analyze the currently selected wing telemetry in detail.",
+            'slot_gap': "Explain the optimal slot gap and overlap rules for FSAE multi-element wings.",
+            'rules': "Check FSUK and FSG aerodynamic regulation constraints (T8.2).",
+            'strategy': "How should I choose and score wings for Autocross vs Endurance events?",
+            'guide': "Provide a comprehensive guide on how to use this app from start to finish.",
+        }
+        msg = prompts.get(ptype, ptype)
+        self.ai_chat_text.configure(state='normal')
+        self.ai_chat_text.insert('end', f"\n\n👤 You: {msg}\n\n", 'user_tag')
+        self.ai_chat_text.configure(state='disabled')
+        self.ai_chat_text.see('end')
+        threading.Thread(target=self._ai_process_query, args=(msg, ptype), daemon=True).start()
+
+    def _ai_process_query(self, user_msg, ptype=None):
+        ans = self._ai_generate_response(user_msg, ptype)
+        def update():
+            self.ai_chat_text.configure(state='normal')
+            self.ai_chat_text.insert('end', "🤖 AI Assistant: ", 'ai_tag')
+            self.ai_chat_text.insert('end', f"{ans}\n", 'ai_body')
+            self.ai_chat_text.configure(state='disabled')
+            self.ai_chat_text.see('end')
+        self.after(0, update)
+
+    def _ai_generate_response(self, query, ptype=None):
+        q = (query or "").lower()
+
+        # Telemetry Analysis (Doctor Mode)
+        if ptype == 'telemetry' or 'telemetry' in q or 'selected run' in q or 'diagnos' in q:
+            r = self._selected_row()
+            if r is None or (hasattr(r, 'empty') and r.empty):
+                if hasattr(self, '_tree_frame') and self._tree_frame is not None and not self._tree_frame.empty:
+                    r = self._tree_frame.iloc[0]
+            if r is None or (hasattr(r, 'empty') and r.empty):
+                return "⚠️ No run currently selected. Please click on a row in the Results table and click '🏎️ Telemetry Doctor' again."
+
+            rid = r.get('Run_ID', 'N/A')
+            main = r.get('Main', 'N/A')
+            elems = r.get('Elements', 'N/A')
+            cl = float(r.get('Cl_a0', 0) or 0)
+            cd = float(r.get('Cd_a0', 0) or 0)
+            ld = float(r.get('Max_LD', 0) or 0)
+            df_n = float(r.get('Downforce_N', 0) or 0)
+            dg_n = float(r.get('Drag_N', 0) or 0)
+            st = float(r.get('Stall_Angle', 0) or 0)
+            margin = A.DESIGN_ALPHA - st
+            g1 = float(r.get('Main_to_F1_Gap_pct', 0) or 0)
+            ov1 = float(r.get('Main_to_F1_Overlap_pct', 0) or 0)
+            step1 = float(r.get('Main_to_F1_Step_pct', 0) or 0)
+            sl_mm = float(r.get('Stack_Length_mm', 0) or 0)
+            sh_mm = float(r.get('Stack_Height_mm', 0) or 0)
+            gc_mm = float(r.get('Min_Clearance_mm', 0) or 0)
+
+            # Diagnostic logic
+            findings = []
+            rec = []
+            # Downforce check
+            if abs(cl) >= 3.0:
+                findings.append(f"✅ Exceptional Downforce: Cl = {abs(cl):.3f} ({df_n:.1f} N) produces aggressive cornering grip.")
+            elif abs(cl) >= 2.0:
+                findings.append(f"✔️ Good Downforce: Cl = {abs(cl):.3f} ({df_n:.1f} N) is suitable for Formula Student competition.")
+            else:
+                findings.append(f"⚠️ Moderate Downforce: Cl = {abs(cl):.3f} ({df_n:.1f} N). Consider adding flap camber or scale.")
+                rec.append("Increase Flap 1 or Flap 2 deflection angles by 3°–5° to increase circulation.")
+
+            # Stall margin check
+            if margin >= 3.0:
+                findings.append(f"✅ High Stall Margin: {margin:.1f}° beyond design alpha. Safe against braking pitch dive and headwind gusts.")
+            elif margin >= 1.5:
+                findings.append(f"⚠️ Marginal Stall Margin: {margin:.1f}°. Minor risk of stall detachment under heavy braking pitch dive.")
+                rec.append("Reduce Flap 2 or 3 deflection angle slightly or increase slot nozzle gap to energize boundary layer.")
+            else:
+                findings.append(f"❌ Severe Stall Risk: {margin:.1f}°. Wing is operating on the verge of boundary layer separation!")
+                rec.append("Wing will suffer catastrophic downforce collapse during pitch dive. Lower flap angles or optimize stability in Tab 6.")
+
+            # Slot gap check
+            if g1 > 0:
+                if 1.5 <= g1 <= 3.8:
+                    findings.append(f"✅ Main-to-F1 Slot Gap Sweet Spot: {g1:.1f}% chord. Optimal high-energy nozzle blowing.")
+                elif g1 < 1.2:
+                    findings.append(f"⚠️ Main-to-F1 Slot Choked: {g1:.1f}% chord is too tight. Boundary layers will merge into viscous drag.")
+                    rec.append(f"Nudge Flap 1 X or Y position outward to reach 2.0%–3.0% chord gap.")
+                else:
+                    findings.append(f"⚠️ Main-to-F1 Slot Decoupled: {g1:.1f}% chord is too wide. Jet ceases to re-energize flap suction boundary layer.")
+                    rec.append(f"Move Flap 1 closer to Main plane trailing edge (target ~2.5% gap).")
+
+            # FSUK/FSG dimensions
+            if sl_mm > 500:
+                findings.append(f"❌ Regulatory Violation: Stack length {sl_mm:.1f} mm exceeds FSUK front wing 500 mm limit!")
+                rec.append("Reduce flap X coordinates to bring total stack length under 500 mm.")
+            elif sl_mm > 0:
+                findings.append(f"✅ Regulatory Compliant: Stack length {sl_mm:.1f} mm, Stack height {sh_mm:.1f} mm.")
+
+            diag_text = (
+                f"📊 Telemetry Diagnosis for [{rid}] ({main}, {elems} Elements)\n"
+                f"──────────────────────────────────────────────\n"
+                f"• Aero Coefficients: Cl₀ = {abs(cl):.4f} | Cd₀ = {cd:.4f} | L/D = {ld:.2f}\n"
+                f"• Physical Forces: Downforce = {df_n:.1f} N | Drag = {dg_n:.1f} N\n"
+                f"• Stall Margin: {margin:.1f}° (Stall Angle = {st:.1f}°)\n"
+                f"• Slot Geometry: Gap = {g1:.2f}% | Overlap = {ov1:.2f}% | Step = {step1:.2f}%\n"
+                f"• Envelope: Length = {sl_mm:.1f} mm | Height = {sh_mm:.1f} mm | Clearance = {gc_mm:.1f} mm\n\n"
+                f"🔍 Aerodynamic Findings:\n" + "\n".join("  " + f for f in findings) + "\n\n"
+                f"🛠️ Engineering Recommendations:\n" + ("\n".join("  • " + r for r in rec) if rec else "  • Wing geometry is aerodynamically balanced and well integrated!")
+            )
+            return diag_text
+
+        # Slot Gap Tuning Guide
+        if ptype == 'slot_gap' or 'slot' in q or 'gap' in q:
+            return (
+                "📐 Multi-Element Slot Gap Engineering Guide (FSAE)\n"
+                "──────────────────────────────────────────────\n"
+                "In high-downforce Formula Student wings (Re ~ 300,000–800,000), multi-element flaps overcome adverse pressure gradients via the 'Slot Effect' (Smith, 1975; McBeath; Katz):\n\n"
+                "1. Slat/Slot Mechanism:\n"
+                "   • High-pressure air from the lower surface accelerates through the convergent nozzle between elements.\n"
+                "   • It injects a fresh, thin, high-momentum boundary layer directly onto the flap's upper suction surface.\n"
+                "   • This blows away stagnant boundary layer fluid, delaying stall by 15°–25° of effective camber.\n\n"
+                "2. Optimal Design Ratios (Expressed in % of Main Chord):\n"
+                "   • Slot Gap (g/c): 1.5% to 3.5% (Absolute sweet spot: ~2.0%–2.8%).\n"
+                "     - Too tight (< 1.0%): Viscous blockage, boundary layers merge, slot chokes.\n"
+                "     - Too wide (> 5.0%): Jet dissipates into free stream; flap operates as an isolated stalled plate.\n"
+                "   • Overlap (ov/c): 0.0% to 4.0% (Flap leading edge slightly tucked upstream of previous trailing edge).\n"
+                "   • Nozzle Step (y/c): +1.5% to +5.0% (Flap sits vertically above trailing edge on suction side).\n\n"
+                "3. Progressive Camber Rule:\n"
+                "   • Absolute flap angles must increase monotonically: |α_main| (0°–10°) < |α_F1| (15°–25°) < |α_F2| (25°–42°) < |α_F3| (38°–52°).\n"
+                "   • Scale hierarchy: Flap chords should decrease downstream (e.g. Main: 100%, F1: ~35%, F2: ~25%, F3: ~18%)."
+            )
+
+        # FSUK / FSG Rules
+        if ptype == 'rules' or 'rule' in q or 'regulation' in q or 'fsuk' in q or 'fsg' in q:
+            return (
+                "📋 Formula Student Aerodynamic Regulations Summary (FSUK / FSG 2024–2026)\n"
+                "────────────────────────────────────────────────────────────\n"
+                "1. Front Wing (Rule T8.2.1):\n"
+                "   • Maximum Forward Overhang: Must not extend more than 500 mm forward of the front tires.\n"
+                "   • Maximum Height: Must not extend higher than 250 mm above the ground.\n"
+                "   • Minimum Ground Clearance (T8.4): 25 mm static ground clearance (including skid plates/endplates).\n"
+                "   • Width Limit: Must not extend wider than the outside of the front tires.\n\n"
+                "2. Rear Wing (Rule T8.2.3):\n"
+                "   • Maximum Rearward Overhang: Must not extend more than 250 mm rearward of the rear tires.\n"
+                "   • Maximum Height: Must not extend higher than 1200 mm above the ground.\n"
+                "   • Height Envelope: No aerodynamic device between 250 mm and 500 mm above the ground behind the front roll hoop.\n\n"
+                "3. Aerodynamic Edge Radii (Rule T8.6):\n"
+                "   • Leading edges of wings, flaps, and endplates must have a minimum radius of 5.0 mm (wings) or 3.0 mm (thin elements).\n\n"
+                "💡 In this app, checking 'Enforce Regulations' automatically restricts campaign generation and optimizer runs to comply with these limits!"
+            )
+
+        # Competition Strategy & Scoring Profiles
+        if ptype == 'strategy' or 'score' in q or 'scoring' in q or 'autocross' in q or 'endurance' in q:
+            return (
+                "🏆 Formula Student Aerodynamic Scoring & Event Strategy\n"
+                "─────────────────────────────────────────────────────\n"
+                "Every Formula Student dynamic event demands a different aerodynamic trade-off. This app provides 5 specialized competition profiles in the Results tab:\n\n"
+                "1. 🎯 Balanced Multi-Objective (Overall FSAE):\n"
+                "   • Weights: 40% Downforce + 30% Stall Margin + 20% L/D + 10% Robustness.\n"
+                "   • Purpose: Best all-around package for teams aiming for top overall competition points.\n\n"
+                "2. 🏎️ Autocross & Skidpad (Max Downforce / Grip):\n"
+                "   • Weights: 70% Downforce + 20% Stall Margin + 10% Efficiency.\n"
+                "   • Physics: Average speed is 45–60 km/h with constant 1.5–2.0g lateral transitions. Downforce squared governs cornering speed; drag penalty on lap time is negligible (< 10%).\n\n"
+                "3. ⚡ Endurance & Efficiency (High L/D / Energy Conservation):\n"
+                "   • Weights: 60% L/D Efficiency + 25% Downforce + 10% Margin + 5% Robustness.\n"
+                "   • Physics: Crucial for electric vehicles (EV) to prevent battery thermal throttling or running out of kWh, and combustion cars (CV) for fuel efficiency score.\n\n"
+                "4. 🛡️ Pitch-Stable & Stall-Robust (Braking & Ride Height Stability):\n"
+                "   • Weights: 45% Stall Margin + 35% Pitch Robustness (±2°) + 20% Downforce.\n"
+                "   • Physics: Eliminates catastrophic front wing stall and rear snap-oversteer during heavy braking pitch dive (front nose down 1.5°–3.0°).\n\n"
+                "5. ⏱️ Lap Time Sensitivity Index (3.5:1 DF/Drag Tradeoff):\n"
+                "   • Weights: 55% Downforce + 25% L/D + 15% Margin + 5% Robustness.\n"
+                "   • Physics: Directly simulates FSAE track lap-time sensitivity where 1 N of downforce is worth ~3.5x to 4.0x more lap time reduction than 1 N of drag."
+            )
+
+        # App Workflow Guide
+        if ptype == 'guide' or 'workflow' in q or 'how to use' in q or 'tutorial' in q:
+            return (
+                "💡 Complete App Workflow Guide for Formula Student Aerodynamicists\n"
+                "─────────────────────────────────────────────────────────────\n"
+                "Step 1: Configure (Tab 1)\n"
+                "  • Select Main airfoil (e.g. high-lift S1223 or E423) and add up to 3 slotted flaps.\n"
+                "  • Set design speed (15 m/s = 54 km/h), chord (300 mm), and ground effect height (30% chord).\n"
+                "  • Click '🔍 Check geometry' to preview wing outlines and confirm slot gaps.\n\n"
+                "Step 2: Airfoils (Tab 2)\n"
+                "  • Import custom .dat airfoil coordinates or browse the built-in library.\n\n"
+                "Step 3: Fast Parallel Campaigns (Tab 3)\n"
+                "  • Run multi-worker grid sweeps and genetic refinement (Top-K parents) to explore thousands of flap positions.\n"
+                "  • Real-world wing constraints guarantee that only physically integrated slotted wings are tested.\n\n"
+                "Step 4: Results & Multi-Objective Ranking (Tab 4)\n"
+                "  • Re-rank all tested wings instantly with one click across the 5 FSAE scoring profiles.\n"
+                "  • Click '📊 Generate Graphs' to render authentic JavaFoil drag polars, flow fields, and export CAD DXF.\n\n"
+                "Step 5: Optimizer (Tab 6)\n"
+                "  • Send your best wing to the Optimizer to fine-tune stability while strictly preserving downforce!"
+            )
+
+        # Check for Local LLM (Ollama) if selected
+        engine = getattr(self, 'ai_engine_mode', None)
+        engine_str = engine.get() if engine else ""
+        if 'Local LLM' in engine_str:
+            import urllib.request, json
+            mname = self.ai_model_name.get().strip() or "qwen2.5:0.5b"
+            prompt = (
+                f"You are an expert Formula Student aerodynamics engineer assisting an FSAE student.\n"
+                f"Question: {query}\n"
+                f"Provide a concise, technically rigorous aerodynamic answer."
+            )
+            payload = json.dumps({"model": mname, "prompt": prompt, "stream": False}).encode('utf-8')
+            req = urllib.request.Request("http://localhost:11434/api/generate", data=payload, headers={'Content-Type': 'application/json'})
+            try:
+                with urllib.request.urlopen(req, timeout=8) as resp:
+                    data = json.loads(resp.read().decode('utf-8'))
+                    ans = data.get('response', '')
+                    if ans.strip():
+                        return ans.strip()
+            except Exception:
+                pass # Fall through to built-in knowledge base
+
+        # Fallback to Built-in Knowledge Base NLP
+        if 'drag' in q and ('reduce' in q or 'lower' in q or 'minimi' in q):
+            return (
+                "Reducing Drag on Multi-Element FSAE Wings:\n"
+                "1. Slot Gap Alignment: Ensure slot gap is 2.0%–2.8% chord. Excessive gap allows turbulent mixing that creates wake drag; choked gap (<1%) forms early separation bubbles.\n"
+                "2. Flap Angles: Reduce the trailing flap (F2 or F3) deflection by 2°–4°. In JavaFoil, induced and pressure drag scale with Cl^2; shaving 5% peak Cl can drop profile drag by 15%–20%.\n"
+                "3. Camber Distribution: Shift load forward to the main plane and Flap 1, using lower camber profiles (e.g. Wortmann FX 63-137 or NACA 6412) on the final flap."
+            )
+        elif 'ground effect' in q or 'ride height' in q or 'diffuser' in q:
+            return (
+                "Ground Effect Aerodynamics in Formula Student:\n"
+                "1. Venturi Acceleration: Placing the inverted wing close to the track (h/c < 0.4) forms a converging-diverging nozzle with the ground, drastically lowering suction surface static pressure.\n"
+                "2. Ride Height Sensitivity: If ground clearance drops below ~15%–20% chord (under heave or roll), the adverse pressure gradient in the diffuser recovery zone steepens rapidly, triggering abrupt diffuser stall.\n"
+                "3. Recommendation: Design the front wing for optimal downforce at 30% chord static height, with sufficient stall margin to avoid ground stall during 25 mm braking pitch dive."
+            )
+        elif 's1223' in q or 'e423' in q or 'airfoil' in q:
+            return (
+                "Airfoil Selection for Formula Student Wings:\n"
+                "• Selig S1223: The classic high-lift benchmark (Cl_max ~ 2.1–2.2 clean). Excellent for main elements, but possesses high aft camber that is sensitive to pitch variations.\n"
+                "• Eppler 423: High maximum lift (Cl_max ~ 1.9–2.0) with slightly more forgiving boundary layer separation characteristics and gentler stall.\n"
+                "• Wortmann FX 63-137: High thickness, excellent structural spar integration, and smooth upper surface pressure recovery. Highly effective for intermediate flaps."
+            )
+        else:
+            return (
+                f"Aerodynamic Insight regarding '{query}':\n\n"
+                "In Formula Student multi-element design, the most critical factors are:\n"
+                "1. Boundary Layer Injection: Maintain 1.8%–3.0% slot gap to pump high-momentum lower-surface air into the flap boundary layer.\n"
+                "2. Pitch Stability: Keep stall angle at least 3.0° higher than design alpha to withstand braking pitch dive.\n"
+                "3. Downforce Retention: Use Tab 6 (Optimizer) to refine flap slots while keeping downforce within ±5% of your baseline.\n\n"
+                "Tip: Click '🏎️ Telemetry Doctor' above to analyze your currently selected wing run!"
+            )
 
     def build_settings(self):
         root = tk.Frame(self.tab_set, bg=BG)
