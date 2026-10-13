@@ -2131,6 +2131,8 @@ def parse_height_list(text, chord_mm):
         raise ValueError("Give at least one height.")
     return out
 
+parse_heights = parse_height_list
+
 def plan_scenarios(plan):
     sc = []
     role = plan.get("role", "custom")

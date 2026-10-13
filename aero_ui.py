@@ -2235,7 +2235,7 @@ class App(tk.Tk):
         self.cam_heights = tk.StringVar(value="50,100,300")
         hh = ttk.Entry(row, textvariable=self.cam_heights, width=12)
         hh.pack(side='left', padx=4)
-        add_tooltip(hh, "Comma-separated ground heights, e.g. 50,100,300. Each may be a percent of the main chord (50) or a length like 200mm (converted using the Configure chord). Heights must be positive. A separate campaign + results.csv is generated per height.")
+        add_tooltip(hh, "Ground height of main plane chord line above tarmac.\n\n• Single height (e.g. 35): Runs 1 campaign scenario at that fixed ride height.\n• Multiple heights (e.g. 30, 50, 100): Runs a batch sweep with a separate scenario for each height to test pitch/ride-height sensitivity (braking dive vs steady-state cornering vs straight).\n• Formats: Percent of main chord (e.g. 35 or 35%) or absolute length (e.g. 105mm).")
 
         box = section("4. Wing role (limits & span)")
         self.cam_role = tk.StringVar(value={'rear wing': 'Rear wing', 'front wing': 'Front wing'}.get(self._role_state.get(), 'Custom'))
