@@ -7,6 +7,7 @@ Everything that touches JavaFoil runs in a worker thread so the window never fre
 """
 import os
 import io
+import re
 import sys
 import time
 import glob
@@ -450,6 +451,9 @@ class App(tk.Tk):
         self.cam_active = False
         self._gimg = None
         self._graph_paths = []
+        self._cur_graph_path = None
+        self.gr_selected_rid = ""
+        self.gr_only_active_run = tk.BooleanVar(value=True)
         self._drain_timer_running = True
 
         self.gh_state = tk.StringVar(value='300')
@@ -800,6 +804,27 @@ class App(tk.Tk):
                             self.notebook.select(self.tab_gr)
                         except Exception:
                             pass
+                    elif kind == 'gr_prog':
+                        pct, status_txt = payload
+                        if hasattr(self, 'gr_prog_bar'):
+                            self.gr_prog_bar['value'] = pct
+                        if hasattr(self, 'gr_prog_lbl'):
+                            self.gr_prog_lbl.configure(text=status_txt)
+                    elif kind == 'gr_done':
+                        r, p, rid, run_gdir, already_existed = payload
+                        if hasattr(self, 'gr_prog_bar'):
+                            self.gr_prog_bar['value'] = 100
+                        if hasattr(self, 'gr_prog_lbl'):
+                            self.gr_prog_lbl.configure(
+                                text=f"Run {rid}: Complete! ({'Loaded from cache' if already_existed else 'Generated fresh'})"
+                            )
+                        if hasattr(self, 'refresh_graph_files'):
+                            self.refresh_graph_files(p, select_rid=rid)
+                        try:
+                            self.notebook.select(self.tab_gr)
+                        except Exception:
+                            pass
+                        self.ask_graph_destination(r, rid, run_gdir, already_existed=already_existed)
                     elif kind == 'opt_log':
                         self._append_log(getattr(self, 'opt_log', None), payload)
                     elif kind == 'opt_prog':
@@ -2936,7 +2961,9 @@ class App(tk.Tk):
         self.res_stats = tk.StringVar(value='')
         ttk.Label(top2, textvariable=self.res_stats, foreground=MUTED).pack(side='left', padx=4)
         
-        ttk.Button(top2, text='⚡ Graphs (Dual + CAD)', command=self.on_gen_graphs).pack(side='right', padx=2)
+        gen_btn = ttk.Button(top2, text='📊 Generate Graphs', command=self.on_gen_graphs)
+        gen_btn.pack(side='right', padx=2)
+        add_tooltip(gen_btn, 'Generate high-resolution polar curves, velocity flow field, JavaFoil native graphs, and 2D CAD for the selected run.')
         ttk.Button(top2, text='⚙️ Load to Configure', command=self.on_apply_to_config).pack(side='right', padx=2)
         ttk.Button(top2, text='🚀 Send to Optimizer', command=self.on_send_to_optimizer).pack(side='right', padx=2)
         ttk.Label(top2, text='(Right-click row for CAD & options)', foreground=MUTED).pack(side='right', padx=4)
@@ -3545,7 +3572,6 @@ class App(tk.Tk):
         if r is None or (hasattr(r, "empty") and r.empty):
             return
         self.set_detail(self.row_detail(r))
-        self._gen_graphs(r, switch=True)
 
     def _show_tree_context_menu(self, event):
         item = self.tree.identify_row(event.y)
@@ -3701,7 +3727,7 @@ class App(tk.Tk):
         except Exception as e:
             messagebox.showerror("Export Failed", f"Archive export failed: {e}")
 
-    def _gen_graphs(self, r, switch=False):
+    def _gen_graphs(self, r, switch=True, force_regen=False):
         p = os.path.expanduser(self.res_file.get())
         if not os.path.exists(p):
             return
@@ -3716,12 +3742,24 @@ class App(tk.Tk):
         os.makedirs(run_gdir, exist_ok=True)
         
         self.gr_results.set(p)
+        self.gr_selected_rid = rid
         if switch:
             try:
                 self.notebook.select(self.tab_gr)
             except Exception:
                 pass
-                
+
+        # Check if already generated
+        existing_pngs = glob.glob(os.path.join(run_gdir, "*.png")) if os.path.isdir(run_gdir) else []
+        if not existing_pngs:
+            existing_pngs = glob.glob(os.path.join(gdir, f"*_{rid}.png")) + glob.glob(os.path.join(gdir, f"*{rid}*.png"))
+
+        if existing_pngs and not force_regen:
+            self.ui_q.put(('gr_prog', (100, f"Run {rid}: {len(existing_pngs)} graphs ready (loaded from cache)")))
+            self.ui_q.put(('gr_done', (r, p, rid, run_gdir, True)))
+            return
+
+        self.ui_q.put(('gr_prog', (5, f"Starting generation for Run {rid}...")))
         chord = A.CHORD_MM or A.DEFAULT_CHORD_MM
         span_fw = getattr(A, 'DEFAULT_SPAN_FW_MM', 1400.0)
         span_rw = getattr(A, 'DEFAULT_SPAN_RW_MM', 950.0)
@@ -3733,31 +3771,38 @@ class App(tk.Tk):
         def work():
             outs = []
             # 1. Matplotlib code graphs (saved into both run_gdir and gdir)
+            self.ui_q.put(('gr_prog', (25, f"Run {rid} [1/4]: Generating aerodynamic polar & geometry...")))
             if R:
                 for target_dir in (run_gdir, gdir):
                     polar = os.path.join(target_dir, f"polar_{rid}.png")
                     geometry = os.path.join(target_dir, f"geometry_{rid}.png")
-                    field = os.path.join(target_dir, f"field_{rid}.png")
                     try:
-                        if not os.path.exists(polar):
+                        if not os.path.exists(polar) or force_regen:
                             R.plot_polar(r, polar)
                             if target_dir == run_gdir: outs.append('polar')
                     except Exception as e:
                         self.log(f"polar graph failed: {e}")
                     try:
-                        if not os.path.exists(geometry):
+                        if not os.path.exists(geometry) or force_regen:
                             R.plot_geometry(r, geometry, chord)
                             if target_dir == run_gdir: outs.append('geometry')
                     except Exception as e:
                         self.log(f"geometry graph failed: {e}")
+
+            # 2. Velocity field
+            self.ui_q.put(('gr_prog', (50, f"Run {rid} [2/4]: Simulating velocity flow field...")))
+            if R:
+                for target_dir in (run_gdir, gdir):
+                    field = os.path.join(target_dir, f"field_{rid}.png")
                     try:
-                        if not os.path.exists(field):
+                        if not os.path.exists(field) or force_regen:
                             R.plot_field(r, field, chord, span_fw, span_rw)
                             if target_dir == run_gdir: outs.append('velocity field')
                     except Exception as e:
                         self.log(f"field graph failed: {e}")
             
-            # 2. Native authentic JavaFoil graphs
+            # 3. Native authentic JavaFoil graphs
+            self.ui_q.put(('gr_prog', (75, f"Run {rid} [3/4]: Extracting JavaFoil authentic native charts (Cp, Cf, δ)...")))
             if cfg:
                 try:
                     jf_files = A.export_javafoil_graphs(
@@ -3775,20 +3820,22 @@ class App(tk.Tk):
                 except Exception as e:
                     self.log(f"JavaFoil graph extraction failed: {e}")
 
-            # 3. Automatic 2D CAD DXF and SVG generation in run folder
+            # 4. Automatic 2D CAD DXF and SVG generation in run folder
+            self.ui_q.put(('gr_prog', (90, f"Run {rid} [4/4]: Generating 2D CAD models (DXF + SVG)...")))
             if cfg:
                 try:
                     dxf_p = os.path.join(run_gdir, f"wing_{rid}.dxf")
                     svg_p = os.path.join(run_gdir, f"wing_{rid}.svg")
-                    if not os.path.exists(dxf_p):
+                    if not os.path.exists(dxf_p) or force_regen:
                         A.export_dxf(cfg, dxf_p, chord_mm=chord, ground_h=gh)
-                    if not os.path.exists(svg_p):
+                    if not os.path.exists(svg_p) or force_regen:
                         A.export_svg(cfg, svg_p, chord_mm=chord, ground_h=gh)
                     outs.append("CAD DXF + SVG")
                 except Exception:
                     pass
 
-            self.ui_q.put(('refreshgr_select', (p, rid)))
+            self.ui_q.put(('gr_prog', (100, f"Run {rid}: Graphs generated successfully!")))
+            self.ui_q.put(('gr_done', (r, p, rid, run_gdir, False)))
             self.ui_q.put(('log', f"Run {rid} plots & CAD ready in {run_gdir}: {', '.join(outs) if outs else 'cached'}"))
 
         threading.Thread(target=work, daemon=True).start()
@@ -3799,9 +3846,117 @@ class App(tk.Tk):
             return
         r = self._selected_row()
         if r is None or (hasattr(r, 'empty') and r.empty):
-            self.set_detail('select a row in the table first, then hit Graphs for selected run')
+            self.set_detail('Select a row in the table first, then click Generate Graphs.')
             return
         self._gen_graphs(r, switch=True)
+
+    def ask_graph_destination(self, r, rid, run_gdir, already_existed=False):
+        """
+        Prompts the user whether to view generated graphs inside the app or in the OS file manager.
+        """
+        dlg = tk.Toplevel(self.winfo_toplevel())
+        dlg.title(f"Graphs Ready — Run {rid}")
+        dlg.resizable(False, False)
+        dlg.transient(self.winfo_toplevel())
+        dlg.grab_set()
+
+        bg_col = '#0f172a'
+        fg_col = '#f8fafc'
+        card_bg = '#1e293b'
+
+        dlg.configure(bg=bg_col)
+
+        main_frame = tk.Frame(dlg, bg=bg_col, padx=20, pady=16)
+        main_frame.pack(fill='both', expand=True)
+
+        header_text = f"✅ Graphs Available (Run {rid})" if already_existed else f"🎉 Graphs Generated Successfully! (Run {rid})"
+        lbl_head = tk.Label(main_frame, text=header_text, font=('Segoe UI', 12, 'bold'), fg='#38bdf8' if already_existed else '#4ade80', bg=bg_col)
+        lbl_head.pack(anchor='w', pady=(0, 6))
+
+        card = tk.Frame(main_frame, bg=card_bg, relief='groove', bd=1, padx=12, pady=10)
+        card.pack(fill='x', pady=6)
+
+        airfoil_info = ""
+        if r is not None and not (hasattr(r, 'empty') and r.empty):
+            m = r.get('Main', 'Wing')
+            elem = r.get('Elements', 'Multi-element')
+            cl = r.get('Cl_a0', '')
+            cd = r.get('Cd_a0', '')
+            airfoil_info = f"Profile: {m} ({elem} elem)  |  Cl: {cl}  |  Cd: {cd}\n"
+
+        status_msg = (
+            f"{airfoil_info}"
+            f"Folder: {run_gdir}\n"
+            f"Contents: Polars, Geometry, Velocity Field, JavaFoil native (Cp, Cf, δ), CAD (DXF + SVG)"
+        )
+        tk.Label(card, text=status_msg, font=('Segoe UI', 9), fg='#cbd5e1', bg=card_bg, justify='left').pack(anchor='w')
+
+        tk.Label(main_frame, text="Where would you like to view the graphs?", font=('Segoe UI', 10, 'bold'), fg=fg_col, bg=bg_col).pack(anchor='w', pady=(12, 10))
+
+        btn_frame = tk.Frame(main_frame, bg=bg_col)
+        btn_frame.pack(fill='x', pady=(4, 0))
+
+        def on_view_inside():
+            dlg.destroy()
+            try:
+                self.notebook.select(self.tab_gr)
+                self.focus_set()
+            except Exception:
+                pass
+
+        def on_open_fm():
+            dlg.destroy()
+            subprocess_open(run_gdir)
+            try:
+                self.notebook.select(self.tab_gr)
+                self.focus_set()
+            except Exception:
+                pass
+
+        def on_regen():
+            dlg.destroy()
+            self._gen_graphs(r, switch=True, force_regen=True)
+
+        b_inside = tk.Button(
+            btn_frame, text="📊 Inside the App", font=('Segoe UI', 10, 'bold'),
+            bg='#2563eb', fg='white', activebackground='#1d4ed8', activeforeground='white',
+            padx=14, pady=6, relief='flat', cursor='hand2', command=on_view_inside
+        )
+        b_inside.pack(side='left', padx=(0, 8))
+
+        b_fm = tk.Button(
+            btn_frame, text="📁 In File Manager", font=('Segoe UI', 10),
+            bg='#334155', fg='#f1f5f9', activebackground='#475569', activeforeground='white',
+            padx=14, pady=6, relief='flat', cursor='hand2', command=on_open_fm
+        )
+        b_fm.pack(side='left', padx=4)
+
+        if already_existed:
+            b_regen = tk.Button(
+                btn_frame, text="🔄 Regenerate Fresh", font=('Segoe UI', 9),
+                bg='#1e293b', fg='#94a3b8', activebackground='#334155', activeforeground='white',
+                padx=10, pady=6, relief='flat', cursor='hand2', command=on_regen
+            )
+            b_regen.pack(side='right', padx=(8, 0))
+
+        dlg.bind('<Return>', lambda e: on_view_inside())
+        dlg.bind('<Escape>', lambda e: dlg.destroy())
+
+        dlg.update_idletasks()
+        try:
+            pw = self.winfo_toplevel().winfo_width()
+            ph = self.winfo_toplevel().winfo_height()
+            px = self.winfo_toplevel().winfo_rootx()
+            py = self.winfo_toplevel().winfo_rooty()
+            w = dlg.winfo_reqwidth()
+            h = dlg.winfo_reqheight()
+            cx = max(0, px + (pw - w) // 2)
+            cy = max(0, py + (ph - h) // 2)
+            dlg.geometry(f"+{cx}+{cy}")
+        except Exception:
+            pass
+
+        b_inside.focus_set()
 
     def on_import_existing(self):
         p = filedialog.askopenfilename(
@@ -4069,10 +4224,28 @@ class App(tk.Tk):
     def build_graphs(self):
         gr = ttk.Frame(self.tab_gr)
         gr.pack(fill='both', expand=True, padx=6, pady=6)
-        browser = ttk.LabelFrame(gr, text='Runs with graphs')
-        browser.pack(fill='x', padx=6, pady=6)
+
+        # 1. Active Run Generation Progress Banner
+        self.gr_prog_frame = ttk.LabelFrame(gr, text='Active Run Generation Progress')
+        self.gr_prog_frame.pack(fill='x', padx=6, pady=(0, 6))
+
+        prow = ttk.Frame(self.gr_prog_frame)
+        prow.pack(fill='x', padx=8, pady=4)
+        self.gr_prog_lbl = ttk.Label(
+            prow,
+            text='Ready — Select a simulation run to view or generate aerodynamic graphs.',
+            font=('Segoe UI', 9, 'bold')
+        )
+        self.gr_prog_lbl.pack(side='left', fill='x', expand=True)
+
+        self.gr_prog_bar = ttk.Progressbar(self.gr_prog_frame, orient='horizontal', mode='determinate')
+        self.gr_prog_bar.pack(fill='x', padx=8, pady=(0, 6))
+
+        # 2. Results Files / Runs Directory Browser (Compact)
+        browser = ttk.LabelFrame(gr, text='Results File & Campaigns')
+        browser.pack(fill='x', padx=6, pady=(0, 6))
         trow = ttk.Frame(browser)
-        trow.pack(fill='x', padx=6, pady=(6, 0))
+        trow.pack(fill='x', padx=6, pady=(4, 0))
         ttk.Button(trow, text='Refresh', command=self._refresh_gr_folders).pack(side='left')
         wr = ttk.Button(trow, text='Write report', command=self.on_report_picked)
         wr.pack(side='left', padx=4)
@@ -4080,28 +4253,74 @@ class App(tk.Tk):
         op = ttk.Button(trow, text='Open in viewer', command=self.on_open_graph)
         op.pack(side='left', padx=4)
         add_tooltip(op, 'Open the selected image with the OS image viewer.')
-        self.gr_folder_tree = ttk.Treeview(browser, columns=('Date', 'Images'), show='tree headings', height=6)
+        self.gr_folder_tree = ttk.Treeview(browser, columns=('Date', 'Images'), show='tree headings', height=4)
         self.gr_folder_tree.heading('#0', text='Results file')
         self.gr_folder_tree.heading('Date', text='Modified')
         self.gr_folder_tree.heading('Images', text='Images')
         self.gr_folder_tree.column('#0', width=360)
         self.gr_folder_tree.column('Date', width=140)
         self.gr_folder_tree.column('Images', width=80)
-        self.gr_folder_tree.pack(fill='x', padx=6, pady=6)
+        self.gr_folder_tree.pack(fill='x', padx=6, pady=4)
         self.gr_folder_tree.bind('<<TreeviewSelect>>', self._on_gr_folder_select)
+
+        # 3. Main Viewer Area
         mid = ttk.Frame(gr)
-        mid.pack(fill='both', expand=True, pady=6)
+        mid.pack(fill='both', expand=True, pady=4)
+        
+        # Left Panel: Run Filter + Image List + Action Buttons
         pick = ttk.Frame(mid)
         pick.pack(side='left', fill='y')
-        ttk.Label(pick, text='images (graphs)').pack(anchor='w')
-        self.img_list = tk.Listbox(pick, width=34, height=22)
+
+        filter_box = ttk.LabelFrame(pick, text='Run Filter')
+        filter_box.pack(fill='x', pady=(0, 4))
+        
+        f_top = ttk.Frame(filter_box)
+        f_top.pack(fill='x', padx=4, pady=2)
+        ttk.Label(f_top, text='Viewing Run:', font=('Segoe UI', 9, 'bold')).pack(side='left')
+        self.gr_run_combo = ttk.Combobox(f_top, state='readonly', width=16)
+        self.gr_run_combo.pack(side='left', fill='x', expand=True, padx=(4, 0))
+        self.gr_run_combo.bind('<<ComboboxSelected>>', self._on_gr_run_combo_select)
+        add_tooltip(self.gr_run_combo, 'Filter graphs to a specific run so past images do not clutter your view.')
+
+        f_bot = ttk.Frame(filter_box)
+        f_bot.pack(fill='x', padx=4, pady=(2, 4))
+        cb_only = ttk.Checkbutton(
+            f_bot, text='Show selected run only',
+            variable=self.gr_only_active_run, command=self._on_gr_filter_toggle
+        )
+        cb_only.pack(anchor='w')
+        add_tooltip(cb_only, 'When checked, hides graphs from all other runs to prevent confusion.')
+
+        ttk.Label(pick, text='Run Aerodynamic Graphs:').pack(anchor='w', pady=(2, 0))
+        self.img_list = tk.Listbox(pick, width=38, height=16, selectmode='browse')
         self.img_list.pack(fill='both', expand=True)
-        add_tooltip(self.img_list, 'All polar/geometry/field PNGs found in <results-dir>/graphs/ for the chosen results file.')
+        add_tooltip(self.img_list, 'Select an aerodynamic chart or CAD model to display in the viewer.')
         self.img_list.bind('<<ListboxSelect>>', self.on_pick_graph)
+
+        # Action Buttons Under Image List
+        btn_box = ttk.Frame(pick)
+        btn_box.pack(fill='x', pady=(4, 0))
+        
+        b_fm = ttk.Button(btn_box, text='📁 Open in File Manager', command=self.on_open_current_run_folder)
+        b_fm.pack(fill='x', pady=1)
+        add_tooltip(b_fm, 'Open the run folder in Windows Explorer / OS file manager.')
+
+        b_os = ttk.Button(btn_box, text='🔍 Open in OS Viewer', command=self.on_open_graph)
+        b_os.pack(fill='x', pady=1)
+        add_tooltip(b_os, 'Open the selected graph in the default image viewer.')
+
+        b_reg = ttk.Button(btn_box, text='🔄 Regenerate Run Graphs', command=self.on_regenerate_current_run_graphs)
+        b_reg.pack(fill='x', pady=1)
+        add_tooltip(b_reg, 'Force recalculation and re-rendering of all graphs for this run.')
+
+        # Right Panel: Large Image Canvas / Label
         self.gimg_lbl = ttk.Label(mid, text='select an image', anchor='center')
         self.gimg_lbl.pack(side='left', fill='both', expand=True, padx=6)
+
+        # 4. Bottom Status
         self.gr_status = tk.StringVar(value='')
-        ttk.Label(gr, textvariable=self.gr_status).pack(fill='x')
+        ttk.Label(gr, textvariable=self.gr_status).pack(fill='x', pady=(4, 0))
+
         self._refresh_gr_folders()
 
     def _refresh_gr_folders(self):
@@ -4129,6 +4348,21 @@ class App(tk.Tk):
             self.gr_results.set(csv_path)
             self.refresh_graph_files(csv_path)
 
+    def _on_gr_run_combo_select(self, event=None):
+        val = self.gr_run_combo.get()
+        if not val:
+            return
+        if "--- All Runs" in val:
+            self.gr_selected_rid = ""
+            self.refresh_graph_files(select_rid="")
+        elif val.startswith("Run "):
+            rid = val.replace("Run ", "").strip()
+            self.gr_selected_rid = rid
+            self.refresh_graph_files(select_rid=rid)
+
+    def _on_gr_filter_toggle(self):
+        self.refresh_graph_files(select_rid=self.gr_selected_rid)
+
     def refresh_graph_files(self, path=None, select_rid=None):
         cur = os.path.expanduser(path or self.gr_results.get() or '')
         paths = self.discover_results()
@@ -4144,33 +4378,122 @@ class App(tk.Tk):
         p = cur
         gdir = os.path.join(os.path.dirname(p), 'graphs') if p else ''
         legacy = os.path.join(os.path.dirname(p), 'Best', 'graphs') if p else ''
-        self._graph_paths = []
+
+        # 1. Discover all runs that have generated graphs
+        available_runs = {}
         if gdir and os.path.isdir(gdir):
-            top_pngs = sorted(glob.glob(os.path.join(gdir, '*.png')))
-            sub_pngs = sorted(glob.glob(os.path.join(gdir, '*', '*.png')))
-            self._graph_paths = sorted(set(top_pngs + sub_pngs))
+            for d in sorted(glob.glob(os.path.join(gdir, "run_*"))):
+                if os.path.isdir(d):
+                    rid = os.path.basename(d).replace("run_", "")
+                    pngs = sorted(glob.glob(os.path.join(d, "*.png")))
+                    if pngs:
+                        available_runs[rid] = pngs
+            for f in sorted(glob.glob(os.path.join(gdir, "*.png"))):
+                bn = os.path.basename(f)
+                m = re.search(r'_([0-9a-zA-Z]+)\.png$', bn)
+                if m:
+                    rid = m.group(1)
+                    if rid not in available_runs:
+                        available_runs[rid] = []
+                    if f not in available_runs[rid]:
+                        available_runs[rid].append(f)
         if legacy and os.path.isdir(legacy):
-            legacy_pngs = sorted(glob.glob(os.path.join(legacy, '*.png')))
-            self._graph_paths = sorted(set(self._graph_paths + legacy_pngs))
+            legacy_pngs = sorted(glob.glob(os.path.join(legacy, "*.png")))
+            if legacy_pngs:
+                available_runs['best'] = legacy_pngs
+
+        all_rids = sorted(available_runs.keys(), key=lambda x: (int(x) if x.isdigit() else 999999, str(x)))
+
+        # Update combobox items
+        combo_vals = [f"Run {r}" for r in all_rids]
+        if combo_vals:
+            combo_vals.append("--- All Runs / All Images ---")
+        if hasattr(self, 'gr_run_combo'):
+            self.gr_run_combo['values'] = combo_vals
+
+        if select_rid is not None:
+            self.gr_selected_rid = str(select_rid)
+        elif not self.gr_selected_rid and all_rids:
+            self.gr_selected_rid = all_rids[-1]
+
+        if hasattr(self, 'gr_run_combo'):
+            if self.gr_selected_rid and f"Run {self.gr_selected_rid}" in combo_vals:
+                self.gr_run_combo.set(f"Run {self.gr_selected_rid}")
+            elif combo_vals:
+                self.gr_run_combo.set(combo_vals[0])
+
+        filter_only_active = self.gr_only_active_run.get() if hasattr(self, 'gr_only_active_run') else True
+        combo_selection = self.gr_run_combo.get() if hasattr(self, 'gr_run_combo') else ""
+
+        self._graph_paths = []
+        display_items = []
+
+        if filter_only_active and combo_selection != "--- All Runs / All Images ---" and self.gr_selected_rid:
+            rid = self.gr_selected_rid
+            target_files = available_runs.get(rid, [])
+            if not target_files and gdir:
+                run_gdir = os.path.join(gdir, f"run_{rid}")
+                if os.path.isdir(run_gdir):
+                    target_files = sorted(glob.glob(os.path.join(run_gdir, "*.png")))
+
+            def graph_sort_and_label(f):
+                bn = os.path.basename(f).lower()
+                if 'polar' in bn and 'javafoil' not in bn:
+                    return (0, "📊 Aerodynamic Polar (Cl vs Cd)")
+                elif 'geometry' in bn:
+                    return (1, "📐 Wing Profile & Slot Geometry")
+                elif 'field' in bn:
+                    return (2, "💨 Flow Velocity Field")
+                elif 'javafoil_polar_cl_cd' in bn:
+                    return (3, "📈 JavaFoil Drag Polar (Cl vs Cd)")
+                elif 'javafoil_polar_cl_alfa' in bn:
+                    return (4, "📈 JavaFoil Lift Curve (Cl vs α)")
+                elif 'javafoil_polar_cm_alfa' in bn:
+                    return (5, "📈 JavaFoil Pitching Moment (Cm vs α)")
+                elif 'javafoil_velocity_cp' in bn:
+                    return (6, "🌊 JavaFoil Surface Pressure Cp")
+                elif 'javafoil_bl_cf' in bn:
+                    return (7, "🔬 JavaFoil Skin Friction Cf")
+                elif 'javafoil_bl_delta' in bn:
+                    return (8, "📏 JavaFoil Boundary Layer (δ)")
+                else:
+                    return (9, f"📊 {os.path.basename(f)}")
+
+            sorted_labeled = sorted([(graph_sort_and_label(f), f) for f in target_files], key=lambda x: x[0][0])
+            for (order, lbl), f in sorted_labeled:
+                self._graph_paths.append(f)
+                display_items.append(lbl)
+        else:
+            all_files = []
+            if gdir and os.path.isdir(gdir):
+                top_pngs = sorted(glob.glob(os.path.join(gdir, '*.png')))
+                sub_pngs = sorted(glob.glob(os.path.join(gdir, '*', '*.png')))
+                all_files = sorted(set(top_pngs + sub_pngs))
+            if legacy and os.path.isdir(legacy):
+                all_files = sorted(set(all_files + sorted(glob.glob(os.path.join(legacy, '*.png')))))
+            for f in all_files:
+                rel = os.path.relpath(f, gdir) if gdir and f.startswith(gdir) else os.path.basename(f)
+                self._graph_paths.append(f)
+                display_items.append(rel)
+
         self.img_list.delete(0, 'end')
-        sel_idx = None
-        for i, f in enumerate(self._graph_paths):
-            rel = os.path.relpath(f, gdir) if gdir and f.startswith(gdir) else os.path.basename(f)
-            self.img_list.insert('end', rel)
-            if select_rid and (f"_{select_rid}." in f or f"run_{select_rid}" in f or f"_{select_rid}_" in f):
-                if sel_idx is None:
-                    sel_idx = i
-        self.gr_status.set(f"{len(self._graph_paths)} image(s) in {gdir or '(no report yet - press Write report)'}")
-        if sel_idx is not None:
-            self.img_list.selection_clear(0, 'end')
-            self.img_list.selection_set(sel_idx)
-            self.img_list.see(sel_idx)
-            self.show_image(self._graph_paths[sel_idx])
-        elif self._graph_paths:
+        for itm in display_items:
+            self.img_list.insert('end', itm)
+
+        cur_rid = self.gr_selected_rid or 'all'
+        if filter_only_active and combo_selection != "--- All Runs / All Images ---":
+            if self._graph_paths:
+                self.gr_status.set(f"Run {cur_rid}: {len(self._graph_paths)} graph(s) displayed from {gdir}/run_{cur_rid}")
+            else:
+                self.gr_status.set(f"Run {cur_rid}: No graphs generated yet. Click '⚡ Generate Graphs' to create them.")
+        else:
+            self.gr_status.set(f"All Runs: {len(self._graph_paths)} image(s) found in {gdir}")
+
+        if self._graph_paths:
             self.img_list.selection_set(0)
             self.show_image(self._graph_paths[0])
         else:
-            self.gimg_lbl.configure(image='', text='select an image')
+            self.gimg_lbl.configure(image='', text=f"No graphs for Run {cur_rid}\nClick '📊 Generate Graphs' to generate.")
 
     def on_pick_graph(self, event=None):
         sel = self.img_list.curselection()
@@ -4183,11 +4506,15 @@ class App(tk.Tk):
         if not HAS_PIL:
             self.gimg_lbl.configure(image='', text=f"[Pillow missing - open with your viewer]\n{path}")
             return
+        if not path or not os.path.exists(path):
+            self.gimg_lbl.configure(image='', text='select an image')
+            return
+        self._cur_graph_path = path
         try:
             with Image.open(path) as img:
-                w = self.gimg_lbl.winfo_width()
-                h = self.gimg_lbl.winfo_height()
-                img.thumbnail((max(w, 300), max(h, 240)))
+                w = max(self.gimg_lbl.winfo_width(), 650)
+                h = max(self.gimg_lbl.winfo_height(), 460)
+                img.thumbnail((w, h))
                 self._gimg = ImageTk.PhotoImage(img)
             self.gimg_lbl.configure(image=self._gimg, text='')
         except Exception as e:
@@ -4197,6 +4524,33 @@ class App(tk.Tk):
         sel = self.img_list.curselection()
         if sel:
             subprocess_open(self._graph_paths[sel[0]])
+        elif self._cur_graph_path and os.path.exists(self._cur_graph_path):
+            subprocess_open(self._cur_graph_path)
+
+    def on_open_current_run_folder(self):
+        p = os.path.expanduser(self.res_file.get() or self.gr_results.get() or '')
+        gdir = os.path.join(os.path.dirname(p), 'graphs') if p else ''
+        rid = self.gr_selected_rid
+        target = os.path.join(gdir, f"run_{rid}") if (rid and rid != 'all') else gdir
+        if not os.path.isdir(target):
+            target = gdir if os.path.isdir(gdir) else os.path.dirname(p)
+        if not os.path.isdir(target):
+            os.makedirs(target, exist_ok=True)
+        subprocess_open(target)
+
+    def on_regenerate_current_run_graphs(self):
+        r = self._selected_row()
+        rid = self.gr_selected_rid
+        if (r is None or (hasattr(r, 'empty') and r.empty)) and rid:
+            if hasattr(self, '_tree_frame') and self._tree_frame is not None and not self._tree_frame.empty:
+                if 'Run_ID' in self._tree_frame.columns:
+                    m = self._tree_frame[self._tree_frame['Run_ID'].astype(str) == str(rid)]
+                    if not m.empty:
+                        r = m.iloc[0]
+        if r is not None and not (hasattr(r, 'empty') and r.empty):
+            self._gen_graphs(r, switch=True, force_regen=True)
+        else:
+            messagebox.showinfo("Regenerate Graphs", "Please select a run in the Results table to regenerate graphs.")
 
     def build_optimizer(self):
         opt = ttk.Frame(self.tab_opt)
