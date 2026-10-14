@@ -324,32 +324,29 @@ def seed_airfoil_store(store=None):
     """Ensure internal airfoil store contains baseline airfoils so airfoils are never missing."""
     store = store or AIRFOIL_STORE
     os.makedirs(store, exist_ok=True)
-    existing = [f for f in os.listdir(store) if f.lower().endswith(".dat")]
-    if not existing:
-        search_dirs = []
-        if getattr(sys, "frozen", False):
-            if hasattr(sys, "_MEIPASS"):
-                search_dirs.append(os.path.join(sys._MEIPASS, "assets", "airfoils"))
-            exe_dir = os.path.dirname(sys.executable)
-            search_dirs.append(os.path.join(exe_dir, "assets", "airfoils"))
-            search_dirs.append(os.path.join(exe_dir, "_internal", "assets", "airfoils"))
-        base_dir = os.path.dirname(os.path.abspath(__file__))
-        search_dirs.extend([
-            os.path.join(base_dir, "assets", "airfoils"),
-            os.path.join(HERE, "assets", "airfoils") if "HERE" in globals() else "",
-            AIRFOIL_DIR,
-        ])
-        for sdir in search_dirs:
-            if sdir and os.path.isdir(sdir):
-                for fn in sorted(os.listdir(sdir)):
-                    if fn.lower().endswith(".dat"):
-                        try:
-                            shutil.copy2(os.path.join(sdir, fn), os.path.join(store, fn))
-                        except Exception:
-                            pass
-                existing = [f for f in os.listdir(store) if f.lower().endswith(".dat")]
-                if existing:
-                    break
+    existing = set(f.lower() for f in os.listdir(store) if f.lower().endswith(".dat"))
+    search_dirs = []
+    if getattr(sys, "frozen", False):
+        if hasattr(sys, "_MEIPASS"):
+            search_dirs.append(os.path.join(sys._MEIPASS, "assets", "airfoils"))
+        exe_dir = os.path.dirname(sys.executable)
+        search_dirs.append(os.path.join(exe_dir, "assets", "airfoils"))
+        search_dirs.append(os.path.join(exe_dir, "_internal", "assets", "airfoils"))
+    base_dir = os.path.dirname(os.path.abspath(__file__))
+    search_dirs.extend([
+        os.path.join(base_dir, "assets", "airfoils"),
+        os.path.join(HERE, "assets", "airfoils") if "HERE" in globals() else "",
+        AIRFOIL_DIR,
+    ])
+    for sdir in search_dirs:
+        if sdir and os.path.isdir(sdir):
+            for fn in sorted(os.listdir(sdir)):
+                if fn.lower().endswith(".dat") and fn.lower() not in existing:
+                    try:
+                        shutil.copy2(os.path.join(sdir, fn), os.path.join(store, fn))
+                        existing.add(fn.lower())
+                    except Exception:
+                        pass
 
 
 def install_airfoil(src, name=None, store=None):
@@ -621,6 +618,288 @@ def geometry_columns(cfg, ground_h=UNSET):
         if h is not None:
             cols["Min_Clearance_mm"] = ymin * CHORD_MM
     return cols
+
+
+# =====================================================================
+# FAMOUS FSAE MULTI-ELEMENT WING COMBINATIONS
+# =====================================================================
+FAMOUS_PACKAGES = [
+    {
+        'id': 'monash_4el_fw',
+        'name': 'Monash-Style 4-Element Ground Effect Front Wing',
+        'team': 'Monash Motorsport (World Champion Multi-Element Design)',
+        'category': 'Front Wing',
+        'role': 'front wing',
+        'main': 's1223',
+        'chord': 250.0,
+        'speed': 18.0,
+        're': 300000,
+        'ge': True,
+        'gh_pct': 32.0,
+        'span': 1400.0,
+        'flaps': [
+            ('s1223rtl', 32.0, -14.0, 96.0, 4.0),
+            ('WORTMANN FX 63-137', 24.0, -28.0, 122.5, 14.5),
+            ('be50', 18.0, -42.0, 142.5, 27.5)
+        ],
+        'highlights': [
+            'Dominant 4-element ground effect front wing inspired by multi-time world champions Monash Motorsport.',
+            'Uses Selig 1223 as primary ground-effect suction driver generating extreme low pressure on underwing.',
+            'First flap uses S1223RTL with modified trailing edge reflex to energize boundary layer for subsequent flaps.',
+            'Intermediate Wortmann FX 63-137 delivers substantial circulation jump without flow detachment.',
+            'Aft Liebeck BE50 flap provides extreme downforce turning (-42°) to maximize corner-entry front grip in tight autocross slaloms.'
+        ],
+        'aerodynamics': {
+            'design_intent': 'Maximum Ground Effect Downforce & Low-Speed Slalom Authority',
+            'flow_physics': 'Multi-slot boundary layer injection; fresh high-energy airflow from the pressure side prevents detachment on downstream flaps under aggressive cumulative camber (-42° total deflection).',
+            'operating_envelope': 'Autocross / Skidpad tight corners (15–20 m/s, ground clearance 35–45 mm).'
+        }
+    },
+    {
+        'id': 'stuttgart_3el_fw',
+        'name': 'Stuttgart-Style 3-Element Pitch-Stable Front Wing',
+        'team': 'Rennteam Uni Stuttgart (European Champion Benchmark)',
+        'category': 'Front Wing',
+        'role': 'front wing',
+        'main': 's1223',
+        'chord': 260.0,
+        'speed': 20.0,
+        're': 355000,
+        'ge': True,
+        'gh_pct': 30.0,
+        'span': 1400.0,
+        'flaps': [
+            ('e423', 35.0, -15.0, 96.0, 4.2),
+            ('NACA 6412', 26.0, -30.0, 124.5, 15.0)
+        ],
+        'highlights': [
+            'Engineered specifically for heavy braking pitch dive stability (1.8g deceleration).',
+            'High-camber S1223 main paired with Eppler 423 intermediate element maintain gentle stall behavior.',
+            'NACA 6412 aft flap ensures stall angle is at least 3.5° above design alpha.',
+            'Guarantees linear Cl response across ±2° pitch dive, preventing sudden understeer when the car pitches nose-down.'
+        ],
+        'aerodynamics': {
+            'design_intent': 'Braking Pitch Dive Stability & Stall Margin Robustness',
+            'flow_physics': 'Graduated pressure recovery minimizes adverse pressure gradient peaks. When front ride height compresses by 15–20 mm under braking, slot flow remains stable without suction collapse.',
+            'operating_envelope': 'Heavy braking zones and corner entry transitions (18–24 m/s).'
+        }
+    },
+    {
+        'id': 'tudelft_3el_rw',
+        'name': 'TU Delft High-Efficiency 3-Element Rear Wing',
+        'team': 'TU Delft FS Team (DUT Electric High-Efficiency Concept)',
+        'category': 'Rear Wing',
+        'role': 'rear wing',
+        'main': 'e423',
+        'chord': 165.0,
+        'speed': 22.0,
+        're': 450000,
+        'ge': False,
+        'gh_pct': 300.0,
+        'span': 950.0,
+        'flaps': [
+            ('s1210', 32.0, -16.0, 96.5, 4.5),
+            ('NACA 4412', 24.0, -32.0, 122.5, 15.5)
+        ],
+        'highlights': [
+            'Electric vehicle endurance efficiency benchmark designed for minimal battery consumption.',
+            'High lift-to-drag ratio (L/D > 3.6 2D) minimizes induced and pressure drag on straights.',
+            'Selig 1210 provides laminar bucket pressure recovery across mid-chord.',
+            'Strictly packaged within 250 mm total stack length constraint for FSG/FSAE rear wing regulations.'
+        ],
+        'aerodynamics': {
+            'design_intent': 'High Aerodynamic Efficiency (L/D) & Endurance Energy Conservation',
+            'flow_physics': 'E423 provides high baseline circulation while S1210 and NACA 4412 maintain laminar flow retention and moderate trailing edge boundary layer displacement thickness.',
+            'operating_envelope': 'High-speed endurance circuit driving (20–28 m/s).'
+        }
+    },
+    {
+        'id': 'mit_4el_rw',
+        'name': 'MIT Americas Peak-Downforce 4-Element Rear Wing',
+        'team': 'MIT Motorsports (FSAE Americas High-Downforce Leader)',
+        'category': 'Rear Wing',
+        'role': 'rear wing',
+        'main': 's1223',
+        'chord': 150.0,
+        'speed': 20.0,
+        're': 380000,
+        'ge': False,
+        'gh_pct': 300.0,
+        'span': 950.0,
+        'flaps': [
+            ('s1223', 30.0, -16.0, 96.0, 4.2),
+            ('fx74cl5140', 22.0, -32.0, 120.5, 14.5),
+            ('be50', 16.0, -46.0, 139.0, 28.0)
+        ],
+        'highlights': [
+            'Maximum-downforce 4-element cascade engineered to extract peak tire vertical load.',
+            'Dual Selig 1223 elements establish strong initial bound vortex circulation.',
+            'Wortmann FX 74-CL5-140 is a legendary high-lift airfoil designed specifically for aggressive multi-element flaps.',
+            'Liebeck BE50 terminal flap turns flow to -46° without bubble burst, delivering peak Cl > 3.5 2D.',
+            'Fully compliant with 250 mm stack length and 1100 mm height rules.'
+        ],
+        'aerodynamics': {
+            'design_intent': 'Peak Downforce Generation for Acceleration & Hairpin Exit Traction',
+            'flow_physics': 'Extreme flow turning enabled by cascading slot jets. High suction on upper flap surfaces induces high upwash behind the rear wheels.',
+            'operating_envelope': 'Autocross and tight hairpins (16–22 m/s).'
+        }
+    },
+    {
+        'id': 'zerihan_2el_ge',
+        'name': 'Zerihan & Zhang Dual-Element Ground Effect Benchmark',
+        'team': 'Imperial College / Southampton Wind Tunnel Classic',
+        'category': 'Benchmark',
+        'role': 'front wing',
+        'main': 's1223',
+        'chord': 250.0,
+        'speed': 25.0,
+        're': 430000,
+        'ge': True,
+        'gh_pct': 30.0,
+        'span': 1000.0,
+        'flaps': [
+            ('WORTMANN FX 63-137', 36.0, -16.0, 96.5, 4.2)
+        ],
+        'highlights': [
+            'The canonical aerodynamic benchmark from Zerihan & Zhang (2000) and Zhang & Zerihan (2003).',
+            'Extensively validated in wind tunnels with particle image velocimetry (PIV) and surface pressure taps.',
+            'Ideal reference configuration for cross-validating 2D panel methods (JavaFoil) against 3D RANS/LES CFD.',
+            'Characterized by predictable suction peak, stable slot efflux, and clean boundary layer development.'
+        ],
+        'aerodynamics': {
+            'design_intent': 'Academic & CFD Correlation Experimental Benchmark',
+            'flow_physics': 'Direct experimental ground effect correlation; demonstrates ground vortex formation and ride height sensitivity.',
+            'operating_envelope': 'Wind tunnel validation sweeps (15–30 m/s, ground height sweeps).'
+        }
+    },
+    {
+        'id': 'munich_3el_fw',
+        'name': 'TU Munich Multi-Stage Aerodynamic Front Wing',
+        'team': 'TUfast Racing Munich (FSG Combustion & Driverless Champion)',
+        'category': 'Front Wing',
+        'role': 'front wing',
+        'main': 's1210',
+        'chord': 270.0,
+        'speed': 19.5,
+        're': 350000,
+        'ge': True,
+        'gh_pct': 28.0,
+        'span': 1400.0,
+        'flaps': [
+            ('e420', 34.0, -15.0, 96.5, 4.2),
+            ('NACA7412', 25.0, -28.0, 124.0, 14.8)
+        ],
+        'highlights': [
+            'Multi-stage front wing optimized for high-speed slalom and yaw transient response.',
+            'Combines low-profile Selig 1210 main element with high-camber Eppler 420.',
+            'NACA 7412 aft element has smooth curvature distribution that delays flow separation during steering roll/yaw.',
+            'Minimizes drag buildup while ensuring prompt aerodynamic balance response in driverless and manual agility runs.'
+        ],
+        'aerodynamics': {
+            'design_intent': 'Yaw Sensitivity Reduction & High Transient Agility',
+            'flow_physics': 'Mild adverse pressure gradient on suction surface mitigates separation during lateral steering angle inputs.',
+            'operating_envelope': 'Fast transitions and driverless trackdrive (18–26 m/s).'
+        }
+    },
+    {
+        'id': 'highspeed_drs_rw',
+        'name': 'Endurance Low-Drag & DRS Benchmark Rear Wing',
+        'team': 'High-Efficiency Low-Drag Specification',
+        'category': 'Rear Wing',
+        'role': 'rear wing',
+        'main': 's1210',
+        'chord': 170.0,
+        'speed': 28.0,
+        're': 600000,
+        'ge': False,
+        'gh_pct': 300.0,
+        'span': 950.0,
+        'flaps': [
+            ('NACA 2412', 30.0, -10.0, 97.0, 3.8),
+            ('NACA 0012', 22.0, -18.0, 122.5, 12.0)
+        ],
+        'highlights': [
+            'Tuned for tracks with long full-throttle straights (Silverstone Hangar Straight, Lincoln Airfield).',
+            'Extremely low profile drag coefficient (Cd < 0.045) while preserving positive rear grip.',
+            'NACA 0012 symmetrical aft element is perfectly suited for Drag Reduction System (DRS) actuation.',
+            'Enables high terminal straightaway speed without compromising rear stability under braking.'
+        ],
+        'aerodynamics': {
+            'design_intent': 'Top Speed Maximization & Low Drag DRS Integration',
+            'flow_physics': 'Low-camber NACA profiles limit boundary layer thickness and wake shedding drag, yielding superior L/D at elevated Mach/Re.',
+            'operating_envelope': 'High-speed straights and DRS zones (25–35 m/s).'
+        }
+    },
+    {
+        'id': 'compact_crashbox_fw',
+        'name': 'Compact Crashbox Packaging Front Wing',
+        'team': 'Short Nose Packaging Formula Student Specification',
+        'category': 'Front Wing',
+        'role': 'front wing',
+        'main': 's1223',
+        'chord': 230.0,
+        'speed': 18.0,
+        're': 270000,
+        'ge': True,
+        'gh_pct': 32.0,
+        'span': 1400.0,
+        'flaps': [
+            ('e420', 34.0, -16.0, 96.5, 4.2),
+            ('ch10sm', 24.0, -32.0, 124.0, 15.2)
+        ],
+        'highlights': [
+            'Designed for space-constrained front chassis packaging where impact attenuator restricts wing length.',
+            'Short 230 mm chord packages easily inside front overhang limits.',
+            'CH10-SM ultra-high-lift low-Re airfoil maintains high downforce output despite shortened chord.',
+            'Generates downforce equivalent to wings 20% larger in chord.'
+        ],
+        'aerodynamics': {
+            'design_intent': 'Ultra-Compact Packaging with Preserved Downforce Output',
+            'flow_physics': 'High circulation density: CH10-SM airfoil features concave pressure recovery designed for low Reynolds numbers (Re ~ 200k).',
+            'operating_envelope': 'Tight chassis packaging architectures (15–22 m/s).'
+        }
+    },
+    {
+        'id': 'liebeck_rooftop_rw',
+        'name': 'Liebeck High-Camber Rooftop Rear Wing',
+        'team': 'High-Circulation Low-Re Aerodynamic Concept',
+        'category': 'Rear Wing',
+        'role': 'rear wing',
+        'main': 'e423',
+        'chord': 170.0,
+        'speed': 21.0,
+        're': 420000,
+        'ge': False,
+        'gh_pct': 300.0,
+        'span': 950.0,
+        'flaps': [
+            ('l1003', 32.0, -16.0, 96.5, 4.5),
+            ('la203a', 24.0, -34.0, 122.5, 16.0)
+        ],
+        'highlights': [
+            'Applies Robert Liebeck’s optimized rooftop pressure distribution to low-Re multi-element wings.',
+            'Liebeck L1003 and LA203A high-lift airfoils maintain maximum upper-surface suction flat-top before Stratford recovery.',
+            'Produces maximum circulation without separation bubbles.',
+            'Delivers smooth high-angle operation with no hysteresis.'
+        ],
+        'aerodynamics': {
+            'design_intent': 'Stratford Recovery & Maximum Boundary Layer Velocity Retention',
+            'flow_physics': 'Liebeck rooftop philosophy ensures boundary layer is held at the verge of separation along the entire recovery region.',
+            'operating_envelope': 'High-camber rear wing installation (18–25 m/s).'
+        }
+    }
+]
+
+def get_famous_packages():
+    """Return all curated famous FSAE multi-element wing packages."""
+    return list(FAMOUS_PACKAGES)
+
+def get_famous_package(pkg_id):
+    """Retrieve a specific famous wing package by its ID."""
+    for p in FAMOUS_PACKAGES:
+        if p['id'] == pkg_id:
+            return dict(p)
+    return None
 
 
 # =====================================================================

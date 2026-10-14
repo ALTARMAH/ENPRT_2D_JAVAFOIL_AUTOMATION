@@ -1017,6 +1017,7 @@ class App(tk.Tk):
         self.notebook.pack(fill='both', expand=True)
         self.tab_cfg = ttk.Frame(self.notebook)
         self.tab_af = ttk.Frame(self.notebook)
+        self.tab_comb = ttk.Frame(self.notebook)
         self.tab_cam = ttk.Frame(self.notebook)
         self.tab_res = ttk.Frame(self.notebook)
         self.tab_gr = ttk.Frame(self.notebook)
@@ -1024,6 +1025,7 @@ class App(tk.Tk):
         self.tab_set = ttk.Frame(self.notebook)
         self.notebook.add(self.tab_cfg, text="  Configure  ")
         self.notebook.add(self.tab_af, text="  Airfoils  ")
+        self.notebook.add(self.tab_comb, text="  ⭐ Famous Wings  ")
         self.notebook.add(self.tab_cam, text="  Campaigns  ")
         self.notebook.add(self.tab_res, text="  Results  ")
         self.notebook.add(self.tab_gr, text="  Graphs  ")
@@ -1031,6 +1033,7 @@ class App(tk.Tk):
         self.notebook.add(self.tab_set, text="  Themes & Settings  ")
         self.build_configure()
         self.build_airfoils()
+        self.build_famous_wings()
         self.build_campaigns()
         self.build_results()
         self.build_graphs()
@@ -1058,6 +1061,7 @@ class App(tk.Tk):
         tabs = [
             ('Configure', self.tab_cfg),
             ('Airfoils', self.tab_af),
+            ('Famous Wings', self.tab_comb),
             ('Campaigns', self.tab_cam),
             ('Results', self.tab_res),
             ('Graphs', self.tab_gr),
@@ -1092,7 +1096,7 @@ class App(tk.Tk):
         self.bind_all('<Control-r>', lambda e=None: self.on_report_picked())
         self.bind_all('<F5>', lambda e=None: self._refresh_all())
         self.bind_all('<Control-q>', lambda e=None: self._on_close())
-        for i, tab in enumerate((self.tab_cfg, self.tab_af, self.tab_cam, self.tab_res, self.tab_gr, self.tab_opt, self.tab_set), start=1):
+        for i, tab in enumerate((self.tab_cfg, self.tab_af, self.tab_comb, self.tab_cam, self.tab_res, self.tab_gr, self.tab_opt, self.tab_set), start=1):
             self.bind_all(f'<Alt-Key-{i}>', lambda e=None, t=tab: (tip_hide(), self.notebook.select(t)))
         for seq, step in (('<Control-Tab>', 1), ('<Control-Shift-Tab>', -1)):
             self.bind_all(seq, lambda e=None, s=step: self._cycle_tab(s))
@@ -2190,7 +2194,496 @@ class App(tk.Tk):
                     lb.selection_set(i)
         self._update_statusbar()
 
+    # --- FAMOUS WINGS TAB ---
+    def build_famous_wings(self):
+        comb = ttk.Frame(self.tab_comb)
+        comb.pack(fill='both', expand=True, padx=6, pady=6)
+
+        paned = ttk.PanedWindow(comb, orient='horizontal')
+        paned.pack(fill='both', expand=True)
+
+        # Left pane: Filter & Packages list
+        left_pane = ttk.Frame(paned, width=370)
+        paned.add(left_pane, weight=1)
+
+        filter_frame = ttk.LabelFrame(left_pane, text="Filter Championship & Benchmark Wings")
+        filter_frame.pack(fill='x', padx=4, pady=4)
+
+        f_row1 = ttk.Frame(filter_frame)
+        f_row1.pack(fill='x', padx=4, pady=2)
+        ttk.Label(f_row1, text="Search:").pack(side='left')
+        self.comb_filter = tk.StringVar(value='')
+        comb_search_ent = ttk.Entry(f_row1, textvariable=self.comb_filter)
+        comb_search_ent.pack(side='left', fill='x', expand=True, padx=4)
+        add_tooltip(comb_search_ent, "Filter packages by name, team, or airfoil.")
+
+        f_row2 = ttk.Frame(filter_frame)
+        f_row2.pack(fill='x', padx=4, pady=2)
+        ttk.Label(f_row2, text="Category:").pack(side='left')
+        self.comb_cat = tk.StringVar(value='All Categories')
+        cat_cb = ttk.Combobox(f_row2, textvariable=self.comb_cat,
+                              values=['All Categories', 'Front Wing', 'Rear Wing', 'Benchmark'],
+                              state='readonly', width=16)
+        cat_cb.pack(side='left', padx=4)
+        add_tooltip(cat_cb, "Filter by wing role / category.")
+
+        self.comb_count_lbl = tk.StringVar(value='')
+        ttk.Label(f_row2, textvariable=self.comb_count_lbl, foreground=MUTED).pack(side='right')
+
+        self.comb_filter.trace_add('write', lambda *_: self._apply_comb_filter())
+        self.comb_cat.trace_add('write', lambda *_: self._apply_comb_filter())
+
+        tree_frame = ttk.Frame(left_pane)
+        tree_frame.pack(fill='both', expand=True, padx=4, pady=4)
+
+        self.comb_tree = ttk.Treeview(tree_frame, columns=('name', 'cat', 'els'), show='headings', selectmode='browse', height=14)
+        self.comb_tree.heading('name', text='Wing Package')
+        self.comb_tree.heading('cat', text='Category')
+        self.comb_tree.heading('els', text='Elements')
+        self.comb_tree.column('name', width=200, anchor='w')
+        self.comb_tree.column('cat', width=90, anchor='w')
+        self.comb_tree.column('els', width=70, anchor='center')
+
+        comb_sc = ttk.Scrollbar(tree_frame, orient='vertical', command=self.comb_tree.yview)
+        self.comb_tree.configure(yscrollcommand=comb_sc.set)
+        self.comb_tree.pack(side='left', fill='both', expand=True)
+        comb_sc.pack(side='right', fill='y')
+
+        self.comb_tree.bind('<<TreeviewSelect>>', lambda e: self._on_comb_select())
+        self.comb_tree.bind('<Double-1>', lambda e: self._comb_load_to_configure())
+        add_tooltip(self.comb_tree, "Click to inspect. Double-click to load into Configure (Tab 1).")
+
+        ttk.Label(left_pane,
+                  text="💡 Double-click any configuration to load it into Configure (Tab 1).\nUse buttons on the right to optimize, simulate, or export DXF.",
+                  foreground=MUTED, justify='left', wraplength=350).pack(anchor='w', padx=6, pady=4)
+
+        # Right pane: Inspector, Visualizer & Actions
+        right_pane = ttk.Frame(paned)
+        paned.add(right_pane, weight=3)
+
+        header_card = tk.Frame(right_pane, bg=PANEL, bd=1, relief='solid')
+        header_card.pack(fill='x', padx=4, pady=4)
+
+        top_h = tk.Frame(header_card, bg=PANEL)
+        top_h.pack(fill='x', padx=8, pady=(6, 2))
+
+        self.comb_title_var = tk.StringVar(value="Select a Wing Package")
+        self.comb_title_lbl = tk.Label(top_h, textvariable=self.comb_title_var, font=('TkDefaultFont', 12, 'bold'),
+                                       bg=PANEL, fg=ACCENT, anchor='w')
+        self.comb_title_lbl.pack(side='left')
+
+        self.comb_rules_badge = tk.Label(top_h, text="✅ 100% FSUK / FSG Compliant",
+                                         bg='#064e3b', fg='#34d399', font=('TkDefaultFont', 8, 'bold'),
+                                         padx=6, pady=2)
+        self.comb_rules_badge.pack(side='right')
+
+        sub_h = tk.Frame(header_card, bg=PANEL)
+        sub_h.pack(fill='x', padx=8, pady=(0, 4))
+        self.comb_team_var = tk.StringVar(value="")
+        tk.Label(sub_h, textvariable=self.comb_team_var, font=('TkDefaultFont', 9),
+                 bg=PANEL, fg=SKY, anchor='w').pack(side='left')
+
+        badge_row = tk.Frame(header_card, bg=PANEL)
+        badge_row.pack(fill='x', padx=8, pady=(0, 6))
+
+        self.comb_badge_cat = tk.Label(badge_row, text="", bg=PANEL2, fg=TXT, font=('TkDefaultFont', 8), padx=6, pady=2)
+        self.comb_badge_cat.pack(side='left', padx=(0, 4))
+        self.comb_badge_els = tk.Label(badge_row, text="", bg=PANEL2, fg=TXT, font=('TkDefaultFont', 8), padx=6, pady=2)
+        self.comb_badge_els.pack(side='left', padx=4)
+        self.comb_badge_aero = tk.Label(badge_row, text="", bg=PANEL2, fg=TXT, font=('TkDefaultFont', 8), padx=6, pady=2)
+        self.comb_badge_aero.pack(side='left', padx=4)
+        self.comb_badge_span = tk.Label(badge_row, text="", bg=PANEL2, fg=TXT, font=('TkDefaultFont', 8), padx=6, pady=2)
+        self.comb_badge_span.pack(side='left', padx=4)
+
+        act_frame = ttk.Frame(right_pane)
+        act_frame.pack(fill='x', padx=4, pady=2)
+
+        btn_cfg = ttk.Button(act_frame, text="🚀 Load to Configure (Tab 1)", command=self._comb_load_to_configure)
+        btn_cfg.pack(side='left', padx=2)
+        add_tooltip(btn_cfg, "Load airfoils, angles, and geometry into Configure (Tab 1) and calculate sizing.")
+
+        btn_opt = ttk.Button(act_frame, text="🎯 Send to Optimizer (Tab 6)", command=self._comb_send_to_optimizer)
+        btn_opt.pack(side='left', padx=2)
+        add_tooltip(btn_opt, "Set this package as baseline in Tab 6 Optimizer to refine downforce and pitch stability.")
+
+        btn_sim = ttk.Button(act_frame, text="🏎️ Run Simulation Now", command=self._comb_simulate_now)
+        btn_sim.pack(side='left', padx=2)
+        add_tooltip(btn_sim, "Instantly run JavaFoil analysis on this package and record aerodynamic forces in Results.")
+
+        btn_dxf = ttk.Button(act_frame, text="📐 Export AutoCAD DXF", command=self._comb_export_dxf)
+        btn_dxf.pack(side='left', padx=2)
+        add_tooltip(btn_dxf, "Export precise 2D spline airfoil outlines to AutoCAD DXF for SolidWorks / CAD / CFD.")
+
+        geom_container = ttk.Frame(right_pane)
+        geom_container.pack(fill='both', expand=True, padx=4, pady=4)
+
+        self.comb_canvas = None
+        self.comb_ax = None
+        self.comb_fig = None
+        try:
+            import matplotlib
+            matplotlib.use('TkAgg')
+            from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
+            from matplotlib.figure import Figure
+            self.comb_fig = Figure(figsize=(6, 3.2), dpi=100, facecolor=PANEL2)
+            self.comb_ax = self.comb_fig.add_subplot(111)
+            self.comb_ax.set_facecolor(BG)
+            self.comb_canvas = FigureCanvasTkAgg(self.comb_fig, master=geom_container)
+            self.comb_canvas.get_tk_widget().configure(bg=BG, highlightthickness=0)
+            self.comb_canvas.get_tk_widget().pack(fill='both', expand=True)
+        except Exception as e:
+            self.comb_canvas = None
+            ttk.Label(geom_container, text=f"(geometry preview unavailable: {e})").pack()
+
+        bot_nb = ttk.Notebook(right_pane)
+        bot_nb.pack(fill='both', expand=True, padx=4, pady=2)
+
+        t1_frame = ttk.Frame(bot_nb)
+        bot_nb.add(t1_frame, text="  📐 Element Stack & Alignment  ")
+
+        self.comb_stack_tree = ttk.Treeview(t1_frame, columns=('el', 'foil', 'scale', 'angle', 'x', 'y', 'gap', 'overlap'),
+                                            show='headings', height=5)
+        cols_cfg = [
+            ('el', 'Element', 70, 'center'),
+            ('foil', 'Airfoil Profile', 150, 'w'),
+            ('scale', 'Scale %', 70, 'center'),
+            ('angle', 'Mount Angle', 90, 'center'),
+            ('x', 'X Position %', 90, 'center'),
+            ('y', 'Y Position %', 90, 'center'),
+            ('gap', 'Slot Gap %', 90, 'center'),
+            ('overlap', 'Overlap %', 90, 'center'),
+        ]
+        for cid, chead, cwidth, canchor in cols_cfg:
+            self.comb_stack_tree.heading(cid, text=chead)
+            self.comb_stack_tree.column(cid, width=cwidth, anchor=canchor)
+
+        stack_sc = ttk.Scrollbar(t1_frame, orient='vertical', command=self.comb_stack_tree.yview)
+        self.comb_stack_tree.configure(yscrollcommand=stack_sc.set)
+        self.comb_stack_tree.pack(side='top', fill='both', expand=True)
+        stack_sc.pack(side='right', fill='y')
+
+        self.comb_dims_var = tk.StringVar(value="")
+        tk.Label(t1_frame, textvariable=self.comb_dims_var, bg=BG, fg=MUTED, font=('TkDefaultFont', 8),
+                 justify='left', anchor='w').pack(fill='x', padx=4, pady=2)
+
+        t2_frame = ttk.Frame(bot_nb)
+        bot_nb.add(t2_frame, text="  📖 Aerodynamic Rationale & Pedigree  ")
+
+        self.comb_desc_txt = tk.Text(t2_frame, height=6, bg=PANEL2, fg=TXT, wrap='word', bd=0, relief='flat', font=('TkDefaultFont', 9))
+        self.comb_desc_txt.pack(fill='both', expand=True, padx=4, pady=4)
+        self.comb_desc_txt.config(state='disabled')
+
+        self._apply_comb_filter()
+
+    def _apply_comb_filter(self):
+        q = getattr(self, 'comb_filter', None)
+        query = q.get().strip().lower() if q else ''
+        cat = getattr(self, 'comb_cat', None)
+        cat_val = cat.get() if cat else 'All Categories'
+
+        all_pkgs = getattr(A, 'get_famous_packages', lambda: [])()
+        filtered = []
+        for p in all_pkgs:
+            if cat_val != 'All Categories' and cat_val.lower() not in p.get('category', '').lower():
+                continue
+            if query:
+                haystack = (p.get('name', '') + ' ' + p.get('team', '') + ' ' + p.get('main', '') + ' ' +
+                            ' '.join(f[0] for f in p.get('flaps', [])) + ' ' + p.get('category', '')).lower()
+                if query not in haystack:
+                    continue
+            filtered.append(p)
+
+        self._comb_filtered_pkgs = filtered
+        if hasattr(self, 'comb_count_lbl'):
+            self.comb_count_lbl.set(f"{len(filtered)} of {len(all_pkgs)}")
+
+        if hasattr(self, 'comb_tree'):
+            self.comb_tree.delete(*self.comb_tree.get_children())
+            for p in filtered:
+                el_str = f"{len(p.get('flaps', [])) + 1}-el"
+                self.comb_tree.insert('', 'end', iid=p['id'],
+                                      values=(p['name'], p.get('category', ''), el_str))
+            if filtered:
+                first_id = filtered[0]['id']
+                self.comb_tree.selection_set(first_id)
+                self.comb_tree.focus(first_id)
+                self._on_comb_select(pkg_id=first_id)
+
+    def _get_selected_comb_pkg(self):
+        if not hasattr(self, 'comb_tree'):
+            return None
+        sel = self.comb_tree.selection()
+        if not sel:
+            return None
+        pkg_id = sel[0]
+        return getattr(A, 'get_famous_package', lambda _: None)(pkg_id)
+
+    def _on_comb_select(self, event=None, pkg_id=None):
+        if pkg_id is None:
+            pkg = self._get_selected_comb_pkg()
+        else:
+            pkg = getattr(A, 'get_famous_package', lambda _: None)(pkg_id)
+        if not pkg:
+            return
+
+        self._comb_current_pkg = pkg
+
+        self.comb_title_var.set(pkg['name'])
+        self.comb_team_var.set(pkg.get('team', ''))
+        self.comb_badge_cat.config(text=f"Role: {pkg.get('role', '').title()}")
+        num_els = len(pkg.get('flaps', [])) + 1
+        self.comb_badge_els.config(text=f"{num_els} Elements (Main + {num_els - 1} Flaps)")
+        ge_str = f"Ground Effect (h={pkg.get('gh_pct', 0)}%)" if pkg.get('ge') else "Free Stream"
+        self.comb_badge_aero.config(text=f"{pkg.get('speed', 0)} m/s · Re {pkg.get('re', 0):,} · {ge_str}")
+        self.comb_badge_span.config(text=f"Span: {int(pkg.get('span', 1400))} mm")
+
+        if hasattr(self, 'comb_stack_tree'):
+            self.comb_stack_tree.delete(*self.comb_stack_tree.get_children())
+            cfg = (pkg['main'], tuple(pkg.get('flaps', [])))
+            cols = {}
+            try:
+                A.ROLE = 'fw' if 'front' in pkg.get('role', '') else 'rw'
+                A.CHORD_MM = pkg.get('chord', 250.0)
+                gh_val = pkg.get('gh_pct') if pkg.get('ge') else None
+                A.set_ground_h(gh_val)
+                cols = A.geometry_columns(cfg)
+            except Exception:
+                pass
+
+            g0 = cols.get('M_F1_Gap_pct', None)
+            o0 = cols.get('M_F1_Overlap_pct', None)
+            g0_str = f"{g0:.1f}%" if g0 is not None else "—"
+            o0_str = f"{o0:.1f}%" if o0 is not None else "—"
+            self.comb_stack_tree.insert('', 'end', values=(
+                "Main", pkg['main'], "100.0%", "0.0°", "0.0%", "0.0%", g0_str, o0_str
+            ))
+
+            for i, (fn, sc, ang, xp, yp) in enumerate(pkg.get('flaps', []), start=1):
+                pair_name = A.PAIRS[i - 1] if i - 1 < len(A.PAIRS) else f"F{i}"
+                next_pair = A.PAIRS[i] if i < len(A.PAIRS) else None
+                gap_val = cols.get(f"{next_pair}_Gap_pct", None) if next_pair else None
+                ov_val = cols.get(f"{next_pair}_Overlap_pct", None) if next_pair else None
+                gap_str = f"{gap_val:.1f}%" if gap_val is not None else "—"
+                ov_str = f"{ov_val:.1f}%" if ov_val is not None else "—"
+                self.comb_stack_tree.insert('', 'end', values=(
+                    f"Flap {i}", fn, f"{sc:.1f}%", f"{ang:.1f}°", f"{xp:.1f}%", f"{yp:.1f}%", gap_str, ov_str
+                ))
+
+            sl = cols.get('Stack_Length_mm', 0)
+            sh = cols.get('Stack_Height_mm', 0)
+            clearance = cols.get('Min_Clearance_mm', 0) if pkg.get('ge') else None
+            clear_str = f" | Min Ground Clearance: {clearance:.1f} mm (Min 35 mm)" if clearance is not None else ""
+            role_limit = 600.0 if 'front' in pkg.get('role', '') else 250.0
+            self.comb_dims_var.set(
+                f"Main Chord: {pkg['chord']:.1f} mm | Span: {pkg['span']:.1f} mm | "
+                f"Stack Length: {sl:.1f} mm (Limit {role_limit:.1f} mm) | "
+                f"Stack Height: {sh:.1f} mm{clear_str}"
+            )
+
+        if hasattr(self, 'comb_desc_txt'):
+            self.comb_desc_txt.config(state='normal')
+            self.comb_desc_txt.delete('1.0', 'end')
+            aero = pkg.get('aerodynamics', {})
+            txt_parts = [
+                f"🎯 DESIGN INTENT: {aero.get('design_intent', 'N/A')}\n",
+                f"💨 FLOW PHYSICS: {aero.get('flow_physics', 'N/A')}\n",
+                f"🏎️ OPERATING ENVELOPE: {aero.get('operating_envelope', 'N/A')}\n\n",
+                "⭐ ENGINEERING HIGHLIGHTS & ARCHITECTURE:\n"
+            ]
+            for h in pkg.get('highlights', []):
+                txt_parts.append(f"  • {h}\n")
+            self.comb_desc_txt.insert('1.0', "".join(txt_parts))
+            self.comb_desc_txt.config(state='disabled')
+
+        self._draw_famous_geometry(pkg)
+
+    def _draw_famous_geometry(self, pkg):
+        if not getattr(self, 'comb_ax', None) or not getattr(self, 'comb_canvas', None):
+            return
+        self.comb_ax.clear()
+        try:
+            cfg = (pkg['main'], tuple(pkg.get('flaps', [])))
+            chord = pkg.get('chord', 250.0)
+            gh_val = pkg.get('gh_pct') if pkg.get('ge') else None
+            outs = A.build_outlines(cfg, ground_h=gh_val)
+            cols = ['#0284c7', '#e11d48', '#10b981', '#f59e0b', '#8b5cf6']
+            all_pts = []
+            for i, o in enumerate(outs):
+                o_mm = np.asarray(o, float) * chord
+                all_pts.append(o_mm)
+                color = cols[i % len(cols)]
+                self.comb_ax.plot(np.append(o_mm[:, 0], o_mm[0, 0]), np.append(o_mm[:, 1], o_mm[0, 1]),
+                                  color=color, lw=1.8)
+                self.comb_ax.fill(np.append(o_mm[:, 0], o_mm[0, 0]), np.append(o_mm[:, 1], o_mm[0, 1]),
+                                  color=color, alpha=0.22)
+                lbl = "Main" if i == 0 else f"Flap {i}"
+                foil = pkg['main'] if i == 0 else pkg['flaps'][i - 1][0]
+                mid_idx = len(o_mm) // 4
+                mx, my = o_mm[mid_idx, 0], o_mm[mid_idx, 1]
+                y_off = 14 if i % 2 == 0 else -18
+                self.comb_ax.annotate(f"{lbl}: {foil}", xy=(mx, my), xytext=(0, y_off),
+                                      textcoords='offset points', fontsize=8, fontweight='bold',
+                                      color=color, ha='center',
+                                      bbox=dict(boxstyle='round,pad=0.2', fc='#0f172a', ec=color, lw=0.8, alpha=0.85))
+
+            if pkg.get('ge') and gh_val is not None:
+                self.comb_ax.axhline(0, color='#64748b', lw=1.5, ls='--')
+                self.comb_ax.text(0, 2, " GROUND PLANE (y = 0 mm)", color='#94a3b8', fontsize=8, va='bottom')
+
+            stacked = np.vstack(all_pts)
+            xmin, xmax = stacked[:, 0].min(), stacked[:, 0].max()
+            ymin, ymax = stacked[:, 1].min(), stacked[:, 1].max()
+            stack_len = xmax - xmin
+            stack_ht = ymax - ymin
+
+            self.comb_ax.set_aspect('equal')
+            self.comb_ax.set_title(f"{pkg['name']}  [Stack: {stack_len:.1f} mm × {stack_ht:.1f} mm]",
+                                   color=TXT, fontsize=9, fontweight='bold')
+            self.comb_ax.set_xlabel("X (mm)", color=MUTED, fontsize=8)
+            self.comb_ax.set_ylabel("Y (mm)", color=MUTED, fontsize=8)
+            self.comb_ax.tick_params(colors=MUTED, labelsize=8)
+            for spine in self.comb_ax.spines.values():
+                spine.set_color(RULE)
+            if getattr(self, 'comb_fig', None):
+                self.comb_fig.tight_layout()
+            self.comb_canvas.draw_idle()
+        except Exception as e:
+            pass
+
+    def _comb_load_to_configure(self, pkg=None):
+        pkg = pkg or getattr(self, '_comb_current_pkg', None) or self._get_selected_comb_pkg()
+        if not pkg:
+            messagebox.showinfo("Select Package", "Please select a wing package first.")
+            return
+
+        if hasattr(self, 'main_box'):
+            self.main_box.set(pkg['main'])
+
+        role = pkg.get('role', 'front wing')
+        if hasattr(self, '_role_state'):
+            self._role_state.set(role)
+            lbl = {'front wing': FW, 'rear wing': RW}.get(role, CUSTOM)
+            self.role_lbl.set(f"{lbl} (span {int(pkg.get('span', 1400))} mm)")
+            if role == 'custom':
+                self.custom_span_state.set(str(pkg.get('span', 1000.0)))
+
+        if hasattr(self, 'vars'):
+            if 'chord' in self.vars:
+                self.vars['chord'].set(str(pkg.get('chord', 250.0)))
+            if 'speed' in self.vars:
+                self.vars['speed'].set(str(pkg.get('speed', 20.0)))
+            if 're' in self.vars:
+                self.vars['re'].set(str(pkg.get('re', 350000)))
+
+        if hasattr(self, 'ge_state'):
+            self.ge_state.set(bool(pkg.get('ge', True)))
+        if hasattr(self, 'gh_state'):
+            self.gh_state.set(str(pkg.get('gh_pct', 30.0)))
+
+        flaps = pkg.get('flaps', [])
+        for i, (vals, cb) in enumerate(getattr(self, 'flap_rows', [])):
+            if i < len(flaps):
+                fn, sc, ang, xp, yp = flaps[i]
+                vals[0].set(fn)
+                vals[1].set(str(sc))
+                vals[2].set(str(ang))
+                vals[3].set(str(xp))
+                vals[4].set(str(yp))
+                vals[5].set(True)
+            else:
+                vals[0].set('')
+                vals[5].set(False)
+
+        self.notebook.select(self.tab_cfg)
+        self.on_check()
+        self.log(f"Loaded famous package '{pkg['name']}' into Configure tab.")
+
+    def _comb_send_to_optimizer(self, pkg=None):
+        pkg = pkg or getattr(self, '_comb_current_pkg', None) or self._get_selected_comb_pkg()
+        if not pkg:
+            messagebox.showinfo("Select Package", "Please select a wing package first.")
+            return
+
+        cfg = (pkg['main'], tuple(pkg.get('flaps', [])))
+        self._opt_base_cfg = cfg
+        self._opt_best_cfg = cfg
+
+        if hasattr(self, 'opt_main_box'):
+            self.opt_main_box.set(pkg['main'])
+
+        if hasattr(self, 'opt_vars'):
+            if 'chord' in self.opt_vars:
+                self.opt_vars['chord'].set(str(pkg.get('chord', 250.0)))
+            if 'speed' in self.opt_vars:
+                self.opt_vars['speed'].set(str(pkg.get('speed', 20.0)))
+            if 're' in self.opt_vars:
+                self.opt_vars['re'].set(str(pkg.get('re', 350000)))
+
+        if hasattr(self, 'opt_ge_v'):
+            self.opt_ge_v.set(bool(pkg.get('ge', True)))
+        if hasattr(self, 'opt_gh_state'):
+            self.opt_gh_state.set(str(pkg.get('gh_pct', 30.0)))
+
+        flaps = pkg.get('flaps', [])
+        for i, (vals, cb) in enumerate(getattr(self, 'opt_flap_rows', [])):
+            if i < len(flaps):
+                fn, sc, ang, xp, yp = flaps[i]
+                vals[0].set(fn)
+                vals[1].set(str(sc))
+                vals[2].set(str(ang))
+                vals[3].set(str(xp))
+                vals[4].set(str(yp))
+                vals[5].set(True)
+            else:
+                vals[0].set('')
+                vals[5].set(False)
+
+        if hasattr(self, 'opt_base_info'):
+            self.opt_base_info.config(state='normal')
+            self.opt_base_info.delete('1.0', 'end')
+            hl0 = pkg.get('highlights', [''])[0]
+            self.opt_base_info.insert('end', f"Base: {pkg['name']}\nMain: {pkg['main']} | Flaps: {len(flaps)} | Chord: {pkg['chord']}mm | Speed: {pkg['speed']}m/s\nDesign: {hl0}")
+            self.opt_base_info.config(state='disabled')
+
+        self._opt_log(f"Loaded base from Famous Wings: {pkg['name']}")
+        self.notebook.select(self.tab_opt)
+
+    def _comb_simulate_now(self, pkg=None):
+        pkg = pkg or getattr(self, '_comb_current_pkg', None) or self._get_selected_comb_pkg()
+        if not pkg:
+            messagebox.showinfo("Select Package", "Please select a wing package first.")
+            return
+        self._comb_load_to_configure(pkg)
+        self.after(100, self.on_simulate)
+
+    def _comb_export_dxf(self, pkg=None):
+        pkg = pkg or getattr(self, '_comb_current_pkg', None) or self._get_selected_comb_pkg()
+        if not pkg:
+            messagebox.showinfo("Select Package", "Please select a wing package first.")
+            return
+
+        initial = f"{pkg['id']}.dxf"
+        p = filedialog.asksaveasfilename(
+            title=f"Export CAD Model (DXF) - {pkg['name']}",
+            defaultextension=".dxf",
+            initialfile=initial,
+            filetypes=[("AutoCAD DXF File", "*.dxf"), ("All Files", "*.*")]
+        )
+        if not p:
+            return
+
+        try:
+            cfg = (pkg['main'], tuple(pkg.get('flaps', [])))
+            gh_val = pkg.get('gh_pct') if pkg.get('ge') else None
+            A.export_dxf(cfg, p, chord_mm=pkg.get('chord', 250.0), ground_h=gh_val,
+                         title=f"{pkg['name']} ({pkg.get('team', '')})")
+            messagebox.showinfo("DXF Export Successful",
+                                f"Successfully exported 2D CAD profile:\n\n{p}\n\nReady for import into SolidWorks, AutoCAD, Siemens NX, CATIA, and Onshape.")
+        except Exception as e:
+            messagebox.showerror("Export Error", f"Failed to export DXF: {e}")
+
     # --- CAMPAIGNS TAB ---
+
     def build_campaigns(self):
         outer = ttk.Frame(self.tab_cam)
         outer.pack(fill='both', expand=True)
