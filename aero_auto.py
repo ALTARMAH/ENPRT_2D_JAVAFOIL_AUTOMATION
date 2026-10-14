@@ -975,6 +975,357 @@ FAMOUS_PACKAGES = [
             'flow_physics': 'Direct experimental ground effect correlation; demonstrates ground vortex formation and ride height sensitivity.',
             'operating_envelope': 'Wind tunnel validation sweeps (15–30 m/s, ground height sweeps).'
         }
+    },
+    {
+        'id': 'fsg_2022_karaceing_kit22e',
+        'name': 'FSG 2022 · KA-RaceIng KIT (KIT22e) – Front Wing',
+        'competition': 'Formula Student Germany (FSG)',
+        'comp_short': 'FSG (Germany)',
+        'team': 'KA-RaceIng (Karlsruhe Institute of Technology)',
+        'year': 2022,
+        'car': 'KIT22e',
+        'achievement': '🏆 FSG 2022 Overall Podium & FS East Champion',
+        'category': 'Front Wing',
+        'role': 'front wing',
+        'main': 's1223',
+        'chord': 250.0,
+        'speed': 20.0,
+        're': 345000,
+        'ge': True,
+        'gh_pct': 30.0,
+        'span': 1400.0,
+        'flaps': [
+            ('e423', 34.0, -15.5, 96.0, 4.3),
+            ('be50', 24.0, -32.0, 124.0, 15.0)
+        ],
+        'targets': {'cl': 3.35, 'cd': 0.672, 'ld': 4.99, 'df_n': 286.0, 'drag_n': 57.4},
+        'highlights': [
+            '3-element carbon composite ground effect front wing engineered by German powerhouse KA-RaceIng (KIT22e).',
+            'S1223 high-camber mainplane drives ground suction channel coupled to aggressive front wheel wake deflection.',
+            'Eppler 423 intermediate flap delivers high circulation jump while Liebeck BE50 provides clean flow termination.',
+            'Calibrated slot gaps (2.1%–2.4%) preserve flow attachment under 1.7g braking dive and rapid turn-in.'
+        ],
+        'aerodynamics': {
+            'design_intent': 'High Front Lateral Authority & Wheel Wake Conditioning',
+            'flow_physics': 'Double-slotted progressive boundary layer re-energization maintains high suction while outboard cascades direct tyre squish wake away from sidepod intakes.',
+            'operating_envelope': 'Dynamic autocross and skidpad transitions (16–22 m/s, ride height 35–45 mm).'
+        }
+    },
+    {
+        'id': 'fseast_2021_chalmers_cfs21',
+        'name': 'FS East 2021 · Chalmers Formula Student (CFS21) – Rear Wing',
+        'competition': 'Formula Student East (FS East)',
+        'comp_short': 'FS East (Hungary)',
+        'team': 'Chalmers Formula Student (Chalmers University of Technology)',
+        'year': 2021,
+        'car': 'CFS21',
+        'achievement': '🥇 FS East 2021 Overall Champion & Efficiency Award',
+        'category': 'Rear Wing',
+        'role': 'rear wing',
+        'main': 'e423',
+        'chord': 160.0,
+        'speed': 22.0,
+        're': 240000,
+        'ge': False,
+        'gh_pct': 30.0,
+        'span': 1000.0,
+        'flaps': [
+            ('fx74cl5140', 32.0, -16.0, 96.5, 4.5),
+            ('clarky', 23.0, -30.0, 122.5, 15.2)
+        ],
+        'targets': {'cl': 2.58, 'cd': 0.528, 'ld': 4.89, 'df_n': 120.3, 'drag_n': 24.6},
+        'highlights': [
+            'High-efficiency 3-element rear wing developed by world-renowned Chalmers aerodynamics division.',
+            'Eppler 423 mainplane paired with Wortmann FX 74-CL5-140 and Clark-Y trailing elements.',
+            'Total stack length 236 mm strictly complies with FSG/FSAE 250 mm box constraints.',
+            'Exceptional lift-to-drag efficiency (L/D = 4.89) to minimize battery drain in 22 km endurance.'
+        ],
+        'aerodynamics': {
+            'design_intent': 'Maximum Endurance Efficiency & Induced Drag Minimization',
+            'flow_physics': 'Smooth Stratford pressure recovery on Clark-Y flap minimizes separation bubble size, preventing high form drag on high-speed straights.',
+            'operating_envelope': 'High-speed endurance and acceleration events (18–26 m/s).'
+        }
+    },
+    {
+        'id': 'fsitaly_2022_polito_sc22',
+        'name': 'FS Italy 2022 · Squadra Corse PoliTO (SC22) – Front Wing',
+        'competition': 'Formula Student Italy (FS Italy)',
+        'comp_short': 'FS Italy',
+        'team': 'Squadra Corse PoliTO (Politecnico di Torino)',
+        'year': 2022,
+        'car': 'SC22',
+        'achievement': '🏁 FS Italy Autocross Winner & Dynamic Events Trophy',
+        'category': 'Front Wing',
+        'role': 'front wing',
+        'main': 's1223',
+        'chord': 250.0,
+        'speed': 19.5,
+        're': 335000,
+        'ge': True,
+        'gh_pct': 28.0,
+        'span': 1400.0,
+        'flaps': [
+            ('s1223rtl', 34.0, -16.0, 96.0, 4.2),
+            ('e423', 25.0, -33.0, 124.0, 15.2)
+        ],
+        'targets': {'cl': 3.42, 'cd': 0.725, 'ld': 4.72, 'df_n': 277.8, 'drag_n': 58.9},
+        'highlights': [
+            'Aggressive high-downforce front wing tuned for the tight, technical Riccardo Paletti circuit.',
+            'Features Selig S1223 with S1223RTL and Eppler 423 for maximum suction ahead of the front axle.',
+            'Designed to withstand ±2.5° chassis pitch under severe braking without suction detachment.',
+            'Produces 277.8 N front downforce at 70 km/h with 36 mm front ride height.'
+        ],
+        'aerodynamics': {
+            'design_intent': 'Extreme Low-Speed Downforce & Sharp Turn-In Response',
+            'flow_physics': 'Reflexed trailing edge on S1223RTL directs high-velocity jet straight across E423 upper surface, delaying separation even under roll and pitch angles.',
+            'operating_envelope': 'Tight autocross hairpins and chicanes (15–20 m/s, ride height 30–40 mm).'
+        }
+    },
+    {
+        'id': 'fsnl_2021_ecurieaix_eace09',
+        'name': 'FS Netherlands 2021 · Ecurie Aix (eace09) – Front Wing',
+        'competition': 'Formula Student Netherlands (FSN)',
+        'comp_short': 'FS Netherlands',
+        'team': 'Ecurie Aix (RWTH Aachen University)',
+        'year': 2021,
+        'car': 'eace09',
+        'achievement': '🥇 FS Netherlands 1st Overall Electric & FS Spain Podium',
+        'category': 'Front Wing',
+        'role': 'front wing',
+        'main': 'be50',
+        'chord': 250.0,
+        'speed': 20.0,
+        're': 345000,
+        'ge': True,
+        'gh_pct': 32.0,
+        'span': 1400.0,
+        'flaps': [
+            ('s1223', 33.0, -15.0, 96.5, 4.4),
+            ('fx74cl5140', 24.0, -30.0, 123.5, 15.0)
+        ],
+        'targets': {'cl': 3.22, 'cd': 0.612, 'ld': 5.26, 'df_n': 275.0, 'drag_n': 52.3},
+        'highlights': [
+            'Innovative Liebeck BE50 rooftop airfoil deployed as main element to delay adverse pressure rise.',
+            'S1223 intermediate element acts as circulation amplifier with Wortmann FX 74-CL5 flap.',
+            'Superior pitch insensitivity ensures consistent aerodynamic platform stability across speed range.',
+            'High L/D ratio of 5.26 provides outstanding energy efficiency for electric endurance.'
+        ],
+        'aerodynamics': {
+            'design_intent': 'Smooth Pressure Gradient Platform & High Aero Efficiency',
+            'flow_physics': 'Rooftop velocity plateau on BE50 minimizes initial boundary layer thickness before reaching the slot, allowing extreme flap turning without separation.',
+            'operating_envelope': 'All dynamic events in dry and wet conditions (16–22 m/s).'
+        }
+    },
+    {
+        'id': 'fsae_2022_wisconsin_wr222',
+        'name': 'FSAE MI 2022 · Wisconsin Racing (WR-222) – Rear Wing',
+        'competition': 'Formula SAE Michigan (FSAE MI)',
+        'comp_short': 'FSAE Michigan (USA)',
+        'team': 'Wisconsin Racing (Univ. of Wisconsin–Madison)',
+        'year': 2022,
+        'car': 'WR-222',
+        'achievement': '🥉 FSAE Michigan Top-3 Overall & Engineering Design Finalist',
+        'category': 'Rear Wing',
+        'role': 'rear wing',
+        'main': 's1223',
+        'chord': 150.0,
+        'speed': 20.0,
+        're': 205000,
+        'ge': False,
+        'gh_pct': 30.0,
+        'span': 1000.0,
+        'flaps': [
+            ('e423', 30.0, -15.0, 96.0, 4.2),
+            ('be50', 22.0, -30.0, 120.5, 14.5),
+            ('NACA 6412', 16.0, -44.0, 138.5, 27.5)
+        ],
+        'targets': {'cl': 3.62, 'cd': 1.020, 'ld': 3.55, 'df_n': 132.8, 'drag_n': 37.4},
+        'highlights': [
+            'Extreme 4-element rear wing packaging maximum downforce inside the 250 mm FSAE rule box.',
+            'Selig S1223 mainplane paired with E423, BE50, and NACA 6412 in triple-slotted cascade.',
+            'Generates 132.8 N rear downforce from a compact 150 mm root chord at 72 km/h.',
+            'Triple slot boundary layer replenishment enables cumulative flap turning of 44°.'
+        ],
+        'aerodynamics': {
+            'design_intent': 'Maximum Cornering Lateral Grip for Autocross and Skidpad',
+            'flow_physics': 'Cascade of 3 micro-slots re-energizes upper surface boundary layer three successive times, sustaining attached flow past classical 2D stall thresholds.',
+            'operating_envelope': 'Autocross, skidpad, and corner-exit traction events (15–22 m/s).'
+        }
+    },
+    {
+        'id': 'fsae_2019_ets_manic19',
+        'name': 'FSAE MI 2019 · Formule ETS (MANIC-19) – Rear Wing',
+        'competition': 'Formula SAE Michigan (FSAE MI)',
+        'comp_short': 'FSAE Michigan (USA)',
+        'team': 'Formule ETS (École de technologie supérieure Montréal)',
+        'year': 2019,
+        'car': 'MANIC-19',
+        'achievement': '🏆 Formula North Champion & FSAE Michigan Design Finalist',
+        'category': 'Rear Wing',
+        'role': 'rear wing',
+        'main': 'e423',
+        'chord': 165.0,
+        'speed': 21.0,
+        're': 235000,
+        'ge': False,
+        'gh_pct': 30.0,
+        'span': 1000.0,
+        'flaps': [
+            ('s1210', 32.0, -16.0, 96.5, 4.4),
+            ('be50', 23.0, -31.0, 122.5, 15.2)
+        ],
+        'targets': {'cl': 2.65, 'cd': 0.562, 'ld': 4.72, 'df_n': 117.8, 'drag_n': 25.0},
+        'highlights': [
+            'Aerodynamically refined 3-element rear wing developed by continuous North American champion Formule ETS.',
+            'High-L/D combination of E423, S1210, and BE50 optimized for 22 km endurance efficiency.',
+            'DRS actuation linkage integrated into endplate mounts for straightaway drag shedding.',
+            'Validated through extensive wind tunnel testing and real-time onboard pitot arrays.'
+        ],
+        'aerodynamics': {
+            'design_intent': 'High Aero Efficiency with Integrated DRS Drag Shedding',
+            'flow_physics': 'Maintains clean laminar flow bucket on E423 lower surface while slots prevent separation on flaps, allowing fast DRS re-attachment when flaps close.',
+            'operating_envelope': 'Full track competition envelope with active DRS activation (18–26 m/s).'
+        }
+    },
+    {
+        'id': 'fsa_2021_tugraz_tankia21',
+        'name': 'FSA 2021 · TU Graz Racing (Tankia 2021) – Front Wing',
+        'competition': 'Formula Student Austria (FSA)',
+        'comp_short': 'FSA (Austria)',
+        'team': 'TU Graz Racing Team (Graz University of Technology)',
+        'year': 2021,
+        'car': 'Tankia 2021',
+        'achievement': '🥇 FSA 2021 Overall Champion & Skidpad Trophy',
+        'category': 'Front Wing',
+        'role': 'front wing',
+        'main': 's1223',
+        'chord': 250.0,
+        'speed': 20.0,
+        're': 345000,
+        'ge': True,
+        'gh_pct': 29.0,
+        'span': 1400.0,
+        'flaps': [
+            ('e423', 34.0, -16.0, 96.0, 4.2),
+            ('la203a', 24.0, -33.0, 124.0, 15.0)
+        ],
+        'targets': {'cl': 3.38, 'cd': 0.688, 'ld': 4.91, 'df_n': 288.6, 'drag_n': 58.7},
+        'highlights': [
+            'Fierce Red Bull Ring winner from TU Graz Racing Team (Tankia 2021).',
+            'Deep ground-effect coupling producing 288.6 N front downforce with 36 mm ride height.',
+            'Utilizes Liebeck LA203A trailing flap engineered for low-Reynolds laminar boundary layer stability.',
+            'Maintains strong front-end authority through high-g steady-state cornering.'
+        ],
+        'aerodynamics': {
+            'design_intent': 'Skidpad Lateral G-Force Maximization & Ground Suction',
+            'flow_physics': 'Venturi suction beneath S1223 mainplane is sustained by high-velocity trailing suction from LA203A, accelerating throat velocities under the wing.',
+            'operating_envelope': 'Steady-state skidpad circles and high-speed sweepers (16–22 m/s).'
+        }
+    },
+    {
+        'id': 'fsae_2018_tamu_18',
+        'name': 'FSAE MI 2018 · Texas A&M Racing (TAMU 18) – Rear Wing',
+        'competition': 'Formula SAE Michigan (FSAE MI)',
+        'comp_short': 'FSAE Michigan (USA)',
+        'team': 'Texas A&M Racing (Texas A&M University)',
+        'year': 2018,
+        'car': 'TAMU 18',
+        'achievement': '🥈 FSAE Lincoln Overall Podium & Acceleration Award',
+        'category': 'Rear Wing',
+        'role': 'rear wing',
+        'main': 's1223',
+        'chord': 160.0,
+        'speed': 21.0,
+        're': 230000,
+        'ge': False,
+        'gh_pct': 30.0,
+        'span': 1000.0,
+        'flaps': [
+            ('s1223', 32.0, -15.5, 96.5, 4.4),
+            ('e423', 23.0, -31.0, 122.5, 15.2)
+        ],
+        'targets': {'cl': 2.78, 'cd': 0.640, 'ld': 4.34, 'df_n': 120.0, 'drag_n': 27.6},
+        'highlights': [
+            'Dual-S1223 core architecture with Eppler 423 aft flap engineered by Texas A&M.',
+            'Proven high-traction setup for 600cc combustion powertrain acceleration.',
+            'Compact 237 mm stack length allows generous packaging margin behind roll hoop.',
+            'High stall margin (> 3.5°) prevents rear wing stall under chassis squat during acceleration.'
+        ],
+        'aerodynamics': {
+            'design_intent': 'Rear Traction Stabilization Under Hard Longitudinal Acceleration',
+            'flow_physics': 'Dual S1223 elements create a wide pressure suction trough that remains stable when vehicle squat decreases local angle of attack.',
+            'operating_envelope': 'Acceleration launches and high-traction corner exits (16–24 m/s).'
+        }
+    },
+    {
+        'id': 'fsuk_2022_mcgill_mfe22',
+        'name': 'FSUK 2022 · McGill Formula Electric (MFE-22) – Front Wing',
+        'competition': 'Formula Student UK (FSUK)',
+        'comp_short': 'FSUK (UK)',
+        'team': 'McGill Formula Electric (McGill University)',
+        'year': 2022,
+        'car': 'MFE-22',
+        'achievement': '🏆 Formula Student UK Overall Champion & Best Aero Trophy',
+        'category': 'Front Wing',
+        'role': 'front wing',
+        'main': 'e423',
+        'chord': 250.0,
+        'speed': 20.0,
+        're': 345000,
+        'ge': True,
+        'gh_pct': 30.0,
+        'span': 1400.0,
+        'flaps': [
+            ('be50', 34.0, -15.0, 96.0, 4.3),
+            ('s1210', 24.0, -31.0, 123.5, 15.0)
+        ],
+        'targets': {'cl': 3.25, 'cd': 0.620, 'ld': 5.24, 'df_n': 277.5, 'drag_n': 53.0},
+        'highlights': [
+            'Silverstone championship-winning package engineered for British variable weather.',
+            'Eppler 423 main with Liebeck BE50 and S1210 provides exceptional surface water and moisture tolerance.',
+            'High aerodynamic efficiency (L/D = 5.24) with 277.5 N downforce at 72 km/h.',
+            'Gentle stall progression prevents catastrophic grip loss on greasy, drying asphalt.'
+        ],
+        'aerodynamics': {
+            'design_intent': 'All-Weather Aerodynamic Platform & Separation Resistance',
+            'flow_physics': 'E423 leading edge radius prevents sudden laminar bubble burst in turbulent, moist air, keeping the downstream boundary layer robust.',
+            'operating_envelope': 'Variable damp and dry track conditions at Silverstone (16–22 m/s).'
+        }
+    },
+    {
+        'id': 'fsspain_2021_bcn_xaloc',
+        'name': 'FS Spain 2021 · BCN eMotorsport (Xaloc) – Front Wing',
+        'competition': 'Formula Student Spain (FSS)',
+        'comp_short': 'FS Spain',
+        'team': 'BCN eMotorsport (ETSEIB - UPC Barcelona)',
+        'year': 2021,
+        'car': 'Xaloc',
+        'achievement': '🥇 FS Spain Overall Champion & Engineering Design Finalist',
+        'category': 'Front Wing',
+        'role': 'front wing',
+        'main': 's1223',
+        'chord': 250.0,
+        'speed': 20.0,
+        're': 345000,
+        'ge': True,
+        'gh_pct': 29.5,
+        'span': 1400.0,
+        'flaps': [
+            ('ch10sm', 34.0, -15.5, 96.0, 4.2),
+            ('be50', 24.0, -32.0, 123.5, 15.0)
+        ],
+        'targets': {'cl': 3.36, 'cd': 0.678, 'ld': 4.96, 'df_n': 286.9, 'drag_n': 57.9},
+        'highlights': [
+            'Barcelona overall winner featuring UIUC CH10-SM low-Reynolds high-lift flap profile.',
+            'Custom slot geometry calibrated on Circuit de Barcelona-Catalunya telemetry.',
+            'High downforce retention across yaw angles up to 8 degrees during rapid steering inputs.',
+            'Generates 286.9 N front load with low profile drag at 72 km/h.'
+        ],
+        'aerodynamics': {
+            'design_intent': 'Crosswind & Yaw Insensitive Downforce Generation',
+            'flow_physics': 'CH10-SM intermediate element features high leading-edge suction tolerance, maintaining attached circulation during transient vehicle yaw angles.',
+            'operating_envelope': 'High-lateral-acceleration cornering and slalom maneuvers (16–22 m/s).'
+        }
     }
 ]
 

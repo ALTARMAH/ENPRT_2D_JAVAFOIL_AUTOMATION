@@ -2229,9 +2229,13 @@ class App(tk.Tk):
             'FSA (Austria)',
             'FS Switzerland',
             'FSUK (UK)',
+            'FS East (Hungary)',
+            'FS Italy',
+            'FS Netherlands',
+            'FS Spain',
             'Wind Tunnel Benchmark'
         ]
-        comp_cb = ttk.Combobox(f_row2, textvariable=self.comb_comp, values=comp_choices, state='readonly', width=16)
+        comp_cb = ttk.Combobox(f_row2, textvariable=self.comb_comp, values=comp_choices, state='readonly', width=17)
         comp_cb.pack(side='left', padx=2)
         add_tooltip(comp_cb, "Filter by Formula Student competition series.")
 
@@ -2450,8 +2454,14 @@ class App(tk.Tk):
         all_pkgs = getattr(A, 'get_famous_packages', lambda: [])()
         filtered = []
         for p in all_pkgs:
-            if comp_val != 'All Competitions' and comp_val.lower() not in (p.get('competition', '') + ' ' + p.get('comp_short', '')).lower():
-                continue
+            if comp_val != 'All Competitions':
+                c_clean = comp_val.split('(')[0].strip().lower()
+                c_paren = comp_val.split('(')[1].rstrip(')').strip().lower() if '(' in comp_val else ''
+                p_short = p.get('comp_short', '').split('(')[0].strip().lower()
+                p_full = (p.get('competition', '') + ' ' + p.get('comp_short', '')).lower()
+                match = (c_clean == p_short) or (c_paren and c_paren in p_full) or (c_clean in p_full.split()) or ('benchmark' in c_clean and 'benchmark' in p_full)
+                if not match:
+                    continue
             if cat_val != 'All Wings' and cat_val.lower() not in p.get('category', '').lower():
                 continue
             if query:
