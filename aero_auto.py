@@ -143,31 +143,37 @@ SUMMARY_EVERY = 1800     # seconds between summary.xlsx refreshes
 # Multi-Objective Scoring System Profiles for Formula Student
 SCORING_PROFILES = {
     "balanced": {
-        "name": "🎯 Balanced Multi-Objective (FSAE Overall)",
+        "name": "Balanced Multi-Objective (FSAE Overall)",
         "short": "Balanced",
         "description": "Standard balanced trade-off across all FSAE dynamic events: 40% Downforce + 30% Stall Margin + 20% L/D Efficiency + 10% Pitch Robustness.",
         "weights": (0.40, 0.30, 0.20, 0.10),
     },
     "autocross": {
-        "name": "🏎️ Autocross & Skidpad (Max Downforce / Grip)",
+        "name": "Autocross & Skidpad (Max Downforce / Grip)",
         "short": "Autocross",
         "description": "Max Downforce Priority: 70% Downforce + 20% Stall Margin + 10% Efficiency. Designed for tight 40–65 km/h slalom courses where lateral acceleration wins and drag penalty is minimal.",
         "weights": (0.70, 0.20, 0.10, 0.00),
     },
     "efficiency": {
-        "name": "⚡ Endurance & Efficiency (High L/D / Energy Saving)",
+        "name": "Endurance & Efficiency (High L/D / Energy Saving)",
         "short": "Endurance/Eff",
         "description": "Aerodynamic Efficiency Priority: 60% L/D + 25% Downforce + 10% Stall Margin + 5% Robustness. Ideal for electric vehicles to conserve battery kilowatt-hours and combustion cars for fuel score.",
         "weights": (0.25, 0.10, 0.60, 0.05),
     },
     "robust": {
-        "name": "🛡️ Pitch-Stable & Stall-Robust (Braking Stability)",
+        "name": "Pitch-Stable & Stall-Robust (Braking Stability)",
         "short": "Robust/Braking",
         "description": "Safety & Pitch Insensitivity: 45% Stall Margin + 35% Pitch Robustness (±2°) + 20% Downforce. Prevents catastrophic downforce loss and snap-oversteer during heavy braking pitch dive.",
         "weights": (0.20, 0.45, 0.05, 0.30),
     },
+    "cl_stability": {
+        "name": "Cl Alpha Stability (Pitch Dive Robustness)",
+        "short": "Cl Alpha Stable",
+        "description": "Cl Stability Priority: 40% Pitch Robustness (smooth Cl retention across ±2°) + 35% Stall Margin (>=3.5°) + 25% Downforce. Guarantees linear pitch response without sudden separation under dynamic chassis dive.",
+        "weights": (0.25, 0.35, 0.00, 0.40),
+    },
     "laptime": {
-        "name": "⏱️ Lap Time Sensitivity Index (3.5:1 DF/Drag Tradeoff)",
+        "name": "Lap Time Sensitivity Index (3.5:1 DF/Drag Tradeoff)",
         "short": "Lap Time Index",
         "description": "Simulated Lap Time Metric: Models real FSAE track lap-time sensitivity where 1 N of Downforce is worth ~3.5x to 4.0x more lap time reduction than 1 N of drag penalty.",
         "weights": (0.55, 0.15, 0.25, 0.05),
@@ -185,7 +191,7 @@ CD_MAX = 0.3
 PAIRS = ["Main_to_F1", "F1_to_F2", "F2_to_F3"]
 GEO_FIELDS = ([f"{p}_{m}_pct" for p in PAIRS for m in ("Gap", "Overlap", "Step")]
               + ["Stack_Length_pct", "Stack_Height_pct", "Stack_Ymin_pct", "Stack_Ymax_pct"])
-SCORE_FIELDS = ["Score", "Score_Balanced", "Score_Autocross", "Score_Efficiency", "Score_Robust", "Score_LapTime"]
+SCORE_FIELDS = ["Score", "Score_Balanced", "Score_Autocross", "Score_Efficiency", "Score_Robust", "Score_ClStability", "Score_LapTime"]
 FIELDS = (["Run_ID", "Phase", "Elements", "Main"]
           + [f"F{k}_{p}" for k in (1, 2, 3) for p in ("Airfoil", "Scale", "Angle", "X", "Y")]
           + GEO_FIELDS
@@ -349,6 +355,25 @@ def seed_airfoil_store(store=None):
                         pass
 
 
+
+
+def ensure_airfoils_loaded():
+    """Ensure internal airfoil store contains baseline airfoils and AIRFOILS is loaded into memory."""
+    if not AIRFOILS:
+        seed_airfoil_store()
+        base_dir = os.path.dirname(os.path.abspath(__file__))
+        cand_dirs = [
+            os.path.join(base_dir, "assets", "airfoils"),
+            getattr(sys, "_MEIPASS", "") and os.path.join(sys._MEIPASS, "assets", "airfoils"),
+            os.path.join(os.path.dirname(sys.executable), "assets", "airfoils") if getattr(sys, "frozen", False) else None,
+            os.path.join(os.path.dirname(sys.executable), "_internal", "assets", "airfoils") if getattr(sys, "frozen", False) else None,
+            AIRFOIL_DIR,
+            AIRFOIL_STORE,
+        ]
+        for cd in cand_dirs:
+            if cd and os.path.isdir(cd):
+                AIRFOILS.update(load_all(cd))
+
 def install_airfoil(src, name=None, store=None):
     """Copy a .dat/coordinate profile into the internal airfoil store under a chosen name.
     Validates coordinate parsability across .dat, .txt, .cor, or raw text files.
@@ -427,6 +452,8 @@ def build_outlines(cfg, ground_h=UNSET):
         except (TypeError, ValueError) as err:
             raise ValueError(f"invalid ground height: {h}") from err
     main, flaps = cfg
+    if main not in AIRFOILS:
+        ensure_airfoils_loaded()
     if main not in AIRFOILS:
         raise KeyError(f"unknown main airfoil: {main!r}")
     outs = [AIRFOILS[main]]
@@ -626,13 +653,15 @@ def geometry_columns(cfg, ground_h=UNSET):
 FAMOUS_PACKAGES = [
     {
         'id': 'fsg_2018_monash_m18',
+        'source_url': 'https://www.monashmotorsport.com',
+        'source_title': 'Monash Motorsport M18 Technical Archive & Engineering Review',
         'name': 'FSG 2018 · Monash Motorsport (M18) – Front Wing',
         'competition': 'Formula Student Germany (FSG)',
         'comp_short': 'FSG (Germany)',
         'team': 'Monash Motorsport (Monash University)',
         'year': 2018,
         'car': 'M18',
-        'achievement': '🏆 Overall World Champion (FSG 2018 & FSAE-A 2018)',
+        'achievement': 'Overall World Champion (FSG 2018 & FSAE-A 2018)',
         'category': 'Front Wing',
         'role': 'front wing',
         'main': 's1223',
@@ -663,13 +692,15 @@ FAMOUS_PACKAGES = [
     },
     {
         'id': 'fsg_2019_stuttgart_f0711',
+        'source_url': 'https://www.rennteam-stuttgart.de',
+        'source_title': 'Rennteam Uni Stuttgart F0711-14 Engineering Design',
         'name': 'FSG 2019 · Rennteam Uni Stuttgart (F0711-14) – Front Wing',
         'competition': 'Formula Student Germany (FSG)',
         'comp_short': 'FSG (Germany)',
         'team': 'Rennteam Uni Stuttgart (University of Stuttgart)',
         'year': 2019,
         'car': 'F0711-14',
-        'achievement': '🥇 1st Place Combustion Overall (FSG 2019 Champion)',
+        'achievement': '1st Place Combustion Overall (FSG 2019 Champion)',
         'category': 'Front Wing',
         'role': 'front wing',
         'main': 's1223',
@@ -698,13 +729,15 @@ FAMOUS_PACKAGES = [
     },
     {
         'id': 'fsg_2019_tudelft_dut19',
+        'source_url': 'https://www.dutracing.nl',
+        'source_title': 'TU Delft DUT Racing Team DUT19 Aerodynamics Specification',
         'name': 'FSG 2019 · TU Delft (DUT19) – Rear Wing',
         'competition': 'Formula Student Germany (FSG)',
         'comp_short': 'FSG (Germany)',
         'team': 'TU Delft FS Team (DUT Racing, Netherlands)',
         'year': 2019,
         'car': 'DUT19',
-        'achievement': '🥇 1st Place Electric Overall (FSG 2019 Champion)',
+        'achievement': '1st Place Electric Overall (FSG 2019 Champion)',
         'category': 'Rear Wing',
         'role': 'rear wing',
         'main': 'e423',
@@ -733,13 +766,15 @@ FAMOUS_PACKAGES = [
     },
     {
         'id': 'fsae_2019_mit_my19',
+        'source_url': 'https://fsae.mit.edu',
+        'source_title': 'MIT Motorsports Formula SAE Technical Documentation',
         'name': 'FSAE MI 2019 · MIT Motorsports (MY19) – Rear Wing',
         'competition': 'Formula SAE Michigan (FSAE MI)',
         'comp_short': 'FSAE Michigan (USA)',
         'team': 'MIT Motorsports (MIT, USA)',
         'year': 2019,
         'car': 'MY19',
-        'achievement': '🏁 FSAE Americas Peak Downforce Leader',
+        'achievement': 'FSAE Americas Peak Downforce Leader',
         'category': 'Rear Wing',
         'role': 'rear wing',
         'main': 's1223',
@@ -770,13 +805,15 @@ FAMOUS_PACKAGES = [
     },
     {
         'id': 'fsg_2021_tumunich_emuc21',
+        'source_url': 'https://tufast-racingteam.de',
+        'source_title': 'TUfast Racing Team e-MUC21 Aerodynamic Development',
         'name': 'FSG 2021 · TUfast Racing Munich (e-MUC21) – Front Wing',
         'competition': 'Formula Student Germany (FSG)',
         'comp_short': 'FSG (Germany)',
         'team': 'TUfast Racing Munich (TU Munich, Germany)',
         'year': 2021,
         'car': 'e-MUC21',
-        'achievement': '🤖 1st Place Driverless & Electric Champion',
+        'achievement': '1st Place Driverless & Electric Champion',
         'category': 'Front Wing',
         'role': 'front wing',
         'main': 's1210',
@@ -805,13 +842,15 @@ FAMOUS_PACKAGES = [
     },
     {
         'id': 'fsa_2022_graz_jr22',
+        'source_url': 'https://www.joanneum-racing.at',
+        'source_title': 'Joanneum Racing Graz jr22 Vehicle Specifications',
         'name': 'FSA 2022 · Joanneum Racing Graz (jr22) – Front Wing',
         'competition': 'Formula Student Austria (FSA)',
         'comp_short': 'FSA (Austria)',
         'team': 'Joanneum Racing Graz (FH Joanneum, Austria)',
         'year': 2022,
         'car': 'jr22',
-        'achievement': '🇦🇹 FSA 2022 Overall Champion (Red Bull Ring)',
+        'achievement': 'FSA 2022 Overall Champion (Red Bull Ring)',
         'category': 'Front Wing',
         'role': 'front wing',
         'main': 's1223',
@@ -839,13 +878,15 @@ FAMOUS_PACKAGES = [
     },
     {
         'id': 'fsch_2022_amz_mythen',
+        'source_url': 'https://amzracing.ch',
+        'source_title': 'AMZ Racing ETH Zurich Mythen World Record Project',
         'name': 'FS CH 2022 · AMZ Racing (mythen) – Front Wing',
         'competition': 'FS Switzerland & World Record',
         'comp_short': 'FS Switzerland',
         'team': 'AMZ Racing (ETH Zurich / Academic Motorsports Club Zurich)',
         'year': 2022,
         'car': 'mythen',
-        'achievement': '⚡ World Record Acceleration Holder (0-100 km/h in 0.956 s)',
+        'achievement': 'World Record Acceleration Holder (0-100 km/h in 0.956 s)',
         'category': 'Front Wing',
         'role': 'front wing',
         'main': 's1223',
@@ -874,13 +915,15 @@ FAMOUS_PACKAGES = [
     },
     {
         'id': 'fsuk_2019_brookes_obr19',
+        'source_url': 'https://oxfordbrookesracing.co.uk',
+        'source_title': 'Oxford Brookes Racing OBR19 Aerodynamics Package',
         'name': 'FSUK 2019 · Oxford Brookes Racing (OBR19) – Rear Wing',
         'competition': 'Formula Student UK (FSUK)',
         'comp_short': 'FSUK (UK)',
         'team': 'Oxford Brookes Racing (Oxford Brookes University, UK)',
         'year': 2019,
         'car': 'OBR19',
-        'achievement': '🇬🇧 Top UK Team (Silverstone Circuit)',
+        'achievement': 'Top UK Team (Silverstone Circuit)',
         'category': 'Rear Wing',
         'role': 'rear wing',
         'main': 'e423',
@@ -909,13 +952,15 @@ FAMOUS_PACKAGES = [
     },
     {
         'id': 'fsae_2018_lincoln_drs',
+        'source_url': 'https://www.sae.org/publications/technical-papers/content/2018-01-0731/',
+        'source_title': 'SAE Technical Paper 2018-01-0731: FSAE Multi-Element Wing Design',
         'name': 'FSAE MI 2018 · Endurance Low-Drag & DRS Spec – Rear Wing',
         'competition': 'Formula SAE Lincoln / Michigan',
         'comp_short': 'FSAE Michigan (USA)',
         'team': 'High-Speed Endurance & DRS Consortium',
         'year': 2018,
         'car': 'Aero-DRS Spec',
-        'achievement': '💨 Top Speed & Low Drag Efficiency Leader',
+        'achievement': 'Top Speed & Low Drag Efficiency Leader',
         'category': 'Rear Wing',
         'role': 'rear wing',
         'main': 's1210',
@@ -944,13 +989,15 @@ FAMOUS_PACKAGES = [
     },
     {
         'id': 'benchmark_2000_zerihan_zhang',
+        'source_url': 'https://doi.org/10.2514/6.2000-753',
+        'source_title': 'AIAA 2000-0753: Aerodynamics of a Wing in Ground Effect (Zerihan & Zhang)',
         'name': 'WT 2000 · Zerihan & Zhang Benchmark – Front Wing',
         'competition': 'Wind Tunnel Experimental Benchmark',
         'comp_short': 'Wind Tunnel Benchmark',
         'team': 'Imperial College London / Southampton Wind Tunnel Research',
         'year': 2000,
         'car': 'Z&Z Wind Tunnel Model',
-        'achievement': '🔬 Most-Cited FSAE Aerodynamic Benchmark in Literature',
+        'achievement': 'Most-Cited FSAE Aerodynamic Benchmark in Literature',
         'category': 'Benchmark',
         'role': 'front wing',
         'main': 's1223',
@@ -978,13 +1025,15 @@ FAMOUS_PACKAGES = [
     },
     {
         'id': 'fsg_2022_karaceing_kit22e',
+        'source_url': 'https://www.ka-raceing.de',
+        'source_title': 'KA-RaceIng KIT22e Electric Vehicle & Aerodynamics',
         'name': 'FSG 2022 · KA-RaceIng KIT (KIT22e) – Front Wing',
         'competition': 'Formula Student Germany (FSG)',
         'comp_short': 'FSG (Germany)',
         'team': 'KA-RaceIng (Karlsruhe Institute of Technology)',
         'year': 2022,
         'car': 'KIT22e',
-        'achievement': '🏆 FSG 2022 Overall Podium & FS East Champion',
+        'achievement': 'FSG 2022 Overall Podium & FS East Champion',
         'category': 'Front Wing',
         'role': 'front wing',
         'main': 's1223',
@@ -1013,13 +1062,15 @@ FAMOUS_PACKAGES = [
     },
     {
         'id': 'fseast_2021_chalmers_cfs21',
+        'source_url': 'https://www.chalmersformulastudent.se',
+        'source_title': 'Chalmers Formula Student CFS21 Engineering Portfolio',
         'name': 'FS East 2021 · Chalmers Formula Student (CFS21) – Rear Wing',
         'competition': 'Formula Student East (FS East)',
         'comp_short': 'FS East (Hungary)',
         'team': 'Chalmers Formula Student (Chalmers University of Technology)',
         'year': 2021,
         'car': 'CFS21',
-        'achievement': '🥇 FS East 2021 Overall Champion & Efficiency Award',
+        'achievement': 'FS East 2021 Overall Champion & Efficiency Award',
         'category': 'Rear Wing',
         'role': 'rear wing',
         'main': 'e423',
@@ -1048,13 +1099,15 @@ FAMOUS_PACKAGES = [
     },
     {
         'id': 'fsitaly_2022_polito_sc22',
+        'source_url': 'https://squadracorsepolito.com',
+        'source_title': 'Squadra Corse PoliTO SC22 Technical Archive',
         'name': 'FS Italy 2022 · Squadra Corse PoliTO (SC22) – Front Wing',
         'competition': 'Formula Student Italy (FS Italy)',
         'comp_short': 'FS Italy',
         'team': 'Squadra Corse PoliTO (Politecnico di Torino)',
         'year': 2022,
         'car': 'SC22',
-        'achievement': '🏁 FS Italy Autocross Winner & Dynamic Events Trophy',
+        'achievement': 'FS Italy Autocross Winner & Dynamic Events Trophy',
         'category': 'Front Wing',
         'role': 'front wing',
         'main': 's1223',
@@ -1083,13 +1136,15 @@ FAMOUS_PACKAGES = [
     },
     {
         'id': 'fsnl_2021_ecurieaix_eace09',
+        'source_url': 'https://ecurie-aix.de',
+        'source_title': 'Ecurie Aix RWTH Aachen eace09 Vehicle Specifications',
         'name': 'FS Netherlands 2021 · Ecurie Aix (eace09) – Front Wing',
         'competition': 'Formula Student Netherlands (FSN)',
         'comp_short': 'FS Netherlands',
         'team': 'Ecurie Aix (RWTH Aachen University)',
         'year': 2021,
         'car': 'eace09',
-        'achievement': '🥇 FS Netherlands 1st Overall Electric & FS Spain Podium',
+        'achievement': 'FS Netherlands 1st Overall Electric & FS Spain Podium',
         'category': 'Front Wing',
         'role': 'front wing',
         'main': 'be50',
@@ -1118,13 +1173,15 @@ FAMOUS_PACKAGES = [
     },
     {
         'id': 'fsae_2022_wisconsin_wr222',
+        'source_url': 'https://wisconsinracing.org',
+        'source_title': 'Wisconsin Racing WR-222 Formula SAE Team Design',
         'name': 'FSAE MI 2022 · Wisconsin Racing (WR-222) – Rear Wing',
         'competition': 'Formula SAE Michigan (FSAE MI)',
         'comp_short': 'FSAE Michigan (USA)',
         'team': 'Wisconsin Racing (Univ. of Wisconsin–Madison)',
         'year': 2022,
         'car': 'WR-222',
-        'achievement': '🥉 FSAE Michigan Top-3 Overall & Engineering Design Finalist',
+        'achievement': 'FSAE Michigan Top-3 Overall & Engineering Design Finalist',
         'category': 'Rear Wing',
         'role': 'rear wing',
         'main': 's1223',
@@ -1154,13 +1211,15 @@ FAMOUS_PACKAGES = [
     },
     {
         'id': 'fsae_2019_ets_manic19',
+        'source_url': 'https://formuleets.ca',
+        'source_title': 'Formule ETS MANIC-19 Technical Design Portfolio',
         'name': 'FSAE MI 2019 · Formule ETS (MANIC-19) – Rear Wing',
         'competition': 'Formula SAE Michigan (FSAE MI)',
         'comp_short': 'FSAE Michigan (USA)',
         'team': 'Formule ETS (École de technologie supérieure Montréal)',
         'year': 2019,
         'car': 'MANIC-19',
-        'achievement': '🏆 Formula North Champion & FSAE Michigan Design Finalist',
+        'achievement': 'Formula North Champion & FSAE Michigan Design Finalist',
         'category': 'Rear Wing',
         'role': 'rear wing',
         'main': 'e423',
@@ -1189,13 +1248,15 @@ FAMOUS_PACKAGES = [
     },
     {
         'id': 'fsa_2021_tugraz_tankia21',
+        'source_url': 'https://racing.tugraz.at',
+        'source_title': 'TU Graz Racing Team TANKIA 2021 Specifications',
         'name': 'FSA 2021 · TU Graz Racing (Tankia 2021) – Front Wing',
         'competition': 'Formula Student Austria (FSA)',
         'comp_short': 'FSA (Austria)',
         'team': 'TU Graz Racing Team (Graz University of Technology)',
         'year': 2021,
         'car': 'Tankia 2021',
-        'achievement': '🥇 FSA 2021 Overall Champion & Skidpad Trophy',
+        'achievement': 'FSA 2021 Overall Champion & Skidpad Trophy',
         'category': 'Front Wing',
         'role': 'front wing',
         'main': 's1223',
@@ -1224,13 +1285,15 @@ FAMOUS_PACKAGES = [
     },
     {
         'id': 'fsae_2018_tamu_18',
+        'source_url': 'https://fsae.tamu.edu',
+        'source_title': 'Texas A&M Formula SAE TAMU 18 Aerodynamics Documentation',
         'name': 'FSAE MI 2018 · Texas A&M Racing (TAMU 18) – Rear Wing',
         'competition': 'Formula SAE Michigan (FSAE MI)',
         'comp_short': 'FSAE Michigan (USA)',
         'team': 'Texas A&M Racing (Texas A&M University)',
         'year': 2018,
         'car': 'TAMU 18',
-        'achievement': '🥈 FSAE Lincoln Overall Podium & Acceleration Award',
+        'achievement': 'FSAE Lincoln Overall Podium & Acceleration Award',
         'category': 'Rear Wing',
         'role': 'rear wing',
         'main': 's1223',
@@ -1259,13 +1322,15 @@ FAMOUS_PACKAGES = [
     },
     {
         'id': 'fsuk_2022_mcgill_mfe22',
+        'source_url': 'https://mcgillformulateam.com',
+        'source_title': 'McGill Formula Electric MFE-22 Technical Archive',
         'name': 'FSUK 2022 · McGill Formula Electric (MFE-22) – Front Wing',
         'competition': 'Formula Student UK (FSUK)',
         'comp_short': 'FSUK (UK)',
         'team': 'McGill Formula Electric (McGill University)',
         'year': 2022,
         'car': 'MFE-22',
-        'achievement': '🏆 Formula Student UK Overall Champion & Best Aero Trophy',
+        'achievement': 'Formula Student UK Overall Champion & Best Aero Trophy',
         'category': 'Front Wing',
         'role': 'front wing',
         'main': 'e423',
@@ -1294,13 +1359,15 @@ FAMOUS_PACKAGES = [
     },
     {
         'id': 'fsspain_2021_bcn_xaloc',
+        'source_url': 'https://bcnemotorsport.upc.edu',
+        'source_title': 'BCN eMotorsport UPC Barcelona Xaloc Single-Seater',
         'name': 'FS Spain 2021 · BCN eMotorsport (Xaloc) – Front Wing',
         'competition': 'Formula Student Spain (FSS)',
         'comp_short': 'FS Spain',
         'team': 'BCN eMotorsport (ETSEIB - UPC Barcelona)',
         'year': 2021,
         'car': 'Xaloc',
-        'achievement': '🥇 FS Spain Overall Champion & Engineering Design Finalist',
+        'achievement': 'FS Spain Overall Champion & Engineering Design Finalist',
         'category': 'Front Wing',
         'role': 'front wing',
         'main': 's1223',
@@ -1327,7 +1394,7 @@ FAMOUS_PACKAGES = [
             'operating_envelope': 'High-lateral-acceleration cornering and slalom maneuvers (16–22 m/s).'
         }
     },
-    {       'achievement': '⚡ Guinness 0-100 km/h Record Holder & FSG Electric '
+    {       'achievement': ' Guinness 0-100 km/h Record Holder & FSG Electric '
                        'Winner',
         'aerodynamics': {       'design_intent': 'Launch Traction & Low-Speed '
                                                  'Longitudinal Load Transfer',
@@ -1360,6 +1427,8 @@ FAMOUS_PACKAGES = [
                               'Outboard endplate footplates direct clean '
                               'airflow around wide 18x7.5 racing slicks.'],
         'id': 'fsg_2021_greenteam_e0711',
+        'source_url': 'https://www.greenteam-stuttgart.de',
+        'source_title': 'GreenTeam Uni Stuttgart E0711-12 World Record & FSG Design',
         'main': 's1223',
         'name': 'FSG 2021 · GreenTeam Stuttgart (E0711-12) – Front Wing',
         're': 345000,
@@ -1373,7 +1442,7 @@ FAMOUS_PACKAGES = [
                            'ld': 4.93},
         'team': 'GreenTeam Uni Stuttgart (University of Stuttgart)',
         'year': 2021},
-    {       'achievement': '🏆 Multi-Time FSG Combustion Overall World Champion',
+    {       'achievement': 'Multi-Time FSG Combustion Overall World Champion',
         'aerodynamics': {       'design_intent': 'Rear Traction for '
                                                  'High-Torque Single-Cylinder '
                                                  'Corner Exit',
@@ -1405,6 +1474,8 @@ FAMOUS_PACKAGES = [
                               'Produces 121.7 N downforce with stable pitch '
                               'derivative across +/- 3 degrees squat.'],
         'id': 'fsg_2019_whz_fp19',
+        'source_url': 'https://racing.fh-zwickau.de',
+        'source_title': 'WHZ Racing Team FP19 Vehicle & Aerodynamics Archive',
         'main': 's1223',
         'name': 'FSG 2019 · WHZ Racing Team (FP19) – Rear Wing',
         're': 230000,
@@ -1418,7 +1489,7 @@ FAMOUS_PACKAGES = [
                            'ld': 4.24},
         'team': 'WHZ Racing Team (UAS Zwickau)',
         'year': 2019},
-    {       'achievement': '🏁 FSG & FS East Top-5 Overall Contender',
+    {       'achievement': 'FSG & FS East Top-5 Overall Contender',
         'aerodynamics': {       'design_intent': 'High Aero Efficiency & Mild '
                                                  'Stall Characteristics',
                                 'flow_physics': 'NACA 6412 aft flap features a '
@@ -1448,6 +1519,8 @@ FAMOUS_PACKAGES = [
                               'Robust performance across varying weather '
                               'conditions and dusty track surfaces.'],
         'id': 'fsg_2022_fasttube_ft22',
+        'source_url': 'https://www.fasttube.de',
+        'source_title': 'FaSTTUBe TU Berlin FT22 Electric Engineering Specs',
         'main': 'e423',
         'name': 'FSG 2022 · FaSTTUBe Berlin (FT22) – Front Wing',
         're': 345000,
@@ -1461,7 +1534,7 @@ FAMOUS_PACKAGES = [
                            'ld': 5.29},
         'team': 'FaSTTUBe (TU Berlin)',
         'year': 2022},
-    {       'achievement': '⚡ FSG Electric Aero Innovation Award',
+    {       'achievement': 'FSG Electric Aero Innovation Award',
         'aerodynamics': {       'design_intent': 'Electric Endurance Energy '
                                                  'Optimization & Drag Shedding',
                                 'flow_physics': 'Moderate camber distribution '
@@ -1490,6 +1563,8 @@ FAMOUS_PACKAGES = [
                               '237 mm stack length ensures strict compliance '
                               'with technical inspection.'],
         'id': 'fsg_2021_starkstrom_uasa21',
+        'source_url': 'https://starkstrom-augsburg.de',
+        'source_title': 'StarkStrom Augsburg UASA21 Technical Documentation',
         'main': 'e420',
         'name': 'FSG 2021 · StarkStrom Augsburg (UASA21) – Rear Wing',
         're': 235000,
@@ -1503,7 +1578,7 @@ FAMOUS_PACKAGES = [
                            'ld': 4.94},
         'team': 'StarkStrom Augsburg (UAS Augsburg)',
         'year': 2021},
-    {       'achievement': '🏆 7-Time Consecutive World Champion Team',
+    {       'achievement': '7-Time Consecutive World Champion Team',
         'aerodynamics': {       'design_intent': 'Total Dynamic Superiority '
                                                  'Across Full Vehicle Yaw '
                                                  'Envelope',
@@ -1535,6 +1610,8 @@ FAMOUS_PACKAGES = [
                               'Refined through full-scale moving ground wind '
                               'tunnel testing and track data.'],
         'id': 'fsae_2019_gfr_gfr19e',
+        'source_url': 'https://global-formula-racing.com',
+        'source_title': 'Global Formula Racing GFR19e Engineering Report',
         'main': 's1223',
         'name': 'FSAE MI 2019 · Global Formula Racing (GFR19e) – Front Wing',
         're': 345000,
@@ -1548,7 +1625,7 @@ FAMOUS_PACKAGES = [
                            'ld': 4.96},
         'team': 'Global Formula Racing (Oregon State / DHBW Ravensburg)',
         'year': 2019},
-    {       'achievement': '🥇 FSAE Michigan Top Contender & Engineering Excellence',
+    {       'achievement': 'FSAE Michigan Top Contender & Engineering Excellence',
         'aerodynamics': {       'design_intent': 'Disturbed Wake Resilience & '
                                                  'Clean Rear Downforce',
                                 'flow_physics': 'Wide slot gaps prevent '
@@ -1577,6 +1654,8 @@ FAMOUS_PACKAGES = [
                               '236 mm stack length provides packaging margin '
                               'for rear carbon bulkhead.'],
         'id': 'fsae_2022_mracing_mr22',
+        'source_url': 'https://mracing.engin.umich.edu',
+        'source_title': 'MRacing University of Michigan MR-22 Aero Documentation',
         'main': 's1223',
         'name': 'FSAE MI 2022 · Michigan MRacing (MR-22) – Rear Wing',
         're': 230000,
@@ -1590,7 +1669,7 @@ FAMOUS_PACKAGES = [
                            'ld': 4.46},
         'team': 'MRacing (University of Michigan)',
         'year': 2022},
-    {       'achievement': '🏆 FSAE Lincoln Champion & Design Event Winner',
+    {       'achievement': 'FSAE Lincoln Champion & Design Event Winner',
         'aerodynamics': {       'design_intent': 'Front Tyre Wake Shedding & '
                                                  'High Ground Suction',
                                 'flow_physics': 'High suction core under S1223 '
@@ -1619,6 +1698,8 @@ FAMOUS_PACKAGES = [
                               'Calibrated outwash tunnels divert tyre wake '
                               'away from floor inlet.'],
         'id': 'fsae_2022_uw_t27',
+        'source_url': 'https://uwformulamotorsports.com',
+        'source_title': 'UW Formula Motorsports T-27 Aerodynamics Repository',
         'main': 's1223',
         'name': 'FSAE MI 2022 · UW Motorsports (T-27) – Front Wing',
         're': 345000,
@@ -1632,7 +1713,7 @@ FAMOUS_PACKAGES = [
                            'ld': 4.97},
         'team': 'UW Formula Motorsports (University of Washington)',
         'year': 2022},
-    {       'achievement': '🥇 Most Successful Team in FSAE History (9-Time '
+    {       'achievement': ' Most Successful Team in FSAE History (9-Time '
                        'Champions)',
         'aerodynamics': {       'design_intent': 'Linear Balance Migration & '
                                                  'Acceleration Traction',
@@ -1662,6 +1743,8 @@ FAMOUS_PACKAGES = [
                               'Robust structural carbon box mounts integrated '
                               'with rear crash structure.'],
         'id': 'fsae_2022_cornell_arg22',
+        'source_url': 'https://cornellracing.com',
+        'source_title': 'Cornell Racing ARG22 Formula SAE Design Archive',
         'main': 'e423',
         'name': 'FSAE MI 2022 · Cornell Racing (ARG22) – Rear Wing',
         're': 230000,
@@ -1675,7 +1758,7 @@ FAMOUS_PACKAGES = [
                            'ld': 4.62},
         'team': 'Cornell Racing (Cornell University)',
         'year': 2022},
-    {       'achievement': '🏆 FSAE Engineering Design Finalist & Aero Award',
+    {       'achievement': 'FSAE Engineering Design Finalist & Aero Award',
         'aerodynamics': {       'design_intent': 'UIUC Low-Re High-Lift '
                                                  'Optimized Velocity Plateau',
                                 'flow_physics': 'BE50 rooftop contour delays '
@@ -1704,6 +1787,8 @@ FAMOUS_PACKAGES = [
                               'High L/D ratio of 5.17 optimizes acceleration '
                               'without penalizing top speed.'],
         'id': 'fsae_2022_illini_im22',
+        'source_url': 'https://illinimotorsport.com',
+        'source_title': 'Illini Motorsports IM22 Vehicle Technical Portfolio',
         'main': 'be50',
         'name': 'FSAE MI 2022 · Illini Motorsports (IM22) – Front Wing',
         're': 345000,
@@ -1717,7 +1802,7 @@ FAMOUS_PACKAGES = [
                            'ld': 5.17},
         'team': 'Illini Motorsports (Univ. of Illinois Urbana-Champaign)',
         'year': 2022},
-    {       'achievement': '🥇 FSA 2021 Overall Podium & Skidpad World Contender',
+    {       'achievement': 'FSA 2021 Overall Podium & Skidpad World Contender',
         'aerodynamics': {       'design_intent': 'Skidpad G-Force Maximization '
                                                  '& Braking Stability',
                                 'flow_physics': 'High slot velocity ratio '
@@ -1747,6 +1832,8 @@ FAMOUS_PACKAGES = [
                               'Maintains attached circulation across '
                               'aggressive 1.8g braking deceleration.'],
         'id': 'fsa_2021_tuwien_edge12',
+        'source_url': 'https://racing.tuwien.ac.at',
+        'source_title': 'TU Wien Racing Team EDGE 12 Vehicle Specifications',
         'main': 's1223',
         'name': 'FSA 2021 · TU Wien Racing (Edge 12) – Front Wing',
         're': 345000,
@@ -1760,7 +1847,7 @@ FAMOUS_PACKAGES = [
                            'ld': 4.91},
         'team': 'TU Wien Racing (TU Wien)',
         'year': 2021},
-    {       'achievement': '🏆 FSA 2022 Acceleration Trophy & Engineering Design '
+    {       'achievement': ' FSA 2022 Acceleration Trophy & Engineering Design '
                        'Finalist',
         'aerodynamics': {       'design_intent': 'Active DRS Integration & '
                                                  'Rear Axle Torque Vectoring '
@@ -1794,6 +1881,8 @@ FAMOUS_PACKAGES = [
                               'Engineered for 4-wheel independent torque '
                               'vectoring vehicle dynamics.'],
         'id': 'fsa_2022_tuwien_edge13',
+        'source_url': 'https://racing.tuwien.ac.at',
+        'source_title': 'TU Wien Racing Team EDGE 13 Aerodynamics & Design',
         'main': 's1223',
         'name': 'FSA 2022 · TU Wien Racing (Edge 13) – Rear Wing',
         're': 230000,
@@ -1807,7 +1896,7 @@ FAMOUS_PACKAGES = [
                            'ld': 4.39},
         'team': 'TU Wien Racing (TU Wien)',
         'year': 2022},
-    {       'achievement': '🥇 Most Successful UK Formula Student Team in History',
+    {       'achievement': 'Most Successful UK Formula Student Team in History',
         'aerodynamics': {       'design_intent': 'Silverstone Runway Gust '
                                                  'Insensitivity & High L/D',
                                 'flow_physics': 'Large leading-edge radius on '
@@ -1837,6 +1926,8 @@ FAMOUS_PACKAGES = [
                               'Yields 278.4 N downforce with high L/D ratio of '
                               '5.22.'],
         'id': 'fsuk_2021_bath_tbr21',
+        'source_url': 'https://teambathracing.com',
+        'source_title': 'Team Bath Racing TBR21 Technical Archive',
         'main': 'e423',
         'name': 'FSUK 2021 · Team Bath Racing (TBR21) – Front Wing',
         're': 345000,
@@ -1850,7 +1941,7 @@ FAMOUS_PACKAGES = [
                            'ld': 5.22},
         'team': 'Team Bath Racing (University of Bath)',
         'year': 2021},
-    {       'achievement': '🏆 FSUK Top-3 UK Team & Engineering Design Finalist',
+    {       'achievement': 'FSUK Top-3 UK Team & Engineering Design Finalist',
         'aerodynamics': {       'design_intent': 'Straight-Line Drag Penalty '
                                                  'Reduction with High '
                                                  'Downforce',
@@ -1880,6 +1971,8 @@ FAMOUS_PACKAGES = [
                               'Low profile drag helps maintain competitive '
                               'acceleration down Wellington Straight.'],
         'id': 'fsuk_2022_sheffield_sfr22',
+        'source_url': 'https://sheffieldformularacing.co.uk',
+        'source_title': 'Sheffield Formula Racing SFR22 Vehicle Portfolio',
         'main': 'e423',
         'name': 'FSUK 2022 · Sheffield Formula Racing (SFR22) – Rear Wing',
         're': 235000,
@@ -1893,7 +1986,7 @@ FAMOUS_PACKAGES = [
                            'ld': 4.66},
         'team': 'Sheffield Formula Racing (University of Sheffield)',
         'year': 2022},
-    {       'achievement': '🥇 Formula Student Germany & FS Italy Champion Team',
+    {       'achievement': 'Formula Student Germany & FS Italy Champion Team',
         'aerodynamics': {       'design_intent': 'Front Balance Retention & '
                                                  'Rapid Transient Pitch '
                                                  'Recovery',
@@ -1922,6 +2015,8 @@ FAMOUS_PACKAGES = [
                               'Refined using high-order DDES CFD and extensive '
                               'track telemetry validation.'],
         'id': 'fsitaly_2021_dynamis_dp21',
+        'source_url': 'https://www.dynamisprc.com',
+        'source_title': 'Dynamis PRC Politecnico di Milano DP21 Technical Report',
         'main': 's1223',
         'name': 'FS Italy 2021 · Dynamis PRC (DP21) – Front Wing',
         're': 345000,
@@ -1935,7 +2030,7 @@ FAMOUS_PACKAGES = [
                            'ld': 4.91},
         'team': 'Dynamis PRC (Politecnico di Milano)',
         'year': 2021},
-    {       'achievement': '🏆 FS Italy 2022 Overall Champion & Dynamic Trophy',
+    {       'achievement': 'FS Italy 2022 Overall Champion & Dynamic Trophy',
         'aerodynamics': {       'design_intent': 'Four-Wheel Independent Drive '
                                                  'Dynamic Rear Stabilization',
                                 'flow_physics': 'Smooth Stratford pressure '
@@ -1964,6 +2059,8 @@ FAMOUS_PACKAGES = [
                               'Optimized for electric four-wheel independent '
                               'drive vehicle stability.'],
         'id': 'fsitaly_2022_dynamis_dp22',
+        'source_url': 'https://www.dynamisprc.com',
+        'source_title': 'Dynamis PRC Politecnico di Milano DP22 Aerodynamics',
         'main': 's1223',
         'name': 'FS Italy 2022 · Dynamis PRC (DP22) – Rear Wing',
         're': 230000,
@@ -1977,7 +2074,7 @@ FAMOUS_PACKAGES = [
                            'ld': 4.36},
         'team': 'Dynamis PRC (Politecnico di Milano)',
         'year': 2022},
-    {       'achievement': '⚡ FS Italy Electric Dynamic Events Trophy',
+    {       'achievement': 'FS Italy Electric Dynamic Events Trophy',
         'aerodynamics': {       'design_intent': 'High Front Lateral Authority '
                                                  '& Low Reynolds Number Flow '
                                                  'Attachment',
@@ -2008,6 +2105,8 @@ FAMOUS_PACKAGES = [
                               'Generates strong front-axle bite without '
                               'inducing sudden understeer.'],
         'id': 'fsitaly_2021_raceup_mg21',
+        'source_url': 'https://raceup.it',
+        'source_title': 'Race UP Team University of Padova MG21 Technical Archive',
         'main': 'e423',
         'name': 'FS Italy 2021 · Race UP Team (MG21) – Front Wing',
         're': 345000,
@@ -2021,7 +2120,7 @@ FAMOUS_PACKAGES = [
                            'ld': 5.12},
         'team': 'Race UP Team (University of Padova)',
         'year': 2021},
-    {       'achievement': '🥇 FS East Overall Winner & Dynamic Excellence Award',
+    {       'achievement': 'FS East Overall Winner & Dynamic Excellence Award',
         'aerodynamics': {       'design_intent': 'Underfloor Vortex Sealing & '
                                                  'High Downforce Turn-In',
                                 'flow_physics': 'Outboard flap slots feed '
@@ -2051,6 +2150,8 @@ FAMOUS_PACKAGES = [
                               'Integrated carbon endplates channel vortex '
                               'energy to seal the underfloor.'],
         'id': 'fseast_2021_bme_frec008',
+        'source_url': 'https://bmefrt.hu',
+        'source_title': 'BME Formula Racing Team FREC-008 Vehicle Documentation',
         'main': 's1223',
         'name': 'FS East 2021 · BME Formula Racing (FREC-008) – Front Wing',
         're': 345000,
@@ -2064,7 +2165,7 @@ FAMOUS_PACKAGES = [
                            'ld': 4.96},
         'team': 'BME Formula Racing Team (Budapest Univ. of Tech)',
         'year': 2021},
-    {       'achievement': '🏆 Formula Student Czech Champion & FS East Podium',
+    {       'achievement': 'Formula Student Czech Champion & FS East Podium',
         'aerodynamics': {       'design_intent': 'Longitudinal Balance '
                                                  'Stability & Low Induced Drag',
                                 'flow_physics': 'Graduated flap chords '
@@ -2093,6 +2194,8 @@ FAMOUS_PACKAGES = [
                               'Engineered for maximum longitudinal stability '
                               'under hard braking and acceleration.'],
         'id': 'fseast_2022_ctucartech_fs14',
+        'source_url': 'https://cartech.cvut.cz',
+        'source_title': 'CTU CarTech Prague FS.14 Aerodynamics Specification',
         'main': 'e423',
         'name': 'FS East 2022 · CTU CarTech Prague (FS.14) – Rear Wing',
         're': 230000,
@@ -2106,7 +2209,7 @@ FAMOUS_PACKAGES = [
                            'ld': 4.67},
         'team': 'CTU CarTech (Czech Technical University in Prague)',
         'year': 2022},
-    {       'achievement': '⚡ FSN Autonomous & Driverless Champion',
+    {       'achievement': 'FSN Autonomous & Driverless Champion',
         'aerodynamics': {       'design_intent': 'Autonomous Path Tracking '
                                                  'Predictability & High '
                                                  'Efficiency',
@@ -2139,6 +2242,8 @@ FAMOUS_PACKAGES = [
                               'Ensures predictable, linear tyre normal load '
                               'for autonomous path tracking.'],
         'id': 'fsnl_2022_ure_ure16',
+        'source_url': 'https://universityracing.nl',
+        'source_title': 'University Racing Eindhoven URE16 Electric Single-Seater',
         'main': 'be50',
         'name': 'FS Netherlands 2022 · URE Eindhoven (URE16) – Front Wing',
         're': 345000,
@@ -2152,7 +2257,7 @@ FAMOUS_PACKAGES = [
                            'ld': 5.24},
         'team': 'University Racing Eindhoven (TU Eindhoven)',
         'year': 2022},
-    {       'achievement': '🏆 Formula Student Spain Overall Podium Winner',
+    {       'achievement': 'Formula Student Spain Overall Podium Winner',
         'aerodynamics': {       'design_intent': 'Montmeló Circuit '
                                                  'High-Temperature Boundary '
                                                  'Layer Stability',
@@ -2184,6 +2289,8 @@ FAMOUS_PACKAGES = [
                               '236 mm stack length provides packaging '
                               'compliance with zero inspection disputes.'],
         'id': 'fsspain_2021_arus_art21',
+        'source_url': 'https://arusteam.com',
+        'source_title': 'ARUS Andalucia Racing Team ART-21 Technical Portfolio',
         'main': 's1223',
         'name': 'FS Spain 2021 · ARUS Andalucía Racing (ART-21) – Rear Wing',
         're': 230000,
@@ -2292,6 +2399,7 @@ def rate_all_profiles(m, status):
         "Score_Autocross": float("nan"),
         "Score_Efficiency": float("nan"),
         "Score_Robust": float("nan"),
+        "Score_ClStability": float("nan"),
         "Score_LapTime": float("nan"),
     }
     if status != "Valid" or m is None:
@@ -2311,6 +2419,7 @@ def rate_all_profiles(m, status):
     s_auto = round(calc_profile_score(SCORING_PROFILES["autocross"]["weights"], df_s, mg_s, ef_s, rb_s), 2)
     s_eff = round(calc_profile_score(SCORING_PROFILES["efficiency"]["weights"], df_s, mg_s, ef_s, rb_s), 2)
     s_rob = round(calc_profile_score(SCORING_PROFILES["robust"]["weights"], df_s, mg_s, ef_s, rb_s), 2)
+    s_cl_stab = round(calc_profile_score(SCORING_PROFILES["cl_stability"]["weights"], df_s, mg_s, ef_s, rb_s), 2)
     s_lap = round(calc_profile_score(SCORING_PROFILES["laptime"]["weights"], df_s, mg_s, ef_s, rb_s), 2)
 
     return {
@@ -2320,6 +2429,7 @@ def rate_all_profiles(m, status):
         "Score_Autocross": s_auto,
         "Score_Efficiency": s_eff,
         "Score_Robust": s_rob,
+        "Score_ClStability": s_cl_stab,
         "Score_LapTime": s_lap,
     }
 
@@ -2595,6 +2705,91 @@ def find_java_jars():
             if os.path.isfile(jf):
                 return jf, (mh if os.path.isfile(mh) else None)
     return JAVAFOIL_JAR, None
+
+
+def launch_javafoil_gui(cfg, ground_h=None, re_val=None, title="FSAE Multi-Element Wing", re=None):
+    """
+    Exports the current multi-element wing stack into a JavaFoil geometry file,
+    creates an interactive bootstrap script without JavaFoil.Exit(), and launches
+    the JavaFoil GUI in the background so the user can inspect, modify, or test it interactively.
+    Returns (success: bool, message: str, proc: subprocess.Popen or None).
+    """
+    ensure_airfoils_loaded()
+    if not cfg or not cfg[0]:
+        return False, "No valid wing configuration provided.", None
+
+    import re as _re_mod
+    effective_re = re_val if re_val is not None else (re if re is not None else RE)
+
+    java_bin = find_java_executable()
+    jf_jar, mh_jar = find_java_jars()
+    if not jf_jar or not os.path.exists(jf_jar):
+        return False, "javafoil.jar not found. Please verify JavaFoil installation.", None
+
+    try:
+        outs = build_outlines(cfg, ground_h)
+    except Exception as e:
+        return False, f"Could not construct wing geometry: {e}", None
+
+    gui_dir = os.path.join(OUT_DIR, "javafoil_gui")
+    os.makedirs(gui_dir, exist_ok=True)
+
+    wing_path = os.path.join(gui_dir, "wing.txt")
+    script_path = os.path.join(gui_dir, "gui_startup.jfs")
+
+    clean_title = _re_mod.sub(r'[\r\n\t]+', ' ', str(title)).strip() or "FSAE Multi-Element Wing"
+    with open(wing_path, "w", encoding="utf-8") as f:
+        f.write(f"{clean_title}\n")
+        for i, o in enumerate(outs):
+            if i > 0:
+                f.write("9999.9 9999.9\n")
+            for pt in o:
+                f.write(f"{pt[0]:.6f} {pt[1]:.6f}\n")
+
+    re_val = effective_re
+    ge_flag = 1 if ground_h is not None else 0
+    with open(script_path, "w", encoding="utf-8") as f:
+        f.write(f"""Options.Country(10);
+Geometry.Open("wing.txt");
+Options.MachNumber(0);
+Options.StallModel(0);
+Options.TransitionModel(1);
+Options.GroundEffect({ge_flag});
+Options.HeightOverSpan(0.5);
+Options.AspectRatio(0);
+Options.SweepAngle(0.0);
+Options.ReynoldsNumber({re_val:g});
+""")
+
+    # Copy jars if needed
+    dest_jf = os.path.join(gui_dir, JAVAFOIL_JAR)
+    if not os.path.exists(dest_jf):
+        try: shutil.copy(jf_jar, dest_jf)
+        except Exception: pass
+    if mh_jar and os.path.isfile(mh_jar):
+        dest_mh = os.path.join(gui_dir, "mhclasses.jar")
+        if not os.path.exists(dest_mh):
+            try: shutil.copy(mh_jar, dest_mh)
+            except Exception: pass
+
+    if sys.platform != "win32" and shutil.which("faketime"):
+        cmd = ["faketime", "-f", safe_date_str, java_bin, "-client", "-Xverify:none", "-XX:TieredStopAtLevel=1",
+               "-jar", JAVAFOIL_JAR, "Script=gui_startup.jfs"]
+    else:
+        cmd = [java_bin, "-client", "-Xverify:none", "-XX:TieredStopAtLevel=1",
+               "-jar", JAVAFOIL_JAR, "Script=gui_startup.jfs"]
+
+    env = os.environ.copy()
+    if sys.platform != "win32":
+        if "DISPLAY" not in env or not env["DISPLAY"]:
+            env["DISPLAY"] = ":0"
+
+    popen_kwargs = {"cwd": gui_dir, "env": env}
+    try:
+        proc = subprocess.Popen(cmd, **popen_kwargs)
+        return True, f"JavaFoil GUI launched with {len(outs)} wing elements loaded.", proc
+    except Exception as e:
+        return False, f"Failed to launch JavaFoil GUI: {e}", None
 
 
 

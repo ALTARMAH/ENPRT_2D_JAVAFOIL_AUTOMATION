@@ -760,6 +760,11 @@ class App(tk.Tk):
     def log(self, text):
         self.ui_q.put(('log', text))
 
+    def set_status(self, text):
+        if hasattr(self, 'header_status'):
+            self.header_status.set(str(text))
+        self.log(str(text))
+
     def _append_log(self, widget, text, cap=2000, follow=True):
         if not widget:
             return
@@ -1026,7 +1031,7 @@ class App(tk.Tk):
         self.tab_set = ttk.Frame(self.notebook)
         self.notebook.add(self.tab_cfg, text="  Configure  ")
         self.notebook.add(self.tab_af, text="  Airfoils  ")
-        self.notebook.add(self.tab_comb, text="  ⭐ Famous Wings  ")
+        self.notebook.add(self.tab_comb, text="  Famous Wings  ")
         self.notebook.add(self.tab_cam, text="  Campaigns  ")
         self.notebook.add(self.tab_res, text="  Results  ")
         self.notebook.add(self.tab_gr, text="  Graphs  ")
@@ -1320,15 +1325,29 @@ class App(tk.Tk):
         add_tooltip(chk_btn, "Instant PASS/FAIL against size limits. Prints exact mm vs limit and gap/overlap %. Redraws preview.")
 
         sim_btn = ttk.Button(cfg, text="Simulate this wing now (JavaFoil)", command=self.on_simulate)
-        sim_btn.grid(row=25, column=0, columnspan=2, sticky='we', pady=3)
+        sim_btn.grid(row=25, column=0, columnspan=2, sticky='we', pady=2)
         add_tooltip(sim_btn, "Run single JavaFoil analysis in background. Appends row to results.csv.")
 
+        jf_btn = ttk.Button(cfg, text="Open in JavaFoil GUI", command=self.on_open_javafoil)
+        jf_btn.grid(row=26, column=0, columnspan=2, sticky='we', pady=2)
+        add_tooltip(jf_btn, "Launch JavaFoil interactive GUI with this multi-element wing stack pre-loaded into Geometry.")
+
+        nav_frame = ttk.Frame(cfg)
+        nav_frame.grid(row=27, column=0, columnspan=2, sticky='we', pady=2)
+        nav_opt_btn = ttk.Button(nav_frame, text="Send to Optimizer", command=self.on_send_configure_to_optimizer)
+        nav_opt_btn.pack(side='left', fill='x', expand=True, padx=(0, 2))
+        add_tooltip(nav_opt_btn, "Transfer current wing setup into Optimizer (Tab 6) as base design and switch tabs.")
+
+        nav_gr_btn = ttk.Button(nav_frame, text="Go to Graphs", command=self.on_go_to_graphs)
+        nav_gr_btn.pack(side='left', fill='x', expand=True, padx=(2, 0))
+        add_tooltip(nav_gr_btn, "Switch directly to Graphs (Tab 5) to inspect aerodynamic polars and flow fields.")
+
         term_btn = ttk.Button(cfg, text="Run in Terminal (konsole)", command=self.on_simulate_terminal)
-        term_btn.grid(row=26, column=0, columnspan=2, sticky='we', pady=3)
+        term_btn.grid(row=28, column=0, columnspan=2, sticky='we', pady=2)
         add_tooltip(term_btn, "Launch simulation in separate konsole terminal (avoids GUI fork deadlock on Linux).")
 
         batch_btn = ttk.Button(cfg, text="Batch: Multiple Main/Flaps", command=self.on_batch_simulate)
-        batch_btn.grid(row=27, column=0, columnspan=2, sticky='we', pady=3)
+        batch_btn.grid(row=29, column=0, columnspan=2, sticky='we', pady=2)
         add_tooltip(batch_btn, "Run multiple main/flap combinations sequentially. Select airfoils from dialogs.")
 
         self.derive_state = tk.StringVar(value='')
@@ -1473,7 +1492,7 @@ class App(tk.Tk):
         reg_errors = A.regulatory_reject(outs, mount)
         if reg_errors:
             for err in reg_errors:
-                msg.append(f"  ❌ {err['rule']}: {err['description']}")
+                msg.append(f"  [FAIL] {err['rule']}: {err['description']}")
                 msg.append(f"     → Actual: {err['actual']:.1f} mm | Limit: {err['limit']:.1f} mm")
                 msg.append(f"     → Suggestion: {err['fix']}")
 
@@ -1490,7 +1509,7 @@ class App(tk.Tk):
                 if k in cols and limit is not None:
                     val = cols[k]
                     bad = (val > limit) if direction == 'max' else (val < limit)
-                    status_icon = "❌" if bad else "✅"
+                    status_icon = "[FAIL]" if bad else "[PASS]"
                     msg.append(f"  {status_icon} {k}: {val:.1f} mm (limit {limit:.1f} mm)")
 
         gcols = A.geometry_columns(cfg)
@@ -1499,11 +1518,80 @@ class App(tk.Tk):
             ov = gcols.get(f"{pair}_Overlap_pct")
             gap_str = f"{gap:.1f}%" if gap is not None else "N/A"
             ov_str = f"{ov:.1f}%" if ov is not None else "N/A"
-            overlap_status = "⚠️" if (ov is not None and ov > 0) else "✅"
+            overlap_status = "[WARN]" if (ov is not None and ov > 0) else "[OK]"
             msg.append(f"  {pair}: gap {gap_str} | overlap {ov_str} {overlap_status}")
 
         self.log("\n".join(msg))
         self.draw_geometry(cfg, chord, A.GROUND_H)
+
+    def on_open_javafoil(self):
+        cfg = self.read_cfg()
+        if not cfg:
+            messagebox.showwarning("Incomplete Configuration", "Please select a main airfoil and configured flaps before opening JavaFoil.")
+            return
+        gh = None
+        try:
+            if self.ge_state.get() and self.gh_state.get().strip() not in ('', 'none', 'None'):
+                gh = float(self.gh_state.get())
+        except ValueError:
+            gh = None
+        re_val = 570000
+        try:
+            re_val = float(self.vars['re'].get())
+        except (KeyError, ValueError):
+            pass
+        title = f"FSAE Wing ({cfg[0]} + {len(cfg[1])} flaps)"
+        ok, msg, _ = A.launch_javafoil_gui(cfg, ground_h=gh, re=re_val, title=title)
+        if ok:
+            self.log(msg)
+            self.set_status(f"JavaFoil GUI launched: {title}")
+        else:
+            messagebox.showerror("JavaFoil Launch Error", msg)
+
+    def on_send_configure_to_optimizer(self):
+        cfg = self.read_cfg()
+        if cfg:
+            self._opt_base_cfg = cfg
+            if hasattr(self, 'opt_main_box'):
+                self.opt_main_box.set(cfg[0])
+            for i, vals_cb in enumerate(getattr(self, 'opt_flap_rows', [])):
+                vals, cb = vals_cb
+                if i < len(cfg[1]):
+                    fn, sc, ang, xp, yp = cfg[1][i]
+                    vals[0].set(fn)
+                    vals[1].set(str(sc))
+                    vals[2].set(str(ang))
+                    vals[3].set(str(xp))
+                    vals[4].set(str(yp))
+                    vals[5].set(True)
+                else:
+                    vals[0].set('')
+                    vals[5].set(False)
+            try:
+                for k in ('chord', 'speed', 're'):
+                    if k in self.vars and k in self.opt_vars:
+                        self.opt_vars[k].set(self.vars[k].get())
+                if hasattr(self, 'ge_state') and hasattr(self, 'opt_ge_v'):
+                    self.opt_ge_v.set(self.ge_state.get())
+                if hasattr(self, 'gh_state') and hasattr(self, 'opt_gh_state'):
+                    self.opt_gh_state.set(self.gh_state.get())
+            except Exception:
+                pass
+            if hasattr(self, 'opt_base_info'):
+                self.opt_base_info.configure(state='normal')
+                self.opt_base_info.delete('1.0', 'end')
+                self.opt_base_info.insert('1.0', f"Base Wing loaded from Configure Tab: Main: {cfg[0]} ({1 + len(cfg[1])} elements)\nFlap geometries loaded. Ready to optimize.")
+                self.opt_base_info.configure(state='disabled')
+            self.log(f"Transferred configuration to Optimizer as base design: {A.describe(cfg)}")
+            self.set_status(f"Loaded {cfg[0]} wing into Optimizer.")
+        self.notebook.select(self.tab_opt)
+
+    def on_go_to_graphs(self):
+        try:
+            self.notebook.select(self.tab_gr)
+        except Exception:
+            pass
+        self.set_status("Switched to Graphs view.")
 
     def draw_geometry(self, cfg, chord, ground_h):
         if not self.canvas:
@@ -2284,7 +2372,7 @@ class App(tk.Tk):
         add_tooltip(self.comb_tree, "Click to inspect values & profile. Double-click to load into Configure (Tab 1).")
 
         ttk.Label(left_pane,
-                  text="💡 Double-click any configuration to load it into Configure (Tab 1).\nUse action buttons on the right to simulate, optimize, or export DXF.",
+                  text="Double-click any configuration to load it into Configure (Tab 1).\nUse action buttons on the right to simulate, test in JavaFoil, optimize, or inspect sources.",
                   foreground=MUTED, justify='left', wraplength=370).pack(anchor='w', padx=6, pady=4)
 
         # Right pane: Inspector, Visualizer & Actions
@@ -2302,7 +2390,7 @@ class App(tk.Tk):
                                        bg=PANEL, fg=ACCENT, anchor='w')
         self.comb_title_lbl.pack(side='left')
 
-        self.comb_rules_badge = tk.Label(top_h, text="✅ 100% FSUK / FSG Compliant",
+        self.comb_rules_badge = tk.Label(top_h, text="100% FSUK / FSG Compliant",
                                          bg='#064e3b', fg='#34d399', font=('TkDefaultFont', 8, 'bold'),
                                          padx=6, pady=2)
         self.comb_rules_badge.pack(side='right')
@@ -2337,19 +2425,27 @@ class App(tk.Tk):
         act_frame = ttk.Frame(right_pane)
         act_frame.pack(fill='x', padx=4, pady=2)
 
-        btn_cfg = ttk.Button(act_frame, text="🚀 Load to Configure (Tab 1)", command=self._comb_load_to_configure)
+        btn_cfg = ttk.Button(act_frame, text="Load to Configure", command=self._comb_load_to_configure)
         btn_cfg.pack(side='left', padx=2)
         add_tooltip(btn_cfg, "Load airfoils, angles, and geometry into Configure (Tab 1) and calculate sizing.")
 
-        btn_opt = ttk.Button(act_frame, text="🎯 Send to Optimizer (Tab 6)", command=self._comb_send_to_optimizer)
+        btn_opt = ttk.Button(act_frame, text="Send to Optimizer", command=self._comb_send_to_optimizer)
         btn_opt.pack(side='left', padx=2)
         add_tooltip(btn_opt, "Set this package as baseline in Tab 6 Optimizer to refine downforce and pitch stability.")
 
-        btn_sim = ttk.Button(act_frame, text="🏎️ Run Simulation Now", command=self._comb_simulate_now)
+        btn_sim = ttk.Button(act_frame, text="Run Simulation", command=self._comb_simulate_now)
         btn_sim.pack(side='left', padx=2)
         add_tooltip(btn_sim, "Instantly run JavaFoil analysis on this package and record aerodynamic forces in Results.")
 
-        btn_dxf = ttk.Button(act_frame, text="📐 Export AutoCAD DXF", command=self._comb_export_dxf)
+        btn_jf = ttk.Button(act_frame, text="Open in JavaFoil GUI", command=self._comb_open_javafoil)
+        btn_jf.pack(side='left', padx=2)
+        add_tooltip(btn_jf, "Launch interactive JavaFoil GUI with this multi-element package loaded into Geometry.")
+
+        btn_url = ttk.Button(act_frame, text="Open Source Link", command=self._comb_open_source_url)
+        btn_url.pack(side='left', padx=2)
+        add_tooltip(btn_url, "Open team website / technical reference documentation in web browser.")
+
+        btn_dxf = ttk.Button(act_frame, text="Export AutoCAD DXF", command=self._comb_export_dxf)
         btn_dxf.pack(side='left', padx=2)
         add_tooltip(btn_dxf, "Export precise 2D spline airfoil outlines to AutoCAD DXF for SolidWorks / CAD / CFD.")
 
@@ -2379,7 +2475,7 @@ class App(tk.Tk):
 
         # Tab 1: Element Stack Table
         t1_frame = ttk.Frame(bot_nb)
-        bot_nb.add(t1_frame, text="  📐 Element Stack & Alignment  ")
+        bot_nb.add(t1_frame, text="  Element Stack & Alignment  ")
 
         self.comb_stack_tree = ttk.Treeview(t1_frame, columns=('el', 'foil', 'scale', 'angle', 'x', 'y', 'gap', 'overlap'),
                                             show='headings', height=5)
@@ -2408,7 +2504,7 @@ class App(tk.Tk):
 
         # Tab 2: Aerodynamic Values & Target Performance
         t2_frame = ttk.Frame(bot_nb)
-        bot_nb.add(t2_frame, text="  📊 Aerodynamic Values & Target Forces  ")
+        bot_nb.add(t2_frame, text="  Aerodynamic Values & Target Forces  ")
 
         self.comb_vals_tree = ttk.Treeview(t2_frame, columns=('param', 'val', 'unit', 'desc'), show='headings', height=5)
         self.comb_vals_tree.heading('param', text='Aerodynamic Parameter')
@@ -2427,7 +2523,7 @@ class App(tk.Tk):
 
         # Tab 3: Aerodynamic Rationale & Flow Physics
         t3_frame = ttk.Frame(bot_nb)
-        bot_nb.add(t3_frame, text="  📖 Design Philosophy & Flow Physics  ")
+        bot_nb.add(t3_frame, text="  Design Philosophy & Flow Physics  ")
 
         self.comb_desc_txt = tk.Text(t3_frame, height=6, bg=PANEL2, fg=TXT, wrap='word', bd=0, relief='flat', font=('TkDefaultFont', 9))
         self.comb_desc_txt.pack(fill='both', expand=True, padx=4, pady=4)
@@ -2510,7 +2606,7 @@ class App(tk.Tk):
 
         self.comb_title_var.set(pkg['name'])
         self.comb_achieve_var.set(pkg.get('achievement', ''))
-        self.comb_team_var.set(f"🏁 {pkg.get('competition', '')} · {pkg.get('team', '')} · Car: {pkg.get('car', '')} ({pkg.get('year', '')})")
+        self.comb_team_var.set(f"{pkg.get('competition', '')} · {pkg.get('team', '')} · Car: {pkg.get('car', '')} ({pkg.get('year', '')})")
         self.comb_badge_comp.config(text=f"Event: {pkg.get('comp_short', '')}")
         self.comb_badge_cat.config(text=f"Role: {pkg.get('role', '').title()}")
         num_els = len(pkg.get('flaps', [])) + 1
@@ -2601,13 +2697,17 @@ class App(tk.Tk):
             self.comb_desc_txt.config(state='normal')
             self.comb_desc_txt.delete('1.0', 'end')
             aero = pkg.get('aerodynamics', {})
+            s_title = pkg.get('source_title', 'Formula Student Engineering Archive')
+            s_url = pkg.get('source_url', 'N/A')
             txt_parts = [
-                f"🏆 COMPETITION PEDIGREE & ACHIEVEMENTS: {pkg.get('achievement', 'N/A')}\n",
-                f"🏎️ EVENT & TEAM: {pkg.get('competition', '')} — {pkg.get('team', '')} ({pkg.get('year', '')} {pkg.get('car', '')})\n\n",
-                f"🎯 DESIGN INTENT: {aero.get('design_intent', 'N/A')}\n",
-                f"💨 FLOW PHYSICS: {aero.get('flow_physics', 'N/A')}\n",
-                f"🏁 OPERATING ENVELOPE: {aero.get('operating_envelope', 'N/A')}\n\n",
-                "⭐ ENGINEERING HIGHLIGHTS & ARCHITECTURE:\n"
+                f"COMPETITION PEDIGREE & ACHIEVEMENTS: {pkg.get('achievement', 'N/A')}\n",
+                f"EVENT & TEAM: {pkg.get('competition', '')} — {pkg.get('team', '')} ({pkg.get('year', '')} {pkg.get('car', '')})\n",
+                f"TECHNICAL SOURCE: {s_title}\n",
+                f"SOURCE URL: {s_url}\n\n",
+                f"DESIGN INTENT: {aero.get('design_intent', 'N/A')}\n",
+                f"FLOW PHYSICS: {aero.get('flow_physics', 'N/A')}\n",
+                f"OPERATING ENVELOPE: {aero.get('operating_envelope', 'N/A')}\n\n",
+                "ENGINEERING HIGHLIGHTS & ARCHITECTURE:\n"
             ]
             for h in pkg.get('highlights', []):
                 txt_parts.append(f"  • {h}\n")
@@ -2615,6 +2715,38 @@ class App(tk.Tk):
             self.comb_desc_txt.config(state='disabled')
 
         self._draw_famous_geometry(pkg)
+
+    def _comb_open_source_url(self):
+        pkg = self._get_selected_comb_pkg()
+        if not pkg:
+            messagebox.showinfo("Source Link", "Please select a wing package from the list.")
+            return
+        url = pkg.get('source_url', '')
+        if url:
+            import webbrowser
+            try:
+                webbrowser.open(url)
+                self.log(f"Opened reference URL: {url}")
+                self.set_status(f"Opening browser: {url}")
+            except Exception as e:
+                messagebox.showerror("Error Opening Link", f"Could not launch browser for {url}:\n{e}")
+        else:
+            messagebox.showinfo("Source Link", f"No external URL recorded for {pkg.get('name', 'this package')}.")
+
+    def _comb_open_javafoil(self):
+        pkg = self._get_selected_comb_pkg()
+        if not pkg:
+            messagebox.showinfo("JavaFoil", "Please select a wing package from the list.")
+            return
+        cfg = (pkg['main'], tuple(pkg.get('flaps', [])))
+        gh = pkg.get('gh_pct') if pkg.get('ge') else None
+        re_val = pkg.get('re', 300000)
+        ok, msg, _ = A.launch_javafoil_gui(cfg, ground_h=gh, re=re_val, title=pkg.get('name', 'FSAE Wing'))
+        if ok:
+            self.log(msg)
+            self.set_status(f"JavaFoil GUI launched: {pkg.get('name')}")
+        else:
+            messagebox.showerror("JavaFoil Error", msg)
 
     def _draw_famous_geometry(self, pkg):
         if not getattr(self, 'comb_ax', None) or not getattr(self, 'comb_canvas', None):
@@ -3578,17 +3710,18 @@ class App(tk.Tk):
         self.res_stats = tk.StringVar(value='')
         ttk.Label(top2, textvariable=self.res_stats, foreground=MUTED).pack(side='left', padx=4)
         
-        gen_btn = ttk.Button(top2, text='📊 Generate Graphs', command=self.on_gen_graphs)
+        gen_btn = ttk.Button(top2, text='Generate Graphs', command=self.on_gen_graphs)
         gen_btn.pack(side='right', padx=2)
         add_tooltip(gen_btn, 'Generate high-resolution polar curves, velocity flow field, JavaFoil native graphs, and 2D CAD for the selected run.')
-        ttk.Button(top2, text='⚙️ Load to Configure', command=self.on_apply_to_config).pack(side='right', padx=2)
-        ttk.Button(top2, text='🚀 Send to Optimizer', command=self.on_send_to_optimizer).pack(side='right', padx=2)
+        ttk.Button(top2, text='Load to Configure', command=self.on_apply_to_config).pack(side='right', padx=2)
+        ttk.Button(top2, text='Open in JavaFoil GUI', command=self.on_open_selected_run_in_javafoil).pack(side='right', padx=2)
+        ttk.Button(top2, text='Send to Optimizer', command=self.on_send_to_optimizer).pack(side='right', padx=2)
         ttk.Label(top2, text='(Right-click row for CAD & options)', foreground=MUTED).pack(side='right', padx=4)
 
         # Multi-Objective Scoring Profile Selector Bar
         prof_frame = ttk.Frame(table_frame)
         prof_frame.pack(fill='x', padx=4, pady=(2, 4))
-        ttk.Label(prof_frame, text='🏆 Ranking Metric:', font=('Helvetica', 9, 'bold')).pack(side='left', padx=(2, 4))
+        ttk.Label(prof_frame, text='Ranking Metric:', font=('Helvetica', 9, 'bold')).pack(side='left', padx=(2, 4))
         first_prof = list(A.SCORING_PROFILES.values())[0]
         self.res_scoring_profile = tk.StringVar(value=first_prof['name'])
         prof_names = [p['name'] for p in A.SCORING_PROFILES.values()]
@@ -3694,7 +3827,7 @@ class App(tk.Tk):
         active_root = A.OUT_DIR
         if os.path.isdir(active_root):
             root_id = self.res_folder_tree.insert(
-                '', 'end', text=f"📁 Active Campaign ({os.path.basename(active_root)})",
+                '', 'end', text=f"Active Campaign ({os.path.basename(active_root)})",
                 open=True, values=('', 'Active', '', '', '')
             )
             unb_csv = os.path.join(active_root, 'results.csv')
@@ -3706,13 +3839,13 @@ class App(tk.Tk):
                     dt = ''
                 self.res_folder_tree.insert(
                     root_id, 'end', iid=unb_csv,
-                    text="📄 Unbounded Flow (results.csv)",
+                    text="Unbounded Flow (results.csv)",
                     values=(dt, 'Unbounded', '', '', '')
                 )
             ground_dir = os.path.join(active_root, 'ground')
             if os.path.isdir(ground_dir):
                 gr_root = self.res_folder_tree.insert(
-                    root_id, 'end', text="📁 Ground Effect Scenarios",
+                    root_id, 'end', text="Ground Effect Scenarios",
                     open=True, values=('', 'Ground', '', '', '')
                 )
                 for h_folder in sorted(os.listdir(ground_dir)):
@@ -3727,7 +3860,7 @@ class App(tk.Tk):
                                 dt = ''
                             self.res_folder_tree.insert(
                                 gr_root, 'end', iid=h_csv,
-                                text=f"📄 Ground {h_folder} (results.csv)",
+                                text=f"Ground {h_folder} (results.csv)",
                                 values=(dt, 'Ground', h_folder, '', '')
                             )
                             
@@ -3759,7 +3892,7 @@ class App(tk.Tk):
                         
         if lib_candidates:
             lib_root = self.res_folder_tree.insert(
-                '', 'end', text=f"📁 Archived Run Library ({len(lib_candidates)} runs)",
+                '', 'end', text=f"Archived Run Library ({len(lib_candidates)} runs)",
                 open=True, values=('', 'Library', '', '', len(lib_candidates))
             )
             for d, csv, m in lib_candidates:
@@ -3781,7 +3914,7 @@ class App(tk.Tk):
                 self._run_dirs[iid] = csv
                 folder_node = self.res_folder_tree.insert(
                     lib_root, 'end', iid=iid,
-                    text=f"📁 {os.path.basename(d)}",
+                    text=f"{os.path.basename(d)}",
                     values=(created, kind, main, best, nruns)
                 )
                 sub_ground = os.path.join(d, 'ground')
@@ -3792,7 +3925,7 @@ class App(tk.Tk):
                             self._run_dirs[sub_h_csv] = sub_h_csv
                             self.res_folder_tree.insert(
                                 folder_node, 'end', iid=sub_h_csv,
-                                text=f"📄 Ground {sub_h} (results.csv)",
+                                text=f"Ground {sub_h} (results.csv)",
                                 values=(created, 'Ground', sub_h, '', '')
                             )
         self.res_runs_lbl.set(f"Run Library ready")
@@ -4266,16 +4399,47 @@ class App(tk.Tk):
         rid = r.get('Run_ID', '')
         menu.add_command(label=f"Run {rid} Options:", state='disabled')
         menu.add_separator()
-        menu.add_command(label="🚀  Send to Optimizer (Set as Base Design)", command=lambda: self.on_send_to_optimizer(r))
-        menu.add_command(label="📐  Export 2D CAD Model (AutoCAD DXF)...", command=lambda: self.on_export_cad_dxf(r))
-        menu.add_command(label="🎨  Export Vector Geometry (SVG)...", command=lambda: self.on_export_cad_svg(r))
-        menu.add_command(label="⚙️  Load to Configure Tab", command=self.on_apply_to_config)
+        menu.add_command(label="Send to Optimizer (Set as Base Design)", command=lambda: self.on_send_to_optimizer(r))
+        menu.add_command(label="Open in JavaFoil GUI", command=lambda: self.on_open_selected_run_in_javafoil(r))
+        menu.add_command(label="Load to Configure Tab", command=self.on_apply_to_config)
         menu.add_separator()
-        menu.add_command(label="📊  Generate All Graphs (Code + JavaFoil) & View", command=lambda: self._gen_graphs(r, switch=True))
-        menu.add_command(label="📁  Open Run Graphs Folder in File Manager", command=lambda: self.on_open_run_folder(r))
-        menu.add_command(label="📋  Copy Run Telemetry / Summary to Clipboard", command=lambda: self.on_copy_run_telemetry(r))
-        menu.add_command(label="🗜️  Export Run Archive (.zip)...", command=lambda: self.on_export_selected_run_archive(r))
+        menu.add_command(label="Export 2D CAD Model (AutoCAD DXF)...", command=lambda: self.on_export_cad_dxf(r))
+        menu.add_command(label="Export Vector Geometry (SVG)...", command=lambda: self.on_export_cad_svg(r))
+        menu.add_command(label="Generate All Graphs (Code + JavaFoil) & View", command=lambda: self._gen_graphs(r, switch=True))
+        menu.add_command(label="Open Run Graphs Folder in File Manager", command=lambda: self.on_open_run_folder(r))
+        menu.add_command(label="Copy Run Telemetry / Summary to Clipboard", command=lambda: self.on_copy_run_telemetry(r))
+        menu.add_command(label="Export Run Archive (.zip)...", command=lambda: self.on_export_selected_run_archive(r))
         menu.tk_popup(event.x_root, event.y_root)
+
+    def on_open_selected_run_in_javafoil(self, r=None):
+        if r is None:
+            r = self._selected_row()
+        if r is None or (hasattr(r, 'empty') and r.empty):
+            messagebox.showwarning("No Run Selected", "Please select a simulation run first.")
+            return
+        cfg = self._row_to_cfg(r)
+        if not cfg:
+            messagebox.showerror("Error", "Could not parse multi-element configuration from selected run.")
+            return
+        gh = None
+        try:
+            gh_raw = r.get('Ground_Height_pct', r.get('Ground_Height', None))
+            if gh_raw is not None and str(gh_raw).strip() not in ('', 'none', 'None', 'nan'):
+                gh = float(gh_raw)
+        except Exception:
+            gh = None
+        re_val = 570000
+        try:
+            re_val = float(r.get('Reynolds', 570000))
+        except Exception:
+            pass
+        rid = r.get('Run_ID', 'Run')
+        ok, msg, _ = A.launch_javafoil_gui(cfg, ground_h=gh, re=re_val, title=f"Run {rid} ({cfg[0]})")
+        if ok:
+            self.log(msg)
+            self.set_status(f"JavaFoil GUI launched for Run {rid}.")
+        else:
+            messagebox.showerror("JavaFoil Error", msg)
 
     def on_send_to_optimizer(self, r=None):
         if r is None:
@@ -4547,7 +4711,7 @@ class App(tk.Tk):
         main_frame = tk.Frame(dlg, bg=bg_col, padx=20, pady=16)
         main_frame.pack(fill='both', expand=True)
 
-        header_text = f"✅ Graphs Available (Run {rid})" if already_existed else f"🎉 Graphs Generated Successfully! (Run {rid})"
+        header_text = f"Graphs Available (Run {rid})" if already_existed else f"Graphs Generated Successfully! (Run {rid})"
         lbl_head = tk.Label(main_frame, text=header_text, font=('Segoe UI', 12, 'bold'), fg='#38bdf8' if already_existed else '#4ade80', bg=bg_col)
         lbl_head.pack(anchor='w', pady=(0, 6))
 
@@ -4596,14 +4760,14 @@ class App(tk.Tk):
             self._gen_graphs(r, switch=True, force_regen=True)
 
         b_inside = tk.Button(
-            btn_frame, text="📊 Inside the App", font=('Segoe UI', 10, 'bold'),
+            btn_frame, text="Inside the App", font=('Segoe UI', 10, 'bold'),
             bg='#2563eb', fg='white', activebackground='#1d4ed8', activeforeground='white',
             padx=14, pady=6, relief='flat', cursor='hand2', command=on_view_inside
         )
         b_inside.pack(side='left', padx=(0, 8))
 
         b_fm = tk.Button(
-            btn_frame, text="📁 In File Manager", font=('Segoe UI', 10),
+            btn_frame, text="In File Manager", font=('Segoe UI', 10),
             bg='#334155', fg='#f1f5f9', activebackground='#475569', activeforeground='white',
             padx=14, pady=6, relief='flat', cursor='hand2', command=on_open_fm
         )
@@ -4611,7 +4775,7 @@ class App(tk.Tk):
 
         if already_existed:
             b_regen = tk.Button(
-                btn_frame, text="🔄 Regenerate Fresh", font=('Segoe UI', 9),
+                btn_frame, text="Regenerate Fresh", font=('Segoe UI', 9),
                 bg='#1e293b', fg='#94a3b8', activebackground='#334155', activeforeground='white',
                 padx=10, pady=6, relief='flat', cursor='hand2', command=on_regen
             )
@@ -4775,7 +4939,7 @@ class App(tk.Tk):
                 content = f.read()
             lines = content.splitlines()
             n_lines = len(lines)
-            self.csv_info_var.set(f"📄 {os.path.basename(p)} ({sz_str}, {n_lines} lines)")
+            self.csv_info_var.set(f"{os.path.basename(p)} ({sz_str}, {n_lines} lines)")
             MAX_CHARS = 400000
             self.csv_text.configure(state='normal')
             self.csv_text.delete('1.0', 'end')
@@ -4985,15 +5149,15 @@ class App(tk.Tk):
         btn_box = ttk.Frame(pick)
         btn_box.pack(fill='x', pady=(4, 0))
         
-        b_fm = ttk.Button(btn_box, text='📁 Open in File Manager', command=self.on_open_current_run_folder)
+        b_fm = ttk.Button(btn_box, text='Open in File Manager', command=self.on_open_current_run_folder)
         b_fm.pack(fill='x', pady=1)
         add_tooltip(b_fm, 'Open the run folder in Windows Explorer / OS file manager.')
 
-        b_os = ttk.Button(btn_box, text='🔍 Open in OS Viewer', command=self.on_open_graph)
+        b_os = ttk.Button(btn_box, text='Open in OS Viewer', command=self.on_open_graph)
         b_os.pack(fill='x', pady=1)
         add_tooltip(b_os, 'Open the selected graph in the default image viewer.')
 
-        b_reg = ttk.Button(btn_box, text='🔄 Regenerate Run Graphs', command=self.on_regenerate_current_run_graphs)
+        b_reg = ttk.Button(btn_box, text='Regenerate Run Graphs', command=self.on_regenerate_current_run_graphs)
         b_reg.pack(fill='x', pady=1)
         add_tooltip(b_reg, 'Force recalculation and re-rendering of all graphs for this run.')
 
@@ -5123,25 +5287,25 @@ class App(tk.Tk):
             def graph_sort_and_label(f):
                 bn = os.path.basename(f).lower()
                 if 'polar' in bn and 'javafoil' not in bn:
-                    return (0, "📊 Aerodynamic Polar (Cl vs Cd)")
+                    return (0, "Aerodynamic Polar (Cl vs Cd)")
                 elif 'geometry' in bn:
-                    return (1, "📐 Wing Profile & Slot Geometry")
+                    return (1, "Wing Profile & Slot Geometry")
                 elif 'field' in bn:
-                    return (2, "💨 Flow Velocity Field")
+                    return (2, "Flow Velocity Field")
                 elif 'javafoil_polar_cl_cd' in bn:
-                    return (3, "📈 JavaFoil Drag Polar (Cl vs Cd)")
+                    return (3, "JavaFoil Drag Polar (Cl vs Cd)")
                 elif 'javafoil_polar_cl_alfa' in bn:
-                    return (4, "📈 JavaFoil Lift Curve (Cl vs α)")
+                    return (4, "JavaFoil Lift Curve (Cl vs Alpha)")
                 elif 'javafoil_polar_cm_alfa' in bn:
-                    return (5, "📈 JavaFoil Pitching Moment (Cm vs α)")
+                    return (5, "JavaFoil Pitching Moment (Cm vs Alpha)")
                 elif 'javafoil_velocity_cp' in bn:
-                    return (6, "🌊 JavaFoil Surface Pressure Cp")
+                    return (6, "JavaFoil Surface Pressure Cp")
                 elif 'javafoil_bl_cf' in bn:
-                    return (7, "🔬 JavaFoil Skin Friction Cf")
+                    return (7, "JavaFoil Skin Friction Cf")
                 elif 'javafoil_bl_delta' in bn:
-                    return (8, "📏 JavaFoil Boundary Layer (δ)")
+                    return (8, "JavaFoil Boundary Layer (delta)")
                 else:
-                    return (9, f"📊 {os.path.basename(f)}")
+                    return (9, f"{os.path.basename(f)}")
 
             sorted_labeled = sorted([(graph_sort_and_label(f), f) for f in target_files], key=lambda x: x[0][0])
             for (order, lbl), f in sorted_labeled:
@@ -5169,7 +5333,7 @@ class App(tk.Tk):
             if self._graph_paths:
                 self.gr_status.set(f"Run {cur_rid}: {len(self._graph_paths)} graph(s) displayed from {gdir}/run_{cur_rid}")
             else:
-                self.gr_status.set(f"Run {cur_rid}: No graphs generated yet. Click '⚡ Generate Graphs' to create them.")
+                self.gr_status.set(f"Run {cur_rid}: No graphs generated yet. Click 'Generate Graphs' to create them.")
         else:
             self.gr_status.set(f"All Runs: {len(self._graph_paths)} image(s) found in {gdir}")
 
@@ -5177,7 +5341,7 @@ class App(tk.Tk):
             self.img_list.selection_set(0)
             self.show_image(self._graph_paths[0])
         else:
-            self.gimg_lbl.configure(image='', text=f"No graphs for Run {cur_rid}\nClick '📊 Generate Graphs' to generate.")
+            self.gimg_lbl.configure(image='', text=f"No graphs for Run {cur_rid}\nClick 'Generate Graphs' to generate.")
 
     def on_pick_graph(self, event=None):
         sel = self.img_list.curselection()
@@ -5342,13 +5506,17 @@ class App(tk.Tk):
         row_strat = ttk.Frame(strat_frame)
         row_strat.pack(fill='x', padx=6, pady=4)
         ttk.Label(row_strat, text='Target Goal:', font=('Helvetica', 9, 'bold')).pack(side='left')
-        self.opt_goal_mode = tk.StringVar(value='🛡️ Maximize Stability (Preserve Base DF & Maximize Pitch Robustness)')
+        self.opt_goal_mode = tk.StringVar(value='Cl Alpha Stability (Pitch Dive Robustness)')
         goal_choices = [
-            '🛡️ Maximize Stability (Preserve Base DF & Maximize Pitch Robustness)',
-            '🏎️ Maximize Downforce (Respect Stall Margin & Rules)',
-            '⚡ Maximize Aerodynamic Efficiency (L/D, Keep Downforce)',
-            '🎯 Balanced Multi-Objective Refinement',
-            '📐 Compact Packaging (Minimize Envelope, Keep DF)',
+            'Cl Alpha Stability (Pitch Dive Robustness)',
+            'Max Cl with Alpha Stability (High Downforce + Margin >= 3.5°)',
+            'Linear Pitch Gradient (Predictable Handling & Balance)',
+            'Stall-Proof High Downforce (Zero Stall within 4.0°)',
+            'Alpha-Stable Efficiency (Max L/D with Pitch Margin)',
+            'Maximum Downforce (Max Cl)',
+            'Maximum Aerodynamic Efficiency (Max L/D)',
+            'Balanced Multi-Objective (FSAE Competition Standard)',
+            'Compact Packaging (Minimize Envelope, Keep Cl)',
         ]
         goal_combo = ttk.Combobox(row_strat, textvariable=self.opt_goal_mode, values=goal_choices, state='readonly', width=58)
         goal_combo.pack(side='left', padx=6)
@@ -5356,7 +5524,7 @@ class App(tk.Tk):
         add_tooltip(goal_combo, 'Select engineering objective. Stability mode strictly protects base downforce while eliminating stall spikes.')
 
         self.opt_goal_desc = tk.Label(
-            strat_frame, text='Stability Priority: Keeps baseline Downforce/Cl within retention tolerance while maximizing stall margin (>=3°) and minimizing pitch sensitivity (smooth Cl curve across +-2° pitch dive).',
+            strat_frame, text='Cl Alpha Stability Priority: Specifically optimizes for smooth attached flow across +-2° pitch variations, penalizing flow detachment under pitch dive (Cl_+2 < Cl_0) and requiring stall margin >= 3.5°. Keeps baseline downforce stable.',
             bg='#1e293b', fg='#94a3b8', font=('Segoe UI', 8), padx=8, pady=4, relief='flat', justify='left', wraplength=700
         )
         self.opt_goal_desc.pack(fill='x', padx=6, pady=2)
@@ -5428,16 +5596,24 @@ class App(tk.Tk):
 
     def _on_opt_goal_changed(self):
         goal = self.opt_goal_mode.get()
-        if 'Stability' in goal:
-            msg = '🛡️ Stability Priority: Keeps baseline Downforce/Cl within retention tolerance while maximizing stall margin (>=3°) and minimizing pitch sensitivity (smooth Cl curve across +-2° pitch dive).'
-        elif 'Downforce' in goal:
-            msg = '🏎️ Max Downforce Priority: Searches flap geometries that maximize peak downforce within FSUK/FSG bounding limits and >=2° stall margin.'
+        if 'Cl Alpha Stability' in goal:
+            msg = 'Cl Alpha Stability Priority: Specifically optimizes for smooth attached flow across +-2° pitch variations, penalizing flow detachment under pitch dive (Cl_+2 < Cl_0) and requiring stall margin >= 3.5°. Keeps baseline downforce stable.'
+        elif 'Max Cl with Alpha Stability' in goal:
+            msg = 'Max Downforce with Alpha Stability: Maximizes total downforce (Cl) while strictly requiring pitch dive stability (no flap stall collapse at +2°) and >= 3.5° stall margin buffer.'
+        elif 'Linear Pitch Gradient' in goal:
+            msg = 'Linear Pitch Gradient: Minimizes non-linear curvature in dCl/d(alpha) between squat (-2°) and dive (+2°). Ensures aerodynamic balance shifts predictably with chassis pitch for driver confidence.'
+        elif 'Stall-Proof' in goal:
+            msg = 'Stall-Proof High Downforce: Enforces extreme stall margin (>= 4.0°) for bumpy or dynamic track conditions, eliminating flow detachment risks during hard braking transitions.'
+        elif 'Alpha-Stable Efficiency' in goal:
+            msg = 'Alpha-Stable Aerodynamic Efficiency: Maximizes lift-to-drag ratio (L/D) while preserving attached flow and >= 3.0° stall margin over pitch attitude changes.'
+        elif 'Maximum Downforce' in goal or 'Max Downforce' in goal:
+            msg = 'Maximum Downforce Priority: Searches flap geometries that maximize peak downforce within FSUK/FSG bounding limits and >= 2.0° stall margin.'
         elif 'Efficiency' in goal:
-            msg = '⚡ Aerodynamic Efficiency Priority: Maximizes L/D ratio while ensuring total downforce does not drop below 85% of baseline.'
+            msg = 'Maximum Efficiency Priority: Maximizes L/D ratio while ensuring total downforce does not drop below 85% of baseline.'
         elif 'Compact' in goal:
-            msg = '📐 Packaging Priority: Minimizes wing stack length and height envelope while preserving >=90% of baseline downforce.'
+            msg = 'Packaging Priority: Minimizes wing stack length and height envelope while preserving >= 90% of baseline downforce.'
         else:
-            msg = '🎯 Balanced Refinement: Optimizes Formula Student multi-objective score (DF, Margin, L/D, and Robustness).'
+            msg = 'Balanced Refinement: Optimizes Formula Student multi-objective score (Downforce 40%, Margin 30%, L/D 20%, Robustness 10%).'
         if hasattr(self, 'opt_goal_desc'):
             self.opt_goal_desc.configure(text=msg)
 
@@ -5606,17 +5782,46 @@ class App(tk.Tk):
         if b_cd > 0.01 and cd > b_cd * 1.10:
             drag_penalty = 100.0 * (cd - b_cd * 1.10) / b_cd
 
-        if goal_mode == 'stability':
-            min_pitch_ratio = min(cl_m2, cl_p2) / max(cl, 0.01) if (cl_m2 > 0 and cl_p2 > 0) else 0.8
-            pitch_var = abs(cl_m2 - cl) + abs(cl_p2 - cl)
-            margin = max(0.0, A.DESIGN_ALPHA - st)
-            margin_score = min(50.0, margin * 10.0)
+        margin = max(0.0, A.DESIGN_ALPHA - st)
+        min_pitch_ratio = min(cl_m2, cl_p2) / max(cl, 0.01) if (cl_m2 > 0 and cl_p2 > 0) else 0.8
+        pitch_separation_penalty = 120.0 * (cl - cl_p2) / max(cl, 0.01) if (cl_p2 > 0 and cl_p2 < cl) else 0.0
+        dive_slope = (cl_p2 - cl) / 2.0
+        squat_slope = (cl - cl_m2) / 2.0
+        non_linearity = abs(dive_slope - squat_slope) / max(cl, 0.1)
+
+        if goal_mode in ('cl_alpha_stability', 'stability'):
+            margin_score = min(40.0, margin * 10.0)
             robust_score = min(40.0, min_pitch_ratio * 40.0)
-            stability_score = 100.0 + margin_score + robust_score - (15.0 * pitch_var) - retention_penalty - drag_penalty
-            return float(stability_score)
+            stall_shortfall = max(0.0, 3.5 - margin) * 35.0
+            lin_penalty = 20.0 * non_linearity
+            score = 100.0 + margin_score + robust_score - stall_shortfall - lin_penalty - pitch_separation_penalty - retention_penalty - drag_penalty
+            return float(score)
+
+        elif goal_mode == 'max_cl_stable':
+            stall_penalty = max(0.0, 3.5 - margin) * 45.0
+            cl_gain = 100.0 * (cl / max(b_cl, 1.0))
+            score = cl_gain - stall_penalty - (pitch_separation_penalty * 1.5) - drag_penalty
+            return float(score)
+
+        elif goal_mode == 'linear_pitch':
+            lin_score = max(0.0, 100.0 * (1.0 - min(1.0, non_linearity)))
+            margin_bonus = min(25.0, margin * 6.0)
+            score = lin_score + margin_bonus - pitch_separation_penalty - retention_penalty - drag_penalty
+            return float(score)
+
+        elif goal_mode == 'stall_proof':
+            margin_score = min(100.0, (margin / 4.0) * 100.0)
+            shortfall = max(0.0, 4.0 - margin) * 60.0
+            score = margin_score + (25.0 * cl / max(b_cl, 1.0)) - shortfall - pitch_separation_penalty - drag_penalty
+            return float(score)
+
+        elif goal_mode == 'alpha_stable_efficiency':
+            eff_score = 12.0 * ld
+            stall_penalty = max(0.0, 3.0 - margin) * 30.0
+            score = eff_score - stall_penalty - pitch_separation_penalty - retention_penalty
+            return float(score)
 
         elif goal_mode == 'downforce':
-            margin = max(0.0, A.DESIGN_ALPHA - st)
             margin_penalty = 0.0 if margin >= 2.0 else 50.0 * (2.0 - margin)
             return float(100.0 * (cl / max(b_cl, 1.0)) - margin_penalty - drag_penalty)
 
@@ -5718,7 +5923,26 @@ class App(tk.Tk):
             ret_mode = self.opt_retention_mode.get()
             ret_pct = 5.0 if '5%' in ret_mode else (10.0 if '10%' in ret_mode else (20.0 if '20%' in ret_mode else 100.0))
             goal_raw = self.opt_goal_mode.get()
-            goal_key = 'stability' if 'Stability' in goal_raw else ('downforce' if 'Downforce' in goal_raw else ('efficiency' if 'Efficiency' in goal_raw else ('compact' if 'Compact' in goal_raw else 'balanced')))
+            if 'cl alpha stability' in goal_raw.lower():
+                goal_key = 'cl_alpha_stability'
+            elif 'max cl with alpha stability' in goal_raw.lower():
+                goal_key = 'max_cl_stable'
+            elif 'linear pitch' in goal_raw.lower():
+                goal_key = 'linear_pitch'
+            elif 'stall-proof' in goal_raw.lower():
+                goal_key = 'stall_proof'
+            elif 'alpha-stable efficiency' in goal_raw.lower():
+                goal_key = 'alpha_stable_efficiency'
+            elif 'maximum downforce' in goal_raw.lower() or 'max downforce' in goal_raw.lower():
+                goal_key = 'downforce'
+            elif 'maximum aerodynamic efficiency' in goal_raw.lower() or 'max l/d' in goal_raw.lower():
+                goal_key = 'efficiency'
+            elif 'compact packaging' in goal_raw.lower():
+                goal_key = 'compact'
+            elif 'stability' in goal_raw.lower():
+                goal_key = 'cl_alpha_stability'
+            else:
+                goal_key = 'balanced'
         except (ValueError, tk.TclError) as e:
             messagebox.showerror('Error', f"Check numeric inputs: {e}")
             return
@@ -5761,7 +5985,7 @@ class App(tk.Tk):
             # Check baseline validity and evaluate baseline telemetry
             base_geom_ok = A.geometry_ok(base_cfg)
             if not base_geom_ok:
-                self._opt_log("⚠️ Note: Baseline wing does not meet current geometric/regulatory constraints. Perturbations will search for compliant arrangements.")
+                self._opt_log("[NOTE] Baseline wing does not meet current geometric/regulatory constraints. Perturbations will search for compliant arrangements.")
 
             base_metrics = getattr(self, '_opt_base_metrics', None)
             if not base_metrics and base_geom_ok:
@@ -5827,7 +6051,7 @@ class App(tk.Tk):
                         if score > best_score:
                             best = candidate_cfg
                             best_score = score
-                            self._opt_log(f"  Iter {i + 1}/{iters_val}: 🌟 New Best Score {score:.2f} (DF: {df_val:.1f}N, L/D: {ld_val:.1f}, Margin: {marg_val:.1f}°)")
+                            self._opt_log(f"  Iter {i + 1}/{iters_val}: [BEST] New Best Score {score:.2f} (DF: {df_val:.1f}N, L/D: {ld_val:.1f}, Margin: {marg_val:.1f}°)")
                         else:
                             self._opt_log(f"  Iter {i + 1}/{iters_val}: Score {score:.2f} (DF: {df_val:.1f}N, L/D: {ld_val:.1f}, Margin: {marg_val:.1f}°)")
                     else:
