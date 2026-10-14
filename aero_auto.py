@@ -2789,6 +2789,23 @@ Options.GroundEffect({ge_flag});
 Options.HeightOverSpan(0.5);
 Options.AspectRatio(0);
 Options.SweepAngle(0.0);
+
+// JavaFoil suppresses GUI visibility by default when launched with Script= parameter.
+// We explicitly make all AWT/Swing frames visible, normal (unminimized), and focused.
+try {{
+    var Frame = Java.type("java.awt.Frame");
+    var frames = Frame.getFrames();
+    for (var i = 0; i < frames.length; i++) {{
+        var fr = frames[i];
+        if (fr.getTitle() == "JavaFoil") {{
+            fr.setExtendedState(0);
+            fr.setState(0);
+            fr.setVisible(true);
+            fr.toFront();
+            fr.requestFocus();
+        }}
+    }}
+}} catch (e) {{}}
 """)
 
     # Copy jars if needed
@@ -2811,14 +2828,32 @@ Options.SweepAngle(0.0);
     if sys.platform != "win32":
         if not env.get("DISPLAY"):
             env["DISPLAY"] = ":0"
+        if not env.get("XAUTHORITY") or not os.path.exists(env.get("XAUTHORITY", "")):
+            default_xauth = os.path.expanduser("~/.Xauthority")
+            if os.path.exists(default_xauth):
+                env["XAUTHORITY"] = default_xauth
+            else:
+                try:
+                    import glob as _glob
+                    matches = _glob.glob(f"/run/user/{os.getuid()}/xauth_*")
+                    if matches:
+                        env["XAUTHORITY"] = matches[0]
+                except Exception:
+                    pass
 
     popen_kwargs = {"cwd": gui_dir, "env": env}
     try:
         proc = subprocess.Popen(cmd, **popen_kwargs)
-        # Check if process died immediately
-        time.sleep(0.3)
+        time.sleep(0.8)
         if proc.poll() is not None:
-            return False, f"JavaFoil GUI exited prematurely (code {proc.returncode}). Please verify Java installation.", None
+            # If scripted launch exited (e.g. Nashorn unavailable on Java 15+),
+            # fall back to standard direct GUI launch without Script argument
+            fallback_cmd = [java_bin, "-jar", JAVAFOIL_JAR]
+            proc = subprocess.Popen(fallback_cmd, **popen_kwargs)
+            time.sleep(0.5)
+            if proc.poll() is not None:
+                return False, f"JavaFoil GUI exited prematurely (code {proc.returncode}). Please verify Java installation.", None
+            return True, f"JavaFoil GUI launched (direct mode). Wing geometry exported to {wing_path}.", proc
         return True, f"JavaFoil GUI launched with {len(outs)} wing elements loaded.", proc
     except Exception as e:
         return False, f"Failed to launch JavaFoil GUI: {e}", None
