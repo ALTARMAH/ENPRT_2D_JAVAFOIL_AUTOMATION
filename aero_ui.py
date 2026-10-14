@@ -1018,6 +1018,7 @@ class App(tk.Tk):
         self.tab_cfg = ttk.Frame(self.notebook)
         self.tab_af = ttk.Frame(self.notebook)
         self.tab_comb = ttk.Frame(self.notebook)
+        self.tab_famous = self.tab_comb
         self.tab_cam = ttk.Frame(self.notebook)
         self.tab_res = ttk.Frame(self.notebook)
         self.tab_gr = ttk.Frame(self.notebook)
@@ -2203,10 +2204,10 @@ class App(tk.Tk):
         paned.pack(fill='both', expand=True)
 
         # Left pane: Filter & Packages list
-        left_pane = ttk.Frame(paned, width=370)
+        left_pane = ttk.Frame(paned, width=390)
         paned.add(left_pane, weight=1)
 
-        filter_frame = ttk.LabelFrame(left_pane, text="Filter Championship & Benchmark Wings")
+        filter_frame = ttk.LabelFrame(left_pane, text="Filter Championship & Competition Wings")
         filter_frame.pack(fill='x', padx=4, pady=4)
 
         f_row1 = ttk.Frame(filter_frame)
@@ -2215,34 +2216,59 @@ class App(tk.Tk):
         self.comb_filter = tk.StringVar(value='')
         comb_search_ent = ttk.Entry(f_row1, textvariable=self.comb_filter)
         comb_search_ent.pack(side='left', fill='x', expand=True, padx=4)
-        add_tooltip(comb_search_ent, "Filter packages by name, team, or airfoil.")
+        add_tooltip(comb_search_ent, "Filter by team name, competition, year, car model, or airfoil.")
 
         f_row2 = ttk.Frame(filter_frame)
         f_row2.pack(fill='x', padx=4, pady=2)
-        ttk.Label(f_row2, text="Category:").pack(side='left')
-        self.comb_cat = tk.StringVar(value='All Categories')
-        cat_cb = ttk.Combobox(f_row2, textvariable=self.comb_cat,
-                              values=['All Categories', 'Front Wing', 'Rear Wing', 'Benchmark'],
-                              state='readonly', width=16)
-        cat_cb.pack(side='left', padx=4)
-        add_tooltip(cat_cb, "Filter by wing role / category.")
+        ttk.Label(f_row2, text="Comp:").pack(side='left')
+        self.comb_comp = tk.StringVar(value='All Competitions')
+        comp_choices = [
+            'All Competitions',
+            'FSG (Germany)',
+            'FSAE Michigan (USA)',
+            'FSA (Austria)',
+            'FS Switzerland',
+            'FSUK (UK)',
+            'Wind Tunnel Benchmark'
+        ]
+        comp_cb = ttk.Combobox(f_row2, textvariable=self.comb_comp, values=comp_choices, state='readonly', width=16)
+        comp_cb.pack(side='left', padx=2)
+        add_tooltip(comp_cb, "Filter by Formula Student competition series.")
 
+        ttk.Label(f_row2, text="Role:").pack(side='left', padx=(4, 0))
+        self.comb_cat = tk.StringVar(value='All Wings')
+        cat_cb = ttk.Combobox(f_row2, textvariable=self.comb_cat,
+                              values=['All Wings', 'Front Wing', 'Rear Wing', 'Benchmark'],
+                              state='readonly', width=11)
+        cat_cb.pack(side='left', padx=2)
+        add_tooltip(cat_cb, "Filter by wing position.")
+
+        f_row3 = ttk.Frame(filter_frame)
+        f_row3.pack(fill='x', padx=4, pady=(2, 4))
         self.comb_count_lbl = tk.StringVar(value='')
-        ttk.Label(f_row2, textvariable=self.comb_count_lbl, foreground=MUTED).pack(side='right')
+        ttk.Label(f_row3, textvariable=self.comb_count_lbl, foreground=MUTED, font=('TkDefaultFont', 8)).pack(side='left')
+        ttk.Button(f_row3, text="Clear Filters", command=self._clear_comb_filters).pack(side='right')
 
         self.comb_filter.trace_add('write', lambda *_: self._apply_comb_filter())
+        self.comb_comp.trace_add('write', lambda *_: self._apply_comb_filter())
         self.comb_cat.trace_add('write', lambda *_: self._apply_comb_filter())
 
         tree_frame = ttk.Frame(left_pane)
         tree_frame.pack(fill='both', expand=True, padx=4, pady=4)
 
-        self.comb_tree = ttk.Treeview(tree_frame, columns=('name', 'cat', 'els'), show='headings', selectmode='browse', height=14)
-        self.comb_tree.heading('name', text='Wing Package')
-        self.comb_tree.heading('cat', text='Category')
+        self.comb_tree = ttk.Treeview(tree_frame, columns=('comp', 'year', 'role', 'els'), show='headings', selectmode='browse', height=14)
+        self.comb_tree['columns'] = ('name', 'comp', 'year', 'role', 'els')
+        self.comb_tree.heading('name', text='Car & Wing Package')
+        self.comb_tree.heading('comp', text='Competition')
+        self.comb_tree.heading('year', text='Year')
+        self.comb_tree.heading('role', text='Role')
         self.comb_tree.heading('els', text='Elements')
-        self.comb_tree.column('name', width=200, anchor='w')
-        self.comb_tree.column('cat', width=90, anchor='w')
-        self.comb_tree.column('els', width=70, anchor='center')
+
+        self.comb_tree.column('name', width=190, anchor='w')
+        self.comb_tree.column('comp', width=95, anchor='w')
+        self.comb_tree.column('year', width=45, anchor='center')
+        self.comb_tree.column('role', width=75, anchor='center')
+        self.comb_tree.column('els', width=55, anchor='center')
 
         comb_sc = ttk.Scrollbar(tree_frame, orient='vertical', command=self.comb_tree.yview)
         self.comb_tree.configure(yscrollcommand=comb_sc.set)
@@ -2251,11 +2277,11 @@ class App(tk.Tk):
 
         self.comb_tree.bind('<<TreeviewSelect>>', lambda e: self._on_comb_select())
         self.comb_tree.bind('<Double-1>', lambda e: self._comb_load_to_configure())
-        add_tooltip(self.comb_tree, "Click to inspect. Double-click to load into Configure (Tab 1).")
+        add_tooltip(self.comb_tree, "Click to inspect values & profile. Double-click to load into Configure (Tab 1).")
 
         ttk.Label(left_pane,
-                  text="💡 Double-click any configuration to load it into Configure (Tab 1).\nUse buttons on the right to optimize, simulate, or export DXF.",
-                  foreground=MUTED, justify='left', wraplength=350).pack(anchor='w', padx=6, pady=4)
+                  text="💡 Double-click any configuration to load it into Configure (Tab 1).\nUse action buttons on the right to simulate, optimize, or export DXF.",
+                  foreground=MUTED, justify='left', wraplength=370).pack(anchor='w', padx=6, pady=4)
 
         # Right pane: Inspector, Visualizer & Actions
         right_pane = ttk.Frame(paned)
@@ -2278,16 +2304,25 @@ class App(tk.Tk):
         self.comb_rules_badge.pack(side='right')
 
         sub_h = tk.Frame(header_card, bg=PANEL)
-        sub_h.pack(fill='x', padx=8, pady=(0, 4))
+        sub_h.pack(fill='x', padx=8, pady=(0, 2))
+        self.comb_achieve_var = tk.StringVar(value="")
+        tk.Label(sub_h, textvariable=self.comb_achieve_var, font=('TkDefaultFont', 9, 'bold'),
+                 bg=PANEL, fg='#f59e0b', anchor='w').pack(side='left')
+
+        team_h = tk.Frame(header_card, bg=PANEL)
+        team_h.pack(fill='x', padx=8, pady=(0, 4))
         self.comb_team_var = tk.StringVar(value="")
-        tk.Label(sub_h, textvariable=self.comb_team_var, font=('TkDefaultFont', 9),
+        tk.Label(team_h, textvariable=self.comb_team_var, font=('TkDefaultFont', 9),
                  bg=PANEL, fg=SKY, anchor='w').pack(side='left')
 
+        # Badges row
         badge_row = tk.Frame(header_card, bg=PANEL)
         badge_row.pack(fill='x', padx=8, pady=(0, 6))
 
+        self.comb_badge_comp = tk.Label(badge_row, text="", bg=PANEL2, fg='#38bdf8', font=('TkDefaultFont', 8, 'bold'), padx=6, pady=2)
+        self.comb_badge_comp.pack(side='left', padx=(0, 4))
         self.comb_badge_cat = tk.Label(badge_row, text="", bg=PANEL2, fg=TXT, font=('TkDefaultFont', 8), padx=6, pady=2)
-        self.comb_badge_cat.pack(side='left', padx=(0, 4))
+        self.comb_badge_cat.pack(side='left', padx=4)
         self.comb_badge_els = tk.Label(badge_row, text="", bg=PANEL2, fg=TXT, font=('TkDefaultFont', 8), padx=6, pady=2)
         self.comb_badge_els.pack(side='left', padx=4)
         self.comb_badge_aero = tk.Label(badge_row, text="", bg=PANEL2, fg=TXT, font=('TkDefaultFont', 8), padx=6, pady=2)
@@ -2338,6 +2373,7 @@ class App(tk.Tk):
         bot_nb = ttk.Notebook(right_pane)
         bot_nb.pack(fill='both', expand=True, padx=4, pady=2)
 
+        # Tab 1: Element Stack Table
         t1_frame = ttk.Frame(bot_nb)
         bot_nb.add(t1_frame, text="  📐 Element Stack & Alignment  ")
 
@@ -2366,28 +2402,61 @@ class App(tk.Tk):
         tk.Label(t1_frame, textvariable=self.comb_dims_var, bg=BG, fg=MUTED, font=('TkDefaultFont', 8),
                  justify='left', anchor='w').pack(fill='x', padx=4, pady=2)
 
+        # Tab 2: Aerodynamic Values & Target Performance
         t2_frame = ttk.Frame(bot_nb)
-        bot_nb.add(t2_frame, text="  📖 Aerodynamic Rationale & Pedigree  ")
+        bot_nb.add(t2_frame, text="  📊 Aerodynamic Values & Target Forces  ")
 
-        self.comb_desc_txt = tk.Text(t2_frame, height=6, bg=PANEL2, fg=TXT, wrap='word', bd=0, relief='flat', font=('TkDefaultFont', 9))
+        self.comb_vals_tree = ttk.Treeview(t2_frame, columns=('param', 'val', 'unit', 'desc'), show='headings', height=5)
+        self.comb_vals_tree.heading('param', text='Aerodynamic Parameter')
+        self.comb_vals_tree.heading('val', text='Value')
+        self.comb_vals_tree.heading('unit', text='Units')
+        self.comb_vals_tree.heading('desc', text='Engineering Context & Formula Student Target')
+        self.comb_vals_tree.column('param', width=160, anchor='w')
+        self.comb_vals_tree.column('val', width=80, anchor='center')
+        self.comb_vals_tree.column('unit', width=60, anchor='center')
+        self.comb_vals_tree.column('desc', width=350, anchor='w')
+
+        vals_sc = ttk.Scrollbar(t2_frame, orient='vertical', command=self.comb_vals_tree.yview)
+        self.comb_vals_tree.configure(yscrollcommand=vals_sc.set)
+        self.comb_vals_tree.pack(side='left', fill='both', expand=True)
+        vals_sc.pack(side='right', fill='y')
+
+        # Tab 3: Aerodynamic Rationale & Flow Physics
+        t3_frame = ttk.Frame(bot_nb)
+        bot_nb.add(t3_frame, text="  📖 Design Philosophy & Flow Physics  ")
+
+        self.comb_desc_txt = tk.Text(t3_frame, height=6, bg=PANEL2, fg=TXT, wrap='word', bd=0, relief='flat', font=('TkDefaultFont', 9))
         self.comb_desc_txt.pack(fill='both', expand=True, padx=4, pady=4)
         self.comb_desc_txt.config(state='disabled')
 
         self._apply_comb_filter()
 
+    def _clear_comb_filters(self):
+        if hasattr(self, 'comb_filter'):
+            self.comb_filter.set('')
+        if hasattr(self, 'comb_comp'):
+            self.comb_comp.set('All Competitions')
+        if hasattr(self, 'comb_cat'):
+            self.comb_cat.set('All Wings')
+
     def _apply_comb_filter(self):
         q = getattr(self, 'comb_filter', None)
         query = q.get().strip().lower() if q else ''
+        comp = getattr(self, 'comb_comp', None)
+        comp_val = comp.get() if comp else 'All Competitions'
         cat = getattr(self, 'comb_cat', None)
-        cat_val = cat.get() if cat else 'All Categories'
+        cat_val = cat.get() if cat else 'All Wings'
 
         all_pkgs = getattr(A, 'get_famous_packages', lambda: [])()
         filtered = []
         for p in all_pkgs:
-            if cat_val != 'All Categories' and cat_val.lower() not in p.get('category', '').lower():
+            if comp_val != 'All Competitions' and comp_val.lower() not in (p.get('competition', '') + ' ' + p.get('comp_short', '')).lower():
+                continue
+            if cat_val != 'All Wings' and cat_val.lower() not in p.get('category', '').lower():
                 continue
             if query:
-                haystack = (p.get('name', '') + ' ' + p.get('team', '') + ' ' + p.get('main', '') + ' ' +
+                haystack = (p.get('name', '') + ' ' + p.get('team', '') + ' ' + p.get('competition', '') + ' ' +
+                            p.get('car', '') + ' ' + str(p.get('year', '')) + ' ' + p.get('main', '') + ' ' +
                             ' '.join(f[0] for f in p.get('flaps', [])) + ' ' + p.get('category', '')).lower()
                 if query not in haystack:
                     continue
@@ -2395,14 +2464,15 @@ class App(tk.Tk):
 
         self._comb_filtered_pkgs = filtered
         if hasattr(self, 'comb_count_lbl'):
-            self.comb_count_lbl.set(f"{len(filtered)} of {len(all_pkgs)}")
+            self.comb_count_lbl.set(f"Showing {len(filtered)} of {len(all_pkgs)} competition packages")
 
         if hasattr(self, 'comb_tree'):
             self.comb_tree.delete(*self.comb_tree.get_children())
             for p in filtered:
                 el_str = f"{len(p.get('flaps', [])) + 1}-el"
+                short_name = f"{p.get('team', '').split('(')[0].strip()} ({p.get('car', '')})"
                 self.comb_tree.insert('', 'end', iid=p['id'],
-                                      values=(p['name'], p.get('category', ''), el_str))
+                                      values=(short_name, p.get('comp_short', ''), p.get('year', ''), p.get('category', ''), el_str))
             if filtered:
                 first_id = filtered[0]['id']
                 self.comb_tree.selection_set(first_id)
@@ -2429,14 +2499,18 @@ class App(tk.Tk):
         self._comb_current_pkg = pkg
 
         self.comb_title_var.set(pkg['name'])
-        self.comb_team_var.set(pkg.get('team', ''))
+        self.comb_achieve_var.set(pkg.get('achievement', ''))
+        self.comb_team_var.set(f"🏁 {pkg.get('competition', '')} · {pkg.get('team', '')} · Car: {pkg.get('car', '')} ({pkg.get('year', '')})")
+        self.comb_badge_comp.config(text=f"Event: {pkg.get('comp_short', '')}")
         self.comb_badge_cat.config(text=f"Role: {pkg.get('role', '').title()}")
         num_els = len(pkg.get('flaps', [])) + 1
         self.comb_badge_els.config(text=f"{num_els} Elements (Main + {num_els - 1} Flaps)")
         ge_str = f"Ground Effect (h={pkg.get('gh_pct', 0)}%)" if pkg.get('ge') else "Free Stream"
-        self.comb_badge_aero.config(text=f"{pkg.get('speed', 0)} m/s · Re {pkg.get('re', 0):,} · {ge_str}")
+        v_kmh = int(pkg.get('speed', 0) * 3.6)
+        self.comb_badge_aero.config(text=f"V = {pkg.get('speed', 0)} m/s ({v_kmh} km/h) · Re {pkg.get('re', 0):,} · {ge_str}")
         self.comb_badge_span.config(text=f"Span: {int(pkg.get('span', 1400))} mm")
 
+        # Element Stack Treeview
         if hasattr(self, 'comb_stack_tree'):
             self.comb_stack_tree.delete(*self.comb_stack_tree.get_children())
             cfg = (pkg['main'], tuple(pkg.get('flaps', [])))
@@ -2472,22 +2546,57 @@ class App(tk.Tk):
             sl = cols.get('Stack_Length_mm', 0)
             sh = cols.get('Stack_Height_mm', 0)
             clearance = cols.get('Min_Clearance_mm', 0) if pkg.get('ge') else None
-            clear_str = f" | Min Ground Clearance: {clearance:.1f} mm (Min 35 mm)" if clearance is not None else ""
+            clear_str = f" | Min Ground Clearance: {clearance:.1f} mm (Limit ≥ 35 mm)" if clearance is not None else ""
             role_limit = 600.0 if 'front' in pkg.get('role', '') else 250.0
             self.comb_dims_var.set(
                 f"Main Chord: {pkg['chord']:.1f} mm | Span: {pkg['span']:.1f} mm | "
-                f"Stack Length: {sl:.1f} mm (Limit {role_limit:.1f} mm) | "
+                f"Stack Length: {sl:.1f} mm (Rule Limit ≤ {role_limit:.1f} mm) | "
                 f"Stack Height: {sh:.1f} mm{clear_str}"
             )
 
+        # Aerodynamic Values Treeview
+        if hasattr(self, 'comb_vals_tree'):
+            self.comb_vals_tree.delete(*self.comb_vals_tree.get_children())
+            targets = pkg.get('targets', {})
+            speed = pkg.get('speed', 20.0)
+            chord_m = pkg.get('chord', 250.0) / 1000.0
+            span_m = pkg.get('span', 1400.0) / 1000.0
+            area_m2 = chord_m * span_m
+            q_pa = 0.5 * 1.225 * (speed ** 2)
+
+            cl = targets.get('cl', 3.0)
+            cd = targets.get('cd', 0.9)
+            ld = targets.get('ld', cl / cd if cd > 0 else 3.0)
+            df_n = targets.get('df_n', q_pa * area_m2 * cl)
+            drag_n = targets.get('drag_n', q_pa * area_m2 * cd)
+
+            val_rows = [
+                ("Design Downforce", f"{df_n:.1f} ({df_n/9.81:.1f} kgf)", "N", f"Vertical aerodynamic load at design speed ({speed:.1f} m/s / {int(speed*3.6)} km/h)"),
+                ("Design Drag", f"{drag_n:.1f} ({drag_n/9.81:.1f} kgf)", "N", f"Aerodynamic resistance at design speed ({speed:.1f} m/s / {int(speed*3.6)} km/h)"),
+                ("Lift Coefficient (Cl)", f"{cl:.2f}", "—", "Overall 2D/3D multi-element lift coefficient"),
+                ("Drag Coefficient (Cd)", f"{cd:.2f}", "—", "Total profile + pressure drag coefficient"),
+                ("Aerodynamic Efficiency (L/D)", f"{ld:.2f}", "—", "Lift-to-drag ratio (downforce produced per unit drag penalty)"),
+                ("Operating Velocity", f"{speed:.1f} ({int(speed*3.6)} km/h)", "m/s", "FSAE competition dynamic event design airspeed"),
+                ("Dynamic Pressure (q)", f"{q_pa:.1f}", "Pa", "Freestream air dynamic pressure q = 0.5 * rho * V^2 (rho = 1.225 kg/m³)"),
+                ("Reynolds Number (Re)", f"{pkg.get('re', 300000):,}", "—", f"Viscous scale based on main chord ({int(pkg.get('chord', 250))} mm)"),
+                ("Wing Planform Area", f"{area_m2:.3f}", "m²", f"Span ({int(pkg.get('span', 1400))} mm) × Main Chord ({int(pkg.get('chord', 250))} mm)"),
+                ("Aspect Ratio (AR)", f"{(span_m/chord_m):.2f}", "—", "Wingspan to main chord ratio (higher = lower induced drag)"),
+                ("Pitch Stability Margin", "≥ 3.5°", "deg", "Safety buffer between design alpha and flap stall dive angle"),
+            ]
+            for param, val, unit, desc in val_rows:
+                self.comb_vals_tree.insert('', 'end', values=(param, val, unit, desc))
+
+        # Rationale Text
         if hasattr(self, 'comb_desc_txt'):
             self.comb_desc_txt.config(state='normal')
             self.comb_desc_txt.delete('1.0', 'end')
             aero = pkg.get('aerodynamics', {})
             txt_parts = [
+                f"🏆 COMPETITION PEDIGREE & ACHIEVEMENTS: {pkg.get('achievement', 'N/A')}\n",
+                f"🏎️ EVENT & TEAM: {pkg.get('competition', '')} — {pkg.get('team', '')} ({pkg.get('year', '')} {pkg.get('car', '')})\n\n",
                 f"🎯 DESIGN INTENT: {aero.get('design_intent', 'N/A')}\n",
                 f"💨 FLOW PHYSICS: {aero.get('flow_physics', 'N/A')}\n",
-                f"🏎️ OPERATING ENVELOPE: {aero.get('operating_envelope', 'N/A')}\n\n",
+                f"🏁 OPERATING ENVELOPE: {aero.get('operating_envelope', 'N/A')}\n\n",
                 "⭐ ENGINEERING HIGHLIGHTS & ARCHITECTURE:\n"
             ]
             for h in pkg.get('highlights', []):
@@ -2642,11 +2751,15 @@ class App(tk.Tk):
             self.opt_base_info.config(state='normal')
             self.opt_base_info.delete('1.0', 'end')
             hl0 = pkg.get('highlights', [''])[0]
-            self.opt_base_info.insert('end', f"Base: {pkg['name']}\nMain: {pkg['main']} | Flaps: {len(flaps)} | Chord: {pkg['chord']}mm | Speed: {pkg['speed']}m/s\nDesign: {hl0}")
+            self.opt_base_info.insert('end', f"Base: {pkg['name']}\\n"
+                                             f"Main: {pkg['main']} | Flaps: {len(flaps)} | Chord: {pkg['chord']}mm | Speed: {pkg['speed']}m/s\\n"
+                                             f"Design: {hl0}")
             self.opt_base_info.config(state='disabled')
 
         self._opt_log(f"Loaded base from Famous Wings: {pkg['name']}")
         self.notebook.select(self.tab_opt)
+
+    _comb_load_to_opt = _comb_send_to_optimizer
 
     def _comb_simulate_now(self, pkg=None):
         pkg = pkg or getattr(self, '_comb_current_pkg', None) or self._get_selected_comb_pkg()
@@ -2681,6 +2794,7 @@ class App(tk.Tk):
                                 f"Successfully exported 2D CAD profile:\n\n{p}\n\nReady for import into SolidWorks, AutoCAD, Siemens NX, CATIA, and Onshape.")
         except Exception as e:
             messagebox.showerror("Export Error", f"Failed to export DXF: {e}")
+
 
     # --- CAMPAIGNS TAB ---
 
@@ -3883,11 +3997,12 @@ class App(tk.Tk):
                         self.results[col] = float('nan')
                 # If historical CSV doesn't have the multi-profile scores, backfill them on the fly
                 if 'Score_Autocross' in self.results.columns and (self.results['Score_Autocross'].isna().all() or self.results['Score_Autocross'].isnull().all()):
-                    for idx, row in self.results.iterrows():
-                        rated = A.rate_all_profiles(row.to_dict(), str(row.get('Status', '')))
-                        for k, v in rated.items():
-                            if k.startswith('Score'):
-                                self.results.at[idx, k] = v
+                    records = self.results.to_dict('records')
+                    scored = [A.rate_all_profiles(r, str(r.get('Status', ''))) for r in records]
+                    score_df = pd.DataFrame(scored, index=self.results.index)
+                    for c in score_df.columns:
+                        if c.startswith('Score'):
+                            self.results[c] = score_df[c]
             self._tree_frame = self.results.reset_index(drop=True)
             self._sort_col = None
             self._sort_asc = True

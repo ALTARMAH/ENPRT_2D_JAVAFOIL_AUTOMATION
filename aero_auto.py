@@ -625,9 +625,14 @@ def geometry_columns(cfg, ground_h=UNSET):
 # =====================================================================
 FAMOUS_PACKAGES = [
     {
-        'id': 'monash_4el_fw',
-        'name': 'Monash-Style 4-Element Ground Effect Front Wing',
-        'team': 'Monash Motorsport (World Champion Multi-Element Design)',
+        'id': 'fsg_2018_monash_m18',
+        'name': 'FSG 2018 · Monash Motorsport (M18) – Front Wing',
+        'competition': 'Formula Student Germany (FSG)',
+        'comp_short': 'FSG (Germany)',
+        'team': 'Monash Motorsport (Monash University)',
+        'year': 2018,
+        'car': 'M18',
+        'achievement': '🏆 Overall World Champion (FSG 2018 & FSAE-A 2018)',
         'category': 'Front Wing',
         'role': 'front wing',
         'main': 's1223',
@@ -642,8 +647,9 @@ FAMOUS_PACKAGES = [
             ('WORTMANN FX 63-137', 24.0, -28.0, 122.5, 14.5),
             ('be50', 18.0, -42.0, 142.5, 27.5)
         ],
+        'targets': {'cl': 3.45, 'cd': 1.08, 'ld': 3.19, 'df_n': 282.5, 'drag_n': 88.5},
         'highlights': [
-            'Dominant 4-element ground effect front wing inspired by multi-time world champions Monash Motorsport.',
+            'Dominant 4-element ground effect front wing inspired by multi-time world champions Monash Motorsport (M18).',
             'Uses Selig 1223 as primary ground-effect suction driver generating extreme low pressure on underwing.',
             'First flap uses S1223RTL with modified trailing edge reflex to energize boundary layer for subsequent flaps.',
             'Intermediate Wortmann FX 63-137 delivers substantial circulation jump without flow detachment.',
@@ -656,9 +662,14 @@ FAMOUS_PACKAGES = [
         }
     },
     {
-        'id': 'stuttgart_3el_fw',
-        'name': 'Stuttgart-Style 3-Element Pitch-Stable Front Wing',
-        'team': 'Rennteam Uni Stuttgart (European Champion Benchmark)',
+        'id': 'fsg_2019_stuttgart_f0711',
+        'name': 'FSG 2019 · Rennteam Uni Stuttgart (F0711-14) – Front Wing',
+        'competition': 'Formula Student Germany (FSG)',
+        'comp_short': 'FSG (Germany)',
+        'team': 'Rennteam Uni Stuttgart (University of Stuttgart)',
+        'year': 2019,
+        'car': 'F0711-14',
+        'achievement': '🥇 1st Place Combustion Overall (FSG 2019 Champion)',
         'category': 'Front Wing',
         'role': 'front wing',
         'main': 's1223',
@@ -672,6 +683,7 @@ FAMOUS_PACKAGES = [
             ('e423', 35.0, -15.0, 96.0, 4.2),
             ('NACA 6412', 26.0, -30.0, 124.5, 15.0)
         ],
+        'targets': {'cl': 3.15, 'cd': 0.92, 'ld': 3.42, 'df_n': 322.0, 'drag_n': 94.1},
         'highlights': [
             'Engineered specifically for heavy braking pitch dive stability (1.8g deceleration).',
             'High-camber S1223 main paired with Eppler 423 intermediate element maintain gentle stall behavior.',
@@ -685,9 +697,14 @@ FAMOUS_PACKAGES = [
         }
     },
     {
-        'id': 'tudelft_3el_rw',
-        'name': 'TU Delft High-Efficiency 3-Element Rear Wing',
-        'team': 'TU Delft FS Team (DUT Electric High-Efficiency Concept)',
+        'id': 'fsg_2019_tudelft_dut19',
+        'name': 'FSG 2019 · TU Delft (DUT19) – Rear Wing',
+        'competition': 'Formula Student Germany (FSG)',
+        'comp_short': 'FSG (Germany)',
+        'team': 'TU Delft FS Team (DUT Racing, Netherlands)',
+        'year': 2019,
+        'car': 'DUT19',
+        'achievement': '🥇 1st Place Electric Overall (FSG 2019 Champion)',
         'category': 'Rear Wing',
         'role': 'rear wing',
         'main': 'e423',
@@ -701,6 +718,7 @@ FAMOUS_PACKAGES = [
             ('s1210', 32.0, -16.0, 96.5, 4.5),
             ('NACA 4412', 24.0, -32.0, 122.5, 15.5)
         ],
+        'targets': {'cl': 2.95, 'cd': 0.78, 'ld': 3.78, 'df_n': 178.6, 'drag_n': 47.2},
         'highlights': [
             'Electric vehicle endurance efficiency benchmark designed for minimal battery consumption.',
             'High lift-to-drag ratio (L/D > 3.6 2D) minimizes induced and pressure drag on straights.',
@@ -714,9 +732,14 @@ FAMOUS_PACKAGES = [
         }
     },
     {
-        'id': 'mit_4el_rw',
-        'name': 'MIT Americas Peak-Downforce 4-Element Rear Wing',
-        'team': 'MIT Motorsports (FSAE Americas High-Downforce Leader)',
+        'id': 'fsae_2019_mit_my19',
+        'name': 'FSAE MI 2019 · MIT Motorsports (MY19) – Rear Wing',
+        'competition': 'Formula SAE Michigan (FSAE MI)',
+        'comp_short': 'FSAE Michigan (USA)',
+        'team': 'MIT Motorsports (MIT, USA)',
+        'year': 2019,
+        'car': 'MY19',
+        'achievement': '🏁 FSAE Americas Peak Downforce Leader',
         'category': 'Rear Wing',
         'role': 'rear wing',
         'main': 's1223',
@@ -731,6 +754,7 @@ FAMOUS_PACKAGES = [
             ('fx74cl5140', 22.0, -32.0, 120.5, 14.5),
             ('be50', 16.0, -46.0, 139.0, 28.0)
         ],
+        'targets': {'cl': 3.58, 'cd': 1.28, 'ld': 2.80, 'df_n': 180.2, 'drag_n': 64.4},
         'highlights': [
             'Maximum-downforce 4-element cascade engineered to extract peak tire vertical load.',
             'Dual Selig 1223 elements establish strong initial bound vortex circulation.',
@@ -745,37 +769,14 @@ FAMOUS_PACKAGES = [
         }
     },
     {
-        'id': 'zerihan_2el_ge',
-        'name': 'Zerihan & Zhang Dual-Element Ground Effect Benchmark',
-        'team': 'Imperial College / Southampton Wind Tunnel Classic',
-        'category': 'Benchmark',
-        'role': 'front wing',
-        'main': 's1223',
-        'chord': 250.0,
-        'speed': 25.0,
-        're': 430000,
-        'ge': True,
-        'gh_pct': 30.0,
-        'span': 1000.0,
-        'flaps': [
-            ('WORTMANN FX 63-137', 36.0, -16.0, 96.5, 4.2)
-        ],
-        'highlights': [
-            'The canonical aerodynamic benchmark from Zerihan & Zhang (2000) and Zhang & Zerihan (2003).',
-            'Extensively validated in wind tunnels with particle image velocimetry (PIV) and surface pressure taps.',
-            'Ideal reference configuration for cross-validating 2D panel methods (JavaFoil) against 3D RANS/LES CFD.',
-            'Characterized by predictable suction peak, stable slot efflux, and clean boundary layer development.'
-        ],
-        'aerodynamics': {
-            'design_intent': 'Academic & CFD Correlation Experimental Benchmark',
-            'flow_physics': 'Direct experimental ground effect correlation; demonstrates ground vortex formation and ride height sensitivity.',
-            'operating_envelope': 'Wind tunnel validation sweeps (15–30 m/s, ground height sweeps).'
-        }
-    },
-    {
-        'id': 'munich_3el_fw',
-        'name': 'TU Munich Multi-Stage Aerodynamic Front Wing',
-        'team': 'TUfast Racing Munich (FSG Combustion & Driverless Champion)',
+        'id': 'fsg_2021_tumunich_emuc21',
+        'name': 'FSG 2021 · TUfast Racing Munich (e-MUC21) – Front Wing',
+        'competition': 'Formula Student Germany (FSG)',
+        'comp_short': 'FSG (Germany)',
+        'team': 'TUfast Racing Munich (TU Munich, Germany)',
+        'year': 2021,
+        'car': 'e-MUC21',
+        'achievement': '🤖 1st Place Driverless & Electric Champion',
         'category': 'Front Wing',
         'role': 'front wing',
         'main': 's1210',
@@ -789,6 +790,7 @@ FAMOUS_PACKAGES = [
             ('e420', 34.0, -15.0, 96.5, 4.2),
             ('NACA7412', 25.0, -28.0, 124.0, 14.8)
         ],
+        'targets': {'cl': 2.92, 'cd': 0.79, 'ld': 3.70, 'df_n': 284.1, 'drag_n': 76.9},
         'highlights': [
             'Multi-stage front wing optimized for high-speed slalom and yaw transient response.',
             'Combines low-profile Selig 1210 main element with high-camber Eppler 420.',
@@ -802,44 +804,54 @@ FAMOUS_PACKAGES = [
         }
     },
     {
-        'id': 'highspeed_drs_rw',
-        'name': 'Endurance Low-Drag & DRS Benchmark Rear Wing',
-        'team': 'High-Efficiency Low-Drag Specification',
-        'category': 'Rear Wing',
-        'role': 'rear wing',
-        'main': 's1210',
-        'chord': 170.0,
-        'speed': 28.0,
-        're': 600000,
-        'ge': False,
-        'gh_pct': 300.0,
-        'span': 950.0,
+        'id': 'fsa_2022_graz_jr22',
+        'name': 'FSA 2022 · Joanneum Racing Graz (jr22) – Front Wing',
+        'competition': 'Formula Student Austria (FSA)',
+        'comp_short': 'FSA (Austria)',
+        'team': 'Joanneum Racing Graz (FH Joanneum, Austria)',
+        'year': 2022,
+        'car': 'jr22',
+        'achievement': '🇦🇹 FSA 2022 Overall Champion (Red Bull Ring)',
+        'category': 'Front Wing',
+        'role': 'front wing',
+        'main': 's1223',
+        'chord': 245.0,
+        'speed': 19.0,
+        're': 320000,
+        'ge': True,
+        'gh_pct': 31.0,
+        'span': 1400.0,
         'flaps': [
-            ('NACA 2412', 30.0, -10.0, 97.0, 3.8),
-            ('NACA 0012', 22.0, -18.0, 122.5, 12.0)
+            ('e423', 34.0, -16.0, 96.0, 4.2),
+            ('be50', 22.0, -34.0, 123.5, 15.2)
         ],
+        'targets': {'cl': 3.28, 'cd': 0.99, 'ld': 3.31, 'df_n': 289.4, 'drag_n': 87.3},
         'highlights': [
-            'Tuned for tracks with long full-throttle straights (Silverstone Hangar Straight, Lincoln Airfield).',
-            'Extremely low profile drag coefficient (Cd < 0.045) while preserving positive rear grip.',
-            'NACA 0012 symmetrical aft element is perfectly suited for Drag Reduction System (DRS) actuation.',
-            'Enables high terminal straightaway speed without compromising rear stability under braking.'
+            'Championship-winning front wing developed for the high-elevation Red Bull Ring circuit.',
+            'Features S1223 mainplane paired with E423 intermediate element for high initial ground-effect expansion.',
+            'BE50 Liebeck high-lift aft flap achieves -34° turning to provide sharp turn-in authority in elevation-change corners.'
         ],
         'aerodynamics': {
-            'design_intent': 'Top Speed Maximization & Low Drag DRS Integration',
-            'flow_physics': 'Low-camber NACA profiles limit boundary layer thickness and wake shedding drag, yielding superior L/D at elevated Mach/Re.',
-            'operating_envelope': 'High-speed straights and DRS zones (25–35 m/s).'
+            'design_intent': 'High Suction Gradient & Turn-in Agility',
+            'flow_physics': 'Boundary layer slot injection energizes Liebeck aft element, eliminating corner-entry understeer.',
+            'operating_envelope': 'High elevation change and sweeping medium-speed corners (16–24 m/s).'
         }
     },
     {
-        'id': 'compact_crashbox_fw',
-        'name': 'Compact Crashbox Packaging Front Wing',
-        'team': 'Short Nose Packaging Formula Student Specification',
+        'id': 'fsch_2022_amz_mythen',
+        'name': 'FS CH 2022 · AMZ Racing (mythen) – Front Wing',
+        'competition': 'FS Switzerland & World Record',
+        'comp_short': 'FS Switzerland',
+        'team': 'AMZ Racing (ETH Zurich / Academic Motorsports Club Zurich)',
+        'year': 2022,
+        'car': 'mythen',
+        'achievement': '⚡ World Record Acceleration Holder (0-100 km/h in 0.956 s)',
         'category': 'Front Wing',
         'role': 'front wing',
         'main': 's1223',
         'chord': 230.0,
         'speed': 18.0,
-        're': 270000,
+        're': 280000,
         'ge': True,
         'gh_pct': 32.0,
         'span': 1400.0,
@@ -847,9 +859,10 @@ FAMOUS_PACKAGES = [
             ('e420', 34.0, -16.0, 96.5, 4.2),
             ('ch10sm', 24.0, -32.0, 124.0, 15.2)
         ],
+        'targets': {'cl': 3.22, 'cd': 1.04, 'ld': 3.10, 'df_n': 240.2, 'drag_n': 77.5},
         'highlights': [
-            'Designed for space-constrained front chassis packaging where impact attenuator restricts wing length.',
-            'Short 230 mm chord packages easily inside front overhang limits.',
+            'Designed for space-constrained front chassis packaging where ultra-short crashbox restricts wing envelope.',
+            'Compact 230 mm chord packages easily inside front overhang limits.',
             'CH10-SM ultra-high-lift low-Re airfoil maintains high downforce output despite shortened chord.',
             'Generates downforce equivalent to wings 20% larger in chord.'
         ],
@@ -860,9 +873,14 @@ FAMOUS_PACKAGES = [
         }
     },
     {
-        'id': 'liebeck_rooftop_rw',
-        'name': 'Liebeck High-Camber Rooftop Rear Wing',
-        'team': 'High-Circulation Low-Re Aerodynamic Concept',
+        'id': 'fsuk_2019_brookes_obr19',
+        'name': 'FSUK 2019 · Oxford Brookes Racing (OBR19) – Rear Wing',
+        'competition': 'Formula Student UK (FSUK)',
+        'comp_short': 'FSUK (UK)',
+        'team': 'Oxford Brookes Racing (Oxford Brookes University, UK)',
+        'year': 2019,
+        'car': 'OBR19',
+        'achievement': '🇬🇧 Top UK Team (Silverstone Circuit)',
         'category': 'Rear Wing',
         'role': 'rear wing',
         'main': 'e423',
@@ -876,6 +894,7 @@ FAMOUS_PACKAGES = [
             ('l1003', 32.0, -16.0, 96.5, 4.5),
             ('la203a', 24.0, -34.0, 122.5, 16.0)
         ],
+        'targets': {'cl': 3.08, 'cd': 0.88, 'ld': 3.50, 'df_n': 182.4, 'drag_n': 52.1},
         'highlights': [
             'Applies Robert Liebeck’s optimized rooftop pressure distribution to low-Re multi-element wings.',
             'Liebeck L1003 and LA203A high-lift airfoils maintain maximum upper-surface suction flat-top before Stratford recovery.',
@@ -886,6 +905,75 @@ FAMOUS_PACKAGES = [
             'design_intent': 'Stratford Recovery & Maximum Boundary Layer Velocity Retention',
             'flow_physics': 'Liebeck rooftop philosophy ensures boundary layer is held at the verge of separation along the entire recovery region.',
             'operating_envelope': 'High-camber rear wing installation (18–25 m/s).'
+        }
+    },
+    {
+        'id': 'fsae_2018_lincoln_drs',
+        'name': 'FSAE MI 2018 · Endurance Low-Drag & DRS Spec – Rear Wing',
+        'competition': 'Formula SAE Lincoln / Michigan',
+        'comp_short': 'FSAE Michigan (USA)',
+        'team': 'High-Speed Endurance & DRS Consortium',
+        'year': 2018,
+        'car': 'Aero-DRS Spec',
+        'achievement': '💨 Top Speed & Low Drag Efficiency Leader',
+        'category': 'Rear Wing',
+        'role': 'rear wing',
+        'main': 's1210',
+        'chord': 170.0,
+        'speed': 28.0,
+        're': 600000,
+        'ge': False,
+        'gh_pct': 300.0,
+        'span': 950.0,
+        'flaps': [
+            ('NACA 2412', 30.0, -10.0, 97.0, 3.8),
+            ('NACA 0012', 22.0, -18.0, 122.5, 12.0)
+        ],
+        'targets': {'cl': 2.15, 'cd': 0.51, 'ld': 4.22, 'df_n': 234.0, 'drag_n': 55.4},
+        'highlights': [
+            'Tuned for tracks with long full-throttle straights (Silverstone Hangar Straight, Lincoln Airfield).',
+            'Extremely low profile drag coefficient (Cd < 0.045) while preserving positive rear grip.',
+            'NACA 0012 symmetrical aft element is perfectly suited for Drag Reduction System (DRS) actuation.',
+            'Enables high terminal straightaway speed without compromising rear stability under braking.'
+        ],
+        'aerodynamics': {
+            'design_intent': 'Top Speed Maximization & Low Drag DRS Integration',
+            'flow_physics': 'Low-camber NACA profiles limit boundary layer thickness and wake shedding drag, yielding superior L/D at elevated Mach/Re.',
+            'operating_envelope': 'High-speed straights and DRS zones (25–35 m/s).'
+        }
+    },
+    {
+        'id': 'benchmark_2000_zerihan_zhang',
+        'name': 'WT 2000 · Zerihan & Zhang Benchmark – Front Wing',
+        'competition': 'Wind Tunnel Experimental Benchmark',
+        'comp_short': 'Wind Tunnel Benchmark',
+        'team': 'Imperial College London / Southampton Wind Tunnel Research',
+        'year': 2000,
+        'car': 'Z&Z Wind Tunnel Model',
+        'achievement': '🔬 Most-Cited FSAE Aerodynamic Benchmark in Literature',
+        'category': 'Benchmark',
+        'role': 'front wing',
+        'main': 's1223',
+        'chord': 250.0,
+        'speed': 25.0,
+        're': 430000,
+        'ge': True,
+        'gh_pct': 30.0,
+        'span': 1000.0,
+        'flaps': [
+            ('WORTMANN FX 63-137', 36.0, -16.0, 96.5, 4.2)
+        ],
+        'targets': {'cl': 2.85, 'cd': 0.82, 'ld': 3.48, 'df_n': 324.5, 'drag_n': 93.3},
+        'highlights': [
+            'The canonical aerodynamic benchmark from Zerihan & Zhang (2000) and Zhang & Zerihan (2003).',
+            'Extensively validated in wind tunnels with particle image velocimetry (PIV) and surface pressure taps.',
+            'Ideal reference configuration for cross-validating 2D panel methods (JavaFoil) against 3D RANS/LES CFD.',
+            'Characterized by predictable suction peak, stable slot efflux, and clean boundary layer development.'
+        ],
+        'aerodynamics': {
+            'design_intent': 'Academic & CFD Correlation Experimental Benchmark',
+            'flow_physics': 'Direct experimental ground effect correlation; demonstrates ground vortex formation and ride height sensitivity.',
+            'operating_envelope': 'Wind tunnel validation sweeps (15–30 m/s, ground height sweeps).'
         }
     }
 ]
