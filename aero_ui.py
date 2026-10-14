@@ -840,6 +840,8 @@ class App(tk.Tk):
                             self.opt_status.set(payload)
                     elif kind == 'opt_done':
                         self._handle_opt_done(payload)
+                    elif kind == 'opt_candidate':
+                        self._handle_opt_candidate(payload)
                     elif kind == 'sim_done':
                         self._sim_done(payload)
                 except Exception as e:
@@ -5584,15 +5586,88 @@ class App(tk.Tk):
         btns.pack(fill='x', pady=6)
         ttk.Button(btns, text='Start Optimization', command=self._opt_start).pack(side='left', padx=4)
         ttk.Button(btns, text='Stop', command=self._opt_stop).pack(side='left', padx=4)
-        ttk.Button(btns, text='Apply Best', command=self._opt_apply_best).pack(side='left', padx=4)
+        ttk.Button(btns, text='Apply Best Design', command=self._opt_apply_best).pack(side='left', padx=4)
+
+        # Evaluated Candidates & Optimization History
+        cand_frame = ttk.LabelFrame(scrollable_frame, text='Evaluated Candidates & Iteration History')
+        cand_frame.pack(fill='both', expand=True, pady=6)
+
+        c_info_frame = ttk.Frame(cand_frame)
+        c_info_frame.pack(fill='x', padx=6, pady=(4, 2))
+        ttk.Label(
+            c_info_frame,
+            text='Select any candidate below to inspect. Use buttons or double-click to apply to Tab 1, generate polars/graphs (Tab 5), or test in JavaFoil:',
+            font=('Segoe UI', 8),
+            foreground='#94a3b8'
+        ).pack(side='left')
+
+        tree_frame = ttk.Frame(cand_frame)
+        tree_frame.pack(fill='both', expand=True, padx=6, pady=2)
+
+        cols = ('Iter', 'Tag', 'Score', 'Downforce', 'Drag', 'LD', 'Stall', 'Margin', 'Flaps', 'Status')
+        self.opt_tree = ttk.Treeview(tree_frame, columns=cols, show='headings', height=8, selectmode='browse')
+
+        col_defs = [
+            ('Iter', '#', 45, 'center'),
+            ('Tag', 'Tag', 65, 'center'),
+            ('Score', 'Score', 75, 'e'),
+            ('Downforce', 'Downforce (N)', 95, 'e'),
+            ('Drag', 'Drag (N)', 75, 'e'),
+            ('LD', 'L / D', 65, 'e'),
+            ('Stall', 'Stall α', 65, 'e'),
+            ('Margin', 'Margin', 65, 'e'),
+            ('Flaps', 'Flap Setup', 220, 'w'),
+            ('Status', 'Status', 85, 'center'),
+        ]
+        for col_id, heading_text, width, anchor in col_defs:
+            self.opt_tree.heading(col_id, text=heading_text)
+            self.opt_tree.column(col_id, width=width, anchor=anchor)
+
+        opt_scroll = ttk.Scrollbar(tree_frame, orient='vertical', command=self.opt_tree.yview)
+        self.opt_tree.configure(yscrollcommand=opt_scroll.set)
+        self.opt_tree.pack(side='left', fill='both', expand=True)
+        opt_scroll.pack(side='right', fill='y')
+
+        self.opt_tree.bind('<<TreeviewSelect>>', self._on_opt_candidate_select)
+        self.opt_tree.bind('<Double-1>', lambda e: self._opt_apply_candidate_to_config())
+
+        self.opt_tree.tag_configure('best', background='#1e3a5f', foreground='#38bdf8', font=('Segoe UI', 8, 'bold'))
+        self.opt_tree.tag_configure('base', foreground='#a78bfa')
+        self.opt_tree.tag_configure('normal', foreground='#f1f5f9')
+        self.opt_tree.tag_configure('skipped', foreground='#64748b')
+
+        cbtns = ttk.Frame(cand_frame)
+        cbtns.pack(fill='x', padx=6, pady=4)
+        self.btn_opt_apply = ttk.Button(cbtns, text='Apply to Configure (Tab 1)', command=self._opt_apply_candidate_to_config)
+        self.btn_opt_apply.pack(side='left', padx=2)
+        add_tooltip(self.btn_opt_apply, 'Load the selected candidate into Configure (Tab 1) to test, modify, or simulate.')
+
+        self.btn_opt_graphs = ttk.Button(cbtns, text='Generate Graphs (Tab 5)', command=self._opt_generate_candidate_graphs)
+        self.btn_opt_graphs.pack(side='left', padx=2)
+        add_tooltip(self.btn_opt_graphs, 'Extract full authentic JavaFoil aerodynamic polars (Cl vs Cd, Cl/Cm vs Alpha, Cp, Boundary Layer) for this candidate and view in Graphs tab.')
+
+        self.btn_opt_jf = ttk.Button(cbtns, text='Open in JavaFoil GUI', command=self._opt_open_candidate_in_javafoil)
+        self.btn_opt_jf.pack(side='left', padx=2)
+        add_tooltip(self.btn_opt_jf, 'Open this specific candidate directly in interactive JavaFoil GUI.')
+
+        self.btn_opt_set_base = ttk.Button(cbtns, text='Set as Base Wing', command=self._opt_set_candidate_as_base)
+        self.btn_opt_set_base.pack(side='left', padx=2)
+        add_tooltip(self.btn_opt_set_base, 'Promote this candidate to be the Optimizer baseline for new tuning iterations.')
+
+        self.opt_cand_detail = ttk.Label(
+            cand_frame, text='No candidate selected yet (run optimization or click a row).',
+            font=('Segoe UI', 8), foreground='#94a3b8'
+        )
+        self.opt_cand_detail.pack(anchor='w', padx=8, pady=(0, 4))
         
-        self.opt_log = tk.Text(scrollable_frame, height=12, state='disabled', wrap='word')
-        self.opt_log.pack(fill='both', expand=True, pady=6)
+        self.opt_log = tk.Text(scrollable_frame, height=6, state='disabled', wrap='word')
+        self.opt_log.pack(fill='x', pady=6)
         self._opt_running = False
         self._opt_base_cfg = None
         self._opt_best_cfg = None
         self._opt_best_score = -1e+09
         self._opt_base_metrics = None
+        self._opt_candidates = []
 
     def _on_opt_goal_changed(self):
         goal = self.opt_goal_mode.get()
@@ -5960,6 +6035,11 @@ class App(tk.Tk):
         self.opt_status.set('Running...')
         self.opt_progress['value'] = 0
         self.opt_progress['maximum'] = iters_val
+        self._opt_candidates = []
+        if hasattr(self, 'opt_tree'):
+            self.opt_tree.delete(*self.opt_tree.get_children())
+        if hasattr(self, 'opt_cand_detail'):
+            self.opt_cand_detail.configure(text='Evaluating optimization candidates...')
         self._opt_log(f"Starting optimization [{goal_key.upper()}] with Base Wing: {A.describe(base_cfg)}...")
 
         def work():
@@ -6002,6 +6082,14 @@ class App(tk.Tk):
                         st_val = base_row.get('Stall_Angle', 0)
                         marg_val = A.DESIGN_ALPHA - float(st_val) if st_val is not None else 0.0
                         self._opt_log(f"Baseline Telemetry: DF={df_val:.1f}N | L/D={ld_val:.1f} | Margin={marg_val:.1f}° | Base Score={best_score:.2f}")
+                        cand_info = {
+                            'iter': 'Base', 'tag': '[BASE]', 'cfg': base_cfg, 'score': best_score,
+                            'downforce': df_val, 'drag': float(base_row.get('Drag_N', 0) or 0),
+                            'ld': ld_val, 'stall_angle': st_val, 'margin': marg_val,
+                            'row': base_row, 'status': base_row.get('Status', 'Valid'),
+                            'flaps_desc': ', '.join(f"{f[0]} ({f[2]}°, {f[1]}%)" for f in base_cfg[1])
+                        }
+                        self.ui_q.put(('opt_candidate', cand_info))
                 except Exception as e:
                     self._opt_log(f"Baseline evaluation note: {e}")
             elif base_metrics and base_geom_ok:
@@ -6009,7 +6097,17 @@ class App(tk.Tk):
                 best_score = self._calculate_optimizer_score(base_metrics, goal_key, base_metrics, ret_pct)
                 df_val = float(base_metrics.get('Downforce_N', 0) or 0)
                 ld_val = float(base_metrics.get('Max_LD', 0) or 0)
+                st_val = base_metrics.get('Stall_Angle', 0)
+                marg_val = A.DESIGN_ALPHA - float(st_val) if st_val is not None else 0.0
                 self._opt_log(f"Using baseline telemetry: DF={df_val:.1f}N | L/D={ld_val:.1f} | Base Score={best_score:.2f}")
+                cand_info = {
+                    'iter': 'Base', 'tag': '[BASE]', 'cfg': base_cfg, 'score': best_score,
+                    'downforce': df_val, 'drag': float(base_metrics.get('Drag_N', 0) or 0),
+                    'ld': ld_val, 'stall_angle': st_val, 'margin': marg_val,
+                    'row': base_metrics, 'status': base_metrics.get('Status', 'Valid'),
+                    'flaps_desc': ', '.join(f"{f[0]} ({f[2]}°, {f[1]}%)" for f in base_cfg[1])
+                }
+                self.ui_q.put(('opt_candidate', cand_info))
 
             for i in range(iters_val):
                 if self._opt_stop_flag:
@@ -6035,6 +6133,12 @@ class App(tk.Tk):
 
                 if candidate_cfg is None:
                     self._opt_log(f"  Iter {i + 1}/{iters_val}: Skipped (candidate geometries failed physical/regulatory constraints)")
+                    cand_info = {
+                        'iter': str(i + 1), 'tag': '', 'cfg': None, 'score': None,
+                        'downforce': None, 'drag': None, 'ld': None, 'stall_angle': None, 'margin': None,
+                        'row': {}, 'status': 'Failed Constraints', 'flaps_desc': 'Slot geometry rejected'
+                    }
+                    self.ui_q.put(('opt_candidate', cand_info))
                     self.ui_q.put(('opt_prog', i + 1))
                     self.ui_q.put(('opt_status', f"Iteration {i + 1}/{iters_val} (skipped)"))
                     time.sleep(0.01)
@@ -6042,20 +6146,35 @@ class App(tk.Tk):
 
                 try:
                     row = A.run_one(candidate_cfg, 'opt', gh0_val)
-                    if row.get('Status') == 'Valid':
-                        score = self._calculate_optimizer_score(row, goal_key, base_metrics, ret_pct)
-                        df_val = float(row.get('Downforce_N', 0) or 0)
-                        ld_val = float(row.get('Max_LD', 0) or 0)
-                        st_val = row.get('Stall_Angle', 0)
-                        marg_val = A.DESIGN_ALPHA - float(st_val) if st_val is not None else 0.0
-                        if score > best_score:
-                            best = candidate_cfg
-                            best_score = score
-                            self._opt_log(f"  Iter {i + 1}/{iters_val}: [BEST] New Best Score {score:.2f} (DF: {df_val:.1f}N, L/D: {ld_val:.1f}, Margin: {marg_val:.1f}°)")
-                        else:
-                            self._opt_log(f"  Iter {i + 1}/{iters_val}: Score {score:.2f} (DF: {df_val:.1f}N, L/D: {ld_val:.1f}, Margin: {marg_val:.1f}°)")
+                    is_valid = row.get('Status') == 'Valid'
+                    score = self._calculate_optimizer_score(row, goal_key, base_metrics, ret_pct) if is_valid else None
+                    df_val = float(row.get('Downforce_N', 0) or 0)
+                    dg_val = float(row.get('Drag_N', 0) or 0)
+                    ld_val = float(row.get('Max_LD', 0) or 0)
+                    st_val = row.get('Stall_Angle', 0)
+                    marg_val = A.DESIGN_ALPHA - float(st_val) if st_val is not None else 0.0
+                    is_new_best = is_valid and (score is not None and score > best_score)
+                    if is_new_best:
+                        best = candidate_cfg
+                        best_score = score
+                        self._opt_log(f"  Iter {i + 1}/{iters_val}: [BEST] New Best Score {score:.2f} (DF: {df_val:.1f}N, L/D: {ld_val:.1f}, Margin: {marg_val:.1f}°)")
+                    elif is_valid and score is not None:
+                        self._opt_log(f"  Iter {i + 1}/{iters_val}: Score {score:.2f} (DF: {df_val:.1f}N, L/D: {ld_val:.1f}, Margin: {marg_val:.1f}°)")
                     else:
                         self._opt_log(f"  Iter {i + 1}/{iters_val}: JavaFoil status {row.get('Status')}")
+
+                    cand_info = {
+                        'iter': str(i + 1), 'tag': '[BEST]' if is_new_best else '',
+                        'cfg': candidate_cfg, 'score': score,
+                        'downforce': df_val if is_valid else None,
+                        'drag': dg_val if is_valid else None,
+                        'ld': ld_val if is_valid else None,
+                        'stall_angle': st_val if is_valid else None,
+                        'margin': marg_val if is_valid else None,
+                        'row': row, 'status': row.get('Status', 'Valid'),
+                        'flaps_desc': ', '.join(f"{f[0]} ({f[2]}°, {f[1]}%)" for f in candidate_cfg[1])
+                    }
+                    self.ui_q.put(('opt_candidate', cand_info))
                 except Exception as e:
                     self._opt_log(f"  Iter {i + 1}/{iters_val} error: {e}")
 
@@ -6090,16 +6209,97 @@ class App(tk.Tk):
             self._opt_log(f"Optimization complete. Best score: {best_score:.2f} ({A.describe(best_cfg)})")
             self._opt_best_cfg = best_cfg
             self._opt_best_score = best_score
+            if hasattr(self, 'opt_tree'):
+                for child in self.opt_tree.get_children():
+                    vals = self.opt_tree.item(child, 'values')
+                    if vals and vals[1] == '[BEST]':
+                        self.opt_tree.selection_set(child)
+                        self.opt_tree.see(child)
+                        self._on_opt_candidate_select()
+                        break
         else:
             self.opt_status.set('Done - no valid configuration found')
             self._opt_log('Optimization finished without a valid configuration (all candidates failed geometry/size checks or JavaFoil).')
         self._refresh_runs()
 
-    def _opt_apply_best(self):
-        if not self._opt_best_cfg:
-            messagebox.showerror('Error', 'No best configuration found')
+    def _handle_opt_candidate(self, cand_info):
+        self._opt_candidates.append(cand_info)
+        if hasattr(self, 'opt_tree'):
+            it = cand_info.get('iter', '')
+            tag = cand_info.get('tag', '')
+            sc = f"{cand_info['score']:.2f}" if cand_info.get('score') is not None else '-'
+            df = f"{cand_info['downforce']:.1f}" if cand_info.get('downforce') is not None else '-'
+            dg = f"{cand_info['drag']:.1f}" if cand_info.get('drag') is not None else '-'
+            ld = f"{cand_info['ld']:.2f}" if cand_info.get('ld') is not None else '-'
+            st = f"{cand_info['stall_angle']:.1f}" if cand_info.get('stall_angle') is not None else '-'
+            mg = f"{cand_info['margin']:.1f}" if cand_info.get('margin') is not None else '-'
+            flaps_desc = cand_info.get('flaps_desc', '')
+            status = cand_info.get('status', 'Valid')
+
+            if tag == '[BEST]':
+                for child in self.opt_tree.get_children():
+                    vals = list(self.opt_tree.item(child, 'values'))
+                    if vals and vals[1] == '[BEST]':
+                        vals[1] = ''
+                        self.opt_tree.item(child, values=vals, tags=('normal',))
+
+            row_tag = 'best' if tag == '[BEST]' else ('base' if tag == '[BASE]' else ('skipped' if 'fail' in status.lower() else 'normal'))
+            item_id = self.opt_tree.insert(
+                '', 'end',
+                values=(it, tag, sc, df, dg, ld, st, mg, flaps_desc, status),
+                tags=(row_tag,)
+            )
+            self.opt_tree.see(item_id)
+            if tag in ('[BEST]', '[BASE]'):
+                self.opt_tree.selection_set(item_id)
+                self._on_opt_candidate_select()
+
+    def _get_selected_opt_candidate(self):
+        if not hasattr(self, 'opt_tree'):
+            return None
+        sel = self.opt_tree.selection()
+        if not sel:
+            if getattr(self, '_opt_candidates', None):
+                for c in reversed(self._opt_candidates):
+                    if c.get('tag') == '[BEST]':
+                        return c
+                return self._opt_candidates[-1]
+            return None
+        item = sel[0]
+        vals = self.opt_tree.item(item, 'values')
+        if not vals:
+            return None
+        it_str = str(vals[0])
+        for c in self._opt_candidates:
+            if str(c.get('iter')) == it_str:
+                return c
+        return None
+
+    def _on_opt_candidate_select(self, event=None):
+        cand = self._get_selected_opt_candidate()
+        if not cand:
             return
-        main, flaps = self._opt_best_cfg
+        it = cand.get('iter', '')
+        tag = cand.get('tag', '')
+        sc = f"{cand['score']:.2f}" if cand.get('score') is not None else "N/A"
+        df = f"{cand['downforce']:.1f} N" if cand.get('downforce') is not None else "N/A"
+        ld = f"{cand['ld']:.2f}" if cand.get('ld') is not None else "N/A"
+        mg = f"{cand['margin']:.1f}°" if cand.get('margin') is not None else "N/A"
+        st = cand.get('status', 'Valid')
+        tag_str = f" {tag}" if tag else ""
+        cfg = cand.get('cfg')
+        desc = A.describe(cfg) if cfg else "Geometry failed constraints"
+        txt = f"Candidate #{it}{tag_str}: {desc} | Score: {sc} | Downforce: {df} | L/D: {ld} | Margin: {mg} | Status: {st}"
+        if hasattr(self, 'opt_cand_detail'):
+            self.opt_cand_detail.configure(text=txt)
+
+    def _opt_apply_candidate_to_config(self, cand=None):
+        if cand is None:
+            cand = self._get_selected_opt_candidate()
+        if not cand or not cand.get('cfg'):
+            messagebox.showwarning("No Candidate Selected", "Please select a valid optimization candidate from the table first.")
+            return
+        main, flaps = cand['cfg']
         self.main_box.set(main)
         if hasattr(self, 'opt_main_box'):
             self.opt_main_box.set(main)
@@ -6131,6 +6331,151 @@ class App(tk.Tk):
                 vals[5].set(False)
         self.notebook.select(self.tab_cfg)
         self.on_check()
+        self.log(f"Applied Optimizer candidate #{cand.get('iter')} ({A.describe(cand['cfg'])}) to Configure tab.")
+        self.set_status(f"Loaded Optimizer candidate #{cand.get('iter')}")
+
+    def _opt_set_candidate_as_base(self, cand=None):
+        if cand is None:
+            cand = self._get_selected_opt_candidate()
+        if not cand or not cand.get('cfg'):
+            messagebox.showwarning("No Candidate Selected", "Please select an optimization candidate from the table first.")
+            return
+        cfg = cand['cfg']
+        self._opt_base_cfg = cfg
+        main, flaps = cfg
+        if hasattr(self, 'opt_main_box'):
+            self.opt_main_box.set(main)
+        for i, vals_cb in enumerate(getattr(self, 'opt_flap_rows', [])):
+            vals, cb = vals_cb
+            if i < len(flaps):
+                fname, s, a, x, y = flaps[i]
+                vals[0].set(fname)
+                vals[1].set(str(s))
+                vals[2].set(str(a))
+                vals[3].set(str(x))
+                vals[4].set(str(y))
+                vals[5].set(True)
+            else:
+                vals[0].set('')
+                vals[5].set(False)
+        if cand.get('row'):
+            self._opt_base_metrics = dict(cand['row'])
+            self._update_opt_info(cand['row'])
+        self.set_status(f"Set candidate #{cand.get('iter')} as new Optimizer baseline")
+        self._opt_log(f"Candidate #{cand.get('iter')} is now set as the Optimizer baseline design.")
+
+    def _opt_open_candidate_in_javafoil(self, cand=None):
+        if cand is None:
+            cand = self._get_selected_opt_candidate()
+        if not cand or not cand.get('cfg'):
+            messagebox.showwarning("No Candidate Selected", "Please select an optimization candidate from the table first.")
+            return
+        cfg = cand['cfg']
+        gh = None
+        try:
+            if self.opt_ge_v.get() and self.opt_gh_state.get().strip() not in ('', 'none', 'None'):
+                gh = float(self.opt_gh_state.get())
+        except Exception:
+            gh = None
+        re_val = 570000
+        try:
+            re_val = float(self.opt_vars['re'].get())
+        except Exception:
+            pass
+        title = f"Opt Candidate #{cand.get('iter')} ({cfg[0]} + {len(cfg[1])} flaps)"
+        ok, msg, _ = A.launch_javafoil_gui(cfg, ground_h=gh, re_val=re_val, title=title)
+        if ok:
+            self.log(msg)
+            self.set_status(f"JavaFoil GUI launched for Candidate #{cand.get('iter')}")
+        else:
+            messagebox.showerror("JavaFoil Launch Error", msg)
+
+    def _opt_generate_candidate_graphs(self, cand=None):
+        if cand is None:
+            cand = self._get_selected_opt_candidate()
+        if not cand or not cand.get('cfg'):
+            messagebox.showwarning("No Candidate Selected", "Please select an optimization candidate from the table first.")
+            return
+            
+        cfg = cand['cfg']
+        it_num = cand.get('iter', 'cand')
+        main = cfg[0]
+        flaps = cfg[1]
+        
+        gh0_val = None
+        try:
+            if self.opt_ge_v.get() and self.opt_gh_state.get().strip() not in ('', 'none', 'None'):
+                gh0_val = float(self.opt_gh_state.get())
+        except Exception:
+            gh0_val = None
+            
+        try:
+            chord_val = float(self.opt_vars['chord'].get())
+            speed_val = float(self.opt_vars['speed'].get())
+            re_val = float(self.opt_vars['re'].get())
+        except Exception:
+            chord_val = 250.0
+            speed_val = 20.0
+            re_val = 570000
+            
+        run_tag = f"opt_iter_{it_num}_{main}_{len(flaps)}elem"
+        gdir = os.path.join(A.OUT_DIR, "graphs")
+        os.makedirs(gdir, exist_ok=True)
+        
+        self.log(f"Generating authentic aerodynamic charts for Candidate #{it_num} in background...")
+        self.set_status(f"Generating graphs for Candidate #{it_num}...")
+        
+        def work():
+            outs = []
+            try:
+                dummy_r = {
+                    "Main": main,
+                    "Elements": 1 + len(flaps),
+                    "Cl_a0": cand.get('row', {}).get('Cl_a0', 0.0),
+                    "Cd_a0": cand.get('row', {}).get('Cd_a0', 0.0),
+                    "Cm_a0": cand.get('row', {}).get('Cm_a0', 0.0),
+                    "Max_LD": cand.get('ld', 0.0),
+                    "Downforce_N": cand.get('downforce', 0.0),
+                    "Flow": "ground" if gh0_val is not None else "unbounded",
+                    "Height_pct": gh0_val or 0,
+                    "Run_ID": run_tag
+                }
+                for k, (fn, sc, ang, xpos, ypos) in enumerate(flaps, 1):
+                    dummy_r[f"F{k}_Airfoil"] = fn
+                    dummy_r[f"F{k}_Scale"] = sc
+                    dummy_r[f"F{k}_Angle"] = ang
+                    dummy_r[f"F{k}_X"] = xpos
+                    dummy_r[f"F{k}_Y"] = ypos
+                if R is not None:
+                    try:
+                        R.plot_geometry(dummy_r, os.path.join(gdir, f"geometry_{run_tag}.png"), chord_val)
+                        outs.append("custom geometry")
+                    except Exception:
+                        pass
+
+                jf_outs = A.export_javafoil_graphs(cfg, gh0_val, gdir, run_id=run_tag,
+                                                   re=re_val, alphas=(A.ALPHA[0], A.ALPHA[1], A.ALPHA[2]), v_inf=speed_val)
+                if jf_outs:
+                    outs.append(f"JavaFoil native ({len(jf_outs)} plots: polar, Cp, BL)")
+
+                self.ui_q.put(("refreshgr", os.path.join(A.OUT_DIR, "results.csv")))
+                self.ui_q.put(("log", f"Candidate #{it_num} graphs generated: {', '.join(outs) or 'done'}"))
+                self.after(200, lambda: self.notebook.select(self.tab_gr))
+            except Exception as e:
+                self.ui_q.put(("log", f"Candidate #{it_num} graph generation failed: {e}"))
+
+        threading.Thread(target=work, daemon=True).start()
+
+    def _opt_apply_best(self):
+        if getattr(self, '_opt_candidates', None):
+            for c in reversed(self._opt_candidates):
+                if c.get('tag') == '[BEST]' and c.get('cfg'):
+                    self._opt_apply_candidate_to_config(c)
+                    return
+        if self._opt_best_cfg:
+            self._opt_apply_candidate_to_config({'iter': 'Best', 'cfg': self._opt_best_cfg})
+        else:
+            messagebox.showerror('Error', 'No best configuration found')
 
     def _opt_log(self, msg):
         self.ui_q.put(('opt_log', msg))

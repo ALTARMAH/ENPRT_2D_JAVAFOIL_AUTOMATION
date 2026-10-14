@@ -2587,22 +2587,36 @@ def save_failure(uid, wdir, files, cmd):
         fh.write(f"cd {wdir}\n" + " ".join(f"'{c}'" if " " in c else c for c in cmd) + "\n")
 
 
-def find_java_executable():
+def find_java_executable(prefer_gui=False):
     """Locate the java executable across PATH, JAVA_HOME, and standard OS directories."""
     # 1. Direct PATH lookup
-    j = shutil.which("java") or shutil.which("java.exe")
+    if prefer_gui and sys.platform == "win32":
+        j = shutil.which("javaw") or shutil.which("javaw.exe")
+        if j and os.path.isfile(j):
+            return j
+    j = shutil.which("java") or shutil.which("java.exe") or shutil.which("javaw") or shutil.which("javaw.exe")
     if j and os.path.isfile(j):
         return j
 
     # 2. JAVA_HOME lookup
     jh = os.environ.get("JAVA_HOME", "").strip()
     if jh:
-        for candidate in [
+        candidates = [
+            os.path.join(jh, "bin", "javaw.exe"),
             os.path.join(jh, "bin", "java.exe"),
             os.path.join(jh, "bin", "java"),
+            os.path.join(jh, "javaw.exe"),
             os.path.join(jh, "java.exe"),
             os.path.join(jh, "java"),
-        ]:
+        ] if (prefer_gui and sys.platform == "win32") else [
+            os.path.join(jh, "bin", "java.exe"),
+            os.path.join(jh, "bin", "java"),
+            os.path.join(jh, "bin", "javaw.exe"),
+            os.path.join(jh, "java.exe"),
+            os.path.join(jh, "java"),
+            os.path.join(jh, "javaw.exe"),
+        ]
+        for candidate in candidates:
             if os.path.isfile(candidate):
                 return candidate
 
@@ -2616,8 +2630,11 @@ def find_java_executable():
             os.environ.get("ProgramData", r"C:\ProgramData"),
         ]
         oracle_paths = [
+            r"C:\Program Files\Common Files\Oracle\Java\javapath\javaw.exe",
             r"C:\Program Files\Common Files\Oracle\Java\javapath\java.exe",
+            r"C:\Program Files (x86)\Common Files\Oracle\Java\javapath\javaw.exe",
             r"C:\Program Files (x86)\Common Files\Oracle\Java\javapath\java.exe",
+            r"C:\ProgramData\Oracle\Java\javapath\javaw.exe",
             r"C:\ProgramData\Oracle\Java\javapath\java.exe",
         ]
         for op in oracle_paths:
@@ -2628,6 +2645,7 @@ def find_java_executable():
             "Java", "Eclipse Adoptium", "AdoptOpenJDK", "Microsoft", "BellSoft",
             "Zulu", "Amazon Corretto", "Semeru", "RedHat"
         ]
+        wanted_names = ("javaw.exe", "java.exe") if (prefer_gui and sys.platform == "win32") else ("java.exe", "javaw.exe")
         for pdir in prog_dirs:
             if not pdir or not os.path.isdir(pdir):
                 continue
@@ -2635,12 +2653,13 @@ def find_java_executable():
                 vpath = os.path.join(pdir, vendor)
                 if os.path.isdir(vpath):
                     for root, dirs, files in os.walk(vpath):
-                        if "java.exe" in files:
-                            candidate = os.path.join(root, "java.exe")
-                            if os.path.isfile(candidate):
-                                return candidate
+                        for wn in wanted_names:
+                            if wn in files:
+                                candidate = os.path.join(root, wn)
+                                if os.path.isfile(candidate):
+                                    return candidate
 
-    return "java"
+    return "javaw" if (prefer_gui and sys.platform == "win32") else "java"
 
 
 def is_java_available():
@@ -2711,7 +2730,7 @@ def launch_javafoil_gui(cfg, ground_h=None, re_val=None, title="FSAE Multi-Eleme
     """
     Exports the current multi-element wing stack into a JavaFoil geometry file,
     creates an interactive bootstrap script without JavaFoil.Exit(), and launches
-    the JavaFoil GUI in the background so the user can inspect, modify, or test it interactively.
+    the JavaFoil GUI in the foreground/background so the user can inspect, modify, or test it interactively.
     Returns (success: bool, message: str, proc: subprocess.Popen or None).
     """
     ensure_airfoils_loaded()
@@ -2721,7 +2740,7 @@ def launch_javafoil_gui(cfg, ground_h=None, re_val=None, title="FSAE Multi-Eleme
     import re as _re_mod
     effective_re = re_val if re_val is not None else (re if re is not None else RE)
 
-    java_bin = find_java_executable()
+    java_bin = find_java_executable(prefer_gui=True)
     jf_jar, mh_jar = find_java_jars()
     if not jf_jar or not os.path.exists(jf_jar):
         return False, "javafoil.jar not found. Please verify JavaFoil installation.", None
@@ -2746,7 +2765,19 @@ def launch_javafoil_gui(cfg, ground_h=None, re_val=None, title="FSAE Multi-Eleme
             for pt in o:
                 f.write(f"{pt[0]:.6f} {pt[1]:.6f}\n")
 
-    re_val = effective_re
+    # Also export wing.txt into current working directory and campaign root for easy manual loading
+    for alt_dir in [os.getcwd(), OUT_DIR]:
+        try:
+            with open(os.path.join(alt_dir, "wing.txt"), "w", encoding="utf-8") as alt_f:
+                alt_f.write(f"{clean_title}\n")
+                for i, o in enumerate(outs):
+                    if i > 0:
+                        alt_f.write("9999.9 9999.9\n")
+                    for pt in o:
+                        alt_f.write(f"{pt[0]:.6f} {pt[1]:.6f}\n")
+        except Exception:
+            pass
+
     ge_flag = 1 if ground_h is not None else 0
     with open(script_path, "w", encoding="utf-8") as f:
         f.write(f"""Options.Country(10);
@@ -2758,7 +2789,6 @@ Options.GroundEffect({ge_flag});
 Options.HeightOverSpan(0.5);
 Options.AspectRatio(0);
 Options.SweepAngle(0.0);
-Options.ReynoldsNumber({re_val:g});
 """)
 
     # Copy jars if needed
@@ -2772,21 +2802,23 @@ Options.ReynoldsNumber({re_val:g});
             try: shutil.copy(mh_jar, dest_mh)
             except Exception: pass
 
-    if sys.platform != "win32" and shutil.which("faketime"):
-        cmd = ["faketime", "-f", safe_date_str, java_bin, "-client", "-Xverify:none", "-XX:TieredStopAtLevel=1",
-               "-jar", JAVAFOIL_JAR, "Script=gui_startup.jfs"]
-    else:
-        cmd = [java_bin, "-client", "-Xverify:none", "-XX:TieredStopAtLevel=1",
-               "-jar", JAVAFOIL_JAR, "Script=gui_startup.jfs"]
+    # NOTE: Never use faketime for interactive GUI launcher!
+    # faketime interferes with Java AWT/Swing event loops and monotonic clocks, freezing the window display.
+    cmd = [java_bin, "-client", "-Xverify:none", "-XX:TieredStopAtLevel=1",
+           "-jar", JAVAFOIL_JAR, "Script=gui_startup.jfs"]
 
     env = os.environ.copy()
     if sys.platform != "win32":
-        if "DISPLAY" not in env or not env["DISPLAY"]:
+        if not env.get("DISPLAY"):
             env["DISPLAY"] = ":0"
 
     popen_kwargs = {"cwd": gui_dir, "env": env}
     try:
         proc = subprocess.Popen(cmd, **popen_kwargs)
+        # Check if process died immediately
+        time.sleep(0.3)
+        if proc.poll() is not None:
+            return False, f"JavaFoil GUI exited prematurely (code {proc.returncode}). Please verify Java installation.", None
         return True, f"JavaFoil GUI launched with {len(outs)} wing elements loaded.", proc
     except Exception as e:
         return False, f"Failed to launch JavaFoil GUI: {e}", None

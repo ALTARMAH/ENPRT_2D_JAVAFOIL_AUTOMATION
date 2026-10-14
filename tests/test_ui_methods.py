@@ -71,6 +71,47 @@ def run_tests():
     finally:
         webbrowser.open = orig_open
 
+    print("Testing Optimizer candidate table & actions...", flush=True)
+    c1 = {
+        'iter': 'Base', 'tag': '[BASE]', 'cfg': ('be122-125', [('be122-125', 30.0, -8.0, 100.0, 5.0)]),
+        'score': 100.0, 'downforce': 250.0, 'drag': 75.0, 'ld': 3.33, 'stall_angle': -14.0,
+        'margin': 4.0, 'row': {'Status': 'Valid', 'Cl_a0': -3.1, 'Cd_a0': 0.93}, 'status': 'Valid',
+        'flaps_desc': 'be122-125 (-8.0°, 30.0%)'
+    }
+    c2 = {
+        'iter': '1', 'tag': '[BEST]', 'cfg': ('be122-125', [('be122-125', 32.0, -12.0, 105.0, 8.0)]),
+        'score': 125.5, 'downforce': 275.0, 'drag': 78.0, 'ld': 3.52, 'stall_angle': -15.0,
+        'margin': 5.0, 'row': {'Status': 'Valid', 'Cl_a0': -3.4, 'Cd_a0': 0.96}, 'status': 'Valid',
+        'flaps_desc': 'be122-125 (-12.0°, 32.0%)'
+    }
+    app._handle_opt_candidate(c1)
+    app._handle_opt_candidate(c2)
+    children = app.opt_tree.get_children()
+    assert len(children) == 2, f"Expected 2 rows in opt_tree, got {len(children)}"
+    print("  -> opt_tree rows inserted OK", flush=True)
+
+    # Test candidate selection and detail display
+    app.opt_tree.selection_set(children[1])
+    app._on_opt_candidate_select()
+    sel_cand = app._get_selected_opt_candidate()
+    assert sel_cand is not None and sel_cand['iter'] == '1', "Failed to retrieve selected candidate"
+    print("  -> candidate selection OK", flush=True)
+
+    # Test apply selected candidate to Configure (Tab 1)
+    app._opt_apply_candidate_to_config()
+    assert app.notebook.select() == str(app.tab_cfg), "Failed to switch to Configure tab"
+    cfg_applied = app.read_cfg()
+    assert cfg_applied is not None, "Failed to read applied config"
+    assert cfg_applied[0] == 'be122-125'
+    assert cfg_applied[1][0][2] == -12.0, f"Expected angle -12.0, got {cfg_applied[1][0][2]}"
+    print("  -> apply candidate to Configure (Tab 1) OK", flush=True)
+
+    # Test set candidate as baseline
+    app.notebook.select(app.tab_opt)
+    app._opt_set_candidate_as_base(c2)
+    assert app._opt_base_cfg == c2['cfg'], "Base config not updated to candidate"
+    print("  -> set candidate as baseline OK", flush=True)
+
     print("ALL UI METHOD TESTS PASSED SUCCESSFULLY!", flush=True)
     try:
         app.destroy()
