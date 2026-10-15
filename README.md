@@ -9,7 +9,22 @@ An automated multi-element aerodynamic optimization and campaign toolchain built
 
 ---
 
-## 🌟 Key Capabilities
+## Windows Standalone Executable (Ready to Run - No Python Required)
+
+For Windows users who want to run Aero Auto immediately without installing Python or setting up an environment:
+
+- [**Download aero_ui_standalone.exe (v1.1)**](https://github.com/ALTARMAH/ENPRT_2D_JAVAFOIL_AUTOMATION/releases/download/v1.1/aero_ui_standalone.exe)
+  *Single-file portable executable (~85 MB). Download and double-click to launch.*
+- [**Download aero_auto_windows_standalone_1.1.zip**](https://github.com/ALTARMAH/ENPRT_2D_JAVAFOIL_AUTOMATION/releases/download/v1.1/aero_auto_windows_standalone_1.1.zip)
+  *Portable zip archive containing the standalone executable, official manuals, airfoils library, and batch launchers.*
+- [**Download aero_auto_windows_app_1.1.zip**](https://github.com/ALTARMAH/ENPRT_2D_JAVAFOIL_AUTOMATION/releases/download/v1.1/aero_auto_windows_app_1.1.zip)
+  *Full pre-extracted application folder bundle with START_AERO_AUTO.bat.*
+
+*(Requirement: Java JRE/JDK 8+ installed on your system for JavaFoil simulation. Free installer: [Adoptium Temurin](https://adoptium.net))*
+
+---
+
+## Key Capabilities
 
 - **Multi-Element Geometry Engine (1 to 4 Elements)**:
   Parameterizes main planes and trailing-edge flaps (scale, incidence angle, $x/y$ slots, and overlaps) with collision detection, sanity clipping, and ground-effect modeling.
@@ -43,7 +58,7 @@ An automated multi-element aerodynamic optimization and campaign toolchain built
 
 ---
 
-## 📂 Project Structure
+## Project Structure
 
 ```text
 ├── aero_auto.py            # Core simulation engine, JavaFoil bridge & campaign planner
@@ -57,6 +72,7 @@ An automated multi-element aerodynamic optimization and campaign toolchain built
 ├── run_sim_terminal.py     # Terminal-mode standalone simulation runner
 ├── make_icon.py            # Application icon generator
 ├── build_dist.py           # Packaging script for distributable kits and standalone bundles
+├── START_AERO_AUTO.bat     # Windows 1-click launcher (runs standalone exe or python)
 ├── run_ui.sh               # Linux launch script
 ├── run_ui.bat              # Windows launch script
 ├── requirements.txt        # Python dependency manifest
@@ -76,7 +92,7 @@ An automated multi-element aerodynamic optimization and campaign toolchain built
 
 ---
 
-## 🚀 Quick Start
+## Quick Start
 
 ### 1. Requirements
 
@@ -104,14 +120,14 @@ pip install -r requirements.txt
   *(or `python launcher.py ui`)*
 
 - **Windows**:
-  Double-click **`run_ui.bat`** or run:
+  Double-click **`START_AERO_AUTO.bat`** (or `run_ui.bat`):
   ```cmd
   python launcher.py ui
   ```
 
 ---
 
-## 💻 Headless & Command-Line Interface
+## Headless & Command-Line Interface
 
 `launcher.py` provides cross-platform command line access for headless servers and HPC clusters:
 
@@ -134,7 +150,7 @@ python launcher.py field --main s1223 --flaps e423
 
 ---
 
-## 📦 Building Standalone Executables
+## Building Standalone Executables
 
 To build standalone Windows or Linux applications using PyInstaller:
 
@@ -144,14 +160,15 @@ python build_dist.py
 ```
 
 This creates:
-- `dist/aero_auto_windows_app_1.1.zip` (standalone Windows directory package)
 - `dist/aero_ui_standalone.exe` (portable single-file Windows executable)
+- `dist/aero_auto_windows_standalone_1.1.zip` (portable Windows standalone package)
+- `dist/aero_auto_windows_app_1.1.zip` (standalone Windows directory package)
 - `dist/aero_auto_linux_app_1.1.tar.gz` (standalone Linux app bundle)
-- `dist/aero_auto_windows_1.1.zip` (source release kit with batch launcher)
+- `dist/aero_auto_windows_1.1.zip` (release package with bundled standalone exe & scripts)
 
 ---
 
-## 📖 Documentation
+## Documentation
 
 Full documentation is included in the [`docs/`](docs/) directory and accessible from the GUI Help menu:
 - [**User Manual (PDF)**](docs/USER_MANUAL.pdf): Step-by-step tutorial, tab-by-tab walkthrough, and workflows.
@@ -160,7 +177,7 @@ Full documentation is included in the [`docs/`](docs/) directory and accessible 
 
 ---
 
-## 👥 Authors & Acknowledgments
+## Authors & Acknowledgments
 
 - **ENPRT Motorsports / Formula Student Team**
 - Aerodynamic Solver: **JavaFoil** by Martin Hepperle

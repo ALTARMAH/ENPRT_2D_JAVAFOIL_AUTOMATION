@@ -2588,7 +2588,7 @@ def save_failure(uid, wdir, files, cmd):
 
 
 def find_java_executable(prefer_gui=False):
-    """Locate the java executable across PATH, JAVA_HOME, and standard OS directories."""
+    """Locate the java executable across PATH, JAVA_HOME, registry, and standard OS directories."""
     # 1. Direct PATH lookup
     if prefer_gui and sys.platform == "win32":
         j = shutil.which("javaw") or shutil.which("javaw.exe")
@@ -2620,8 +2620,48 @@ def find_java_executable(prefer_gui=False):
             if os.path.isfile(candidate):
                 return candidate
 
-    # 3. Windows standard installation locations
+    # 3. Windows registry lookup
     if sys.platform == "win32" or os.name == "nt":
+        try:
+            import winreg
+            reg_paths = [
+                r"SOFTWARE\JavaSoft\Java Runtime Environment",
+                r"SOFTWARE\JavaSoft\Java Development Kit",
+                r"SOFTWARE\JavaSoft\JDK",
+                r"SOFTWARE\Eclipse Adoptium\JDK",
+                r"SOFTWARE\Eclipse Adoptium\JRE",
+                r"SOFTWARE\AdoptOpenJDK\JDK",
+                r"SOFTWARE\AdoptOpenJDK\JRE",
+                r"SOFTWARE\Microsoft\JDK",
+                r"SOFTWARE\BellSoft\Liberica JDK",
+                r"SOFTWARE\Zulu",
+            ]
+            for root_key in (winreg.HKEY_LOCAL_MACHINE, winreg.HKEY_CURRENT_USER):
+                for subkey in reg_paths:
+                    try:
+                        with winreg.OpenKey(root_key, subkey, 0, winreg.KEY_READ | getattr(winreg, "KEY_WOW64_64KEY", 0)) as k:
+                            num_subkeys, _, _ = winreg.QueryInfoKey(k)
+                            for i in range(num_subkeys):
+                                ver_name = winreg.EnumKey(k, i)
+                                try:
+                                    with winreg.OpenKey(k, ver_name) as vk:
+                                        java_home, _ = winreg.QueryValueEx(vk, "JavaHome")
+                                        if java_home and os.path.isdir(java_home):
+                                            cands = [os.path.join(java_home, "bin", "javaw.exe"),
+                                                     os.path.join(java_home, "bin", "java.exe")] if prefer_gui else [
+                                                     os.path.join(java_home, "bin", "java.exe"),
+                                                     os.path.join(java_home, "bin", "javaw.exe")]
+                                            for cand in cands:
+                                                if os.path.isfile(cand):
+                                                    return cand
+                                except Exception:
+                                    pass
+                    except Exception:
+                        pass
+        except Exception:
+            pass
+
+        # 4. Windows standard installation locations
         prog_dirs = [
             os.environ.get("ProgramFiles", r"C:\Program Files"),
             os.environ.get("ProgramFiles(x86)", r"C:\Program Files (x86)"),
@@ -2728,9 +2768,9 @@ def find_java_jars():
 
 def launch_javafoil_gui(cfg, ground_h=None, re_val=None, title="FSAE Multi-Element Wing", re=None):
     """
-    Exports the current multi-element wing stack into a JavaFoil geometry file,
-    creates an interactive bootstrap script without JavaFoil.Exit(), and launches
-    the JavaFoil GUI in the foreground/background so the user can inspect, modify, or test it interactively.
+    Exports the current multi-element wing stack into JavaFoil geometry files,
+    places them in the JavaFoil working folder, project root, and user Desktop,
+    and launches the interactive JavaFoil GUI window.
     Returns (success: bool, message: str, proc: subprocess.Popen or None).
     """
     ensure_airfoils_loaded()
@@ -2754,76 +2794,61 @@ def launch_javafoil_gui(cfg, ground_h=None, re_val=None, title="FSAE Multi-Eleme
     os.makedirs(gui_dir, exist_ok=True)
 
     wing_path = os.path.join(gui_dir, "wing.txt")
-    script_path = os.path.join(gui_dir, "gui_startup.jfs")
-
     clean_title = _re_mod.sub(r'[\r\n\t]+', ' ', str(title)).strip() or "FSAE Multi-Element Wing"
+
+    wing_lines = [f"{clean_title}\n"]
+    for i, o in enumerate(outs):
+        if i > 0:
+            wing_lines.append("9999.9 9999.9\n")
+        for pt in o:
+            wing_lines.append(f"{pt[0]:.6f} {pt[1]:.6f}\n")
+    wing_content = "".join(wing_lines)
+
     with open(wing_path, "w", encoding="utf-8") as f:
-        f.write(f"{clean_title}\n")
-        for i, o in enumerate(outs):
-            if i > 0:
-                f.write("9999.9 9999.9\n")
-            for pt in o:
-                f.write(f"{pt[0]:.6f} {pt[1]:.6f}\n")
+        f.write(wing_content)
 
-    # Also export wing.txt into current working directory and campaign root for easy manual loading
-    for alt_dir in [os.getcwd(), OUT_DIR]:
-        try:
-            with open(os.path.join(alt_dir, "wing.txt"), "w", encoding="utf-8") as alt_f:
-                alt_f.write(f"{clean_title}\n")
-                for i, o in enumerate(outs):
-                    if i > 0:
-                        alt_f.write("9999.9 9999.9\n")
-                    for pt in o:
-                        alt_f.write(f"{pt[0]:.6f} {pt[1]:.6f}\n")
-        except Exception:
-            pass
+    # Also export wing.txt to multiple accessible directories:
+    # 1. Current working directory
+    # 2. Campaign root OUT_DIR
+    # 3. User Desktop (standard and OneDrive)
+    # 4. Folder of running executable (if frozen)
+    user_home = os.path.expanduser("~")
+    export_targets = [
+        os.getcwd(),
+        OUT_DIR,
+        os.path.join(user_home, "Desktop"),
+        os.path.join(user_home, "OneDrive", "Desktop"),
+    ]
+    if getattr(sys, "frozen", False):
+        export_targets.append(os.path.dirname(sys.executable))
 
-    ge_flag = 1 if ground_h is not None else 0
-    with open(script_path, "w", encoding="utf-8") as f:
-        f.write(f"""Options.Country(10);
-Geometry.Open("wing.txt");
-Options.MachNumber(0);
-Options.StallModel(0);
-Options.TransitionModel(1);
-Options.GroundEffect({ge_flag});
-Options.HeightOverSpan(0.5);
-Options.AspectRatio(0);
-Options.SweepAngle(0.0);
+    for alt_dir in export_targets:
+        if alt_dir and os.path.isdir(alt_dir) and os.path.abspath(alt_dir) != os.path.abspath(gui_dir):
+            try:
+                dest_f = os.path.join(alt_dir, "wing.txt")
+                with open(dest_f, "w", encoding="utf-8") as fh:
+                    fh.write(wing_content)
+            except Exception:
+                pass
 
-// JavaFoil suppresses GUI visibility by default when launched with Script= parameter.
-// We explicitly make all AWT/Swing frames visible, normal (unminimized), and focused.
-try {{
-    var Frame = Java.type("java.awt.Frame");
-    var frames = Frame.getFrames();
-    for (var i = 0; i < frames.length; i++) {{
-        var fr = frames[i];
-        if (fr.getTitle() == "JavaFoil") {{
-            fr.setExtendedState(0);
-            fr.setState(0);
-            fr.setVisible(true);
-            fr.toFront();
-            fr.requestFocus();
-        }}
-    }}
-}} catch (e) {{}}
-""")
-
-    # Copy jars if needed
+    # Copy jars into gui_dir so working directory has javafoil.jar and mhclasses.jar
     dest_jf = os.path.join(gui_dir, JAVAFOIL_JAR)
     if not os.path.exists(dest_jf):
-        try: shutil.copy(jf_jar, dest_jf)
-        except Exception: pass
+        try:
+            shutil.copy(jf_jar, dest_jf)
+        except Exception:
+            dest_jf = jf_jar
     if mh_jar and os.path.isfile(mh_jar):
         dest_mh = os.path.join(gui_dir, "mhclasses.jar")
         if not os.path.exists(dest_mh):
-            try: shutil.copy(mh_jar, dest_mh)
-            except Exception: pass
+            try:
+                shutil.copy(mh_jar, dest_mh)
+            except Exception:
+                pass
 
-    # NOTE: Never use faketime for interactive GUI launcher!
-    # faketime interferes with Java AWT/Swing event loops and monotonic clocks, freezing the window display.
-    cmd = [java_bin, "-client", "-Xverify:none", "-XX:TieredStopAtLevel=1",
-           "-jar", JAVAFOIL_JAR, "Script=gui_startup.jfs"]
-
+    # Launch JavaFoil directly without Script= argument.
+    # In JavaFoil's bytecode, passing Script= forces headless batch mode (bShowGUI = false),
+    # which suppresses the GUI window. Launching javafoil.jar directly ensures bShowGUI = true.
     env = os.environ.copy()
     if sys.platform != "win32":
         if not env.get("DISPLAY"):
@@ -2841,22 +2866,61 @@ try {{
                 except Exception:
                     pass
 
-    popen_kwargs = {"cwd": gui_dir, "env": env}
-    try:
-        proc = subprocess.Popen(cmd, **popen_kwargs)
-        time.sleep(0.8)
-        if proc.poll() is not None:
-            # If scripted launch exited (e.g. Nashorn unavailable on Java 15+),
-            # fall back to standard direct GUI launch without Script argument
-            fallback_cmd = [java_bin, "-jar", JAVAFOIL_JAR]
-            proc = subprocess.Popen(fallback_cmd, **popen_kwargs)
-            time.sleep(0.5)
-            if proc.poll() is not None:
-                return False, f"JavaFoil GUI exited prematurely (code {proc.returncode}). Please verify Java installation.", None
-            return True, f"JavaFoil GUI launched (direct mode). Wing geometry exported to {wing_path}.", proc
-        return True, f"JavaFoil GUI launched with {len(outs)} wing elements loaded.", proc
-    except Exception as e:
-        return False, f"Failed to launch JavaFoil GUI: {e}", None
+    proc = None
+    launch_err = None
+
+    # Tier 1: Launch via detected Java binary
+    if java_bin:
+        cmd = [java_bin, "-jar", dest_jf]
+        popen_kwargs = {"cwd": gui_dir, "env": env}
+        if sys.platform == "win32":
+            # DETACHED_PROCESS and CREATE_NEW_PROCESS_GROUP ensure an independent foreground window
+            popen_kwargs["creationflags"] = (
+                getattr(subprocess, "DETACHED_PROCESS", 0x00000008) |
+                getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0x00000200)
+            )
+            popen_kwargs["stdin"] = subprocess.DEVNULL
+            popen_kwargs["stdout"] = subprocess.DEVNULL
+            popen_kwargs["stderr"] = subprocess.DEVNULL
+        try:
+            proc = subprocess.Popen(cmd, **popen_kwargs)
+            time.sleep(0.4)
+            if proc.poll() is None:
+                # Running successfully
+                return True, (
+                    f"JavaFoil GUI launched successfully.\n"
+                    f"Wing geometry exported to: {wing_path}\n"
+                    f"In JavaFoil: Click 'Geometry' -> 'Open...' -> select 'wing.txt'."
+                ), proc
+            else:
+                launch_err = f"Java exited immediately (code {proc.returncode})"
+        except Exception as e:
+            launch_err = str(e)
+
+    # Tier 2: On Windows, fallback to native shell open (startfile / cmd start)
+    # This invokes the registered .jar file association used when double-clicking in Explorer.
+    if sys.platform == "win32":
+        try:
+            if hasattr(os, "startfile"):
+                os.startfile(dest_jf)
+                return True, (
+                    f"JavaFoil GUI launched via Windows shell.\n"
+                    f"Wing geometry exported to: {wing_path}\n"
+                    f"In JavaFoil: Click 'Geometry' -> 'Open...' -> select 'wing.txt'."
+                ), None
+            else:
+                cmd_proc = subprocess.Popen(f'start "" "{dest_jf}"', shell=True, cwd=gui_dir)
+                return True, (
+                    f"JavaFoil GUI launched via Windows shell.\n"
+                    f"Wing geometry exported to: {wing_path}\n"
+                    f"In JavaFoil: Click 'Geometry' -> 'Open...' -> select 'wing.txt'."
+                ), cmd_proc
+        except Exception as e2:
+            launch_err = f"{launch_err}; Windows Shell fallback failed: {e2}"
+
+    if launch_err:
+        return False, f"Could not launch JavaFoil GUI: {launch_err}. Please ensure Java Runtime (JRE/JDK 8+) is installed.", None
+    return False, "Could not locate Java runtime to launch JavaFoil.", None
 
 
 

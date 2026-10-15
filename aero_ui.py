@@ -1538,6 +1538,105 @@ class App(tk.Tk):
         self.log("\n".join(msg))
         self.draw_geometry(cfg, chord, A.GROUND_H)
 
+    def show_javafoil_launched_dialog(self, title, wing_path=None):
+        """Displays a clean modal dialog with instructions, folder opener, and clipboard actions for JavaFoil."""
+        if not wing_path:
+            wing_path = os.path.join(A.OUT_DIR, "javafoil_gui", "wing.txt")
+        wing_path = os.path.abspath(wing_path)
+        wing_dir = os.path.dirname(wing_path)
+
+        # Copy path to clipboard immediately
+        try:
+            self.clipboard_clear()
+            self.clipboard_append(wing_path)
+            self.update()
+        except Exception:
+            pass
+
+        dlg = tk.Toplevel(self)
+        dlg.title(f"JavaFoil GUI - {title}")
+        dlg.configure(bg="#0f172a")
+        dlg.transient(self)
+        dlg.resizable(False, False)
+
+        frm = tk.Frame(dlg, bg="#0f172a", padx=20, pady=16)
+        frm.pack(fill=tk.BOTH, expand=True)
+
+        tk.Label(frm, text="JavaFoil GUI Launched", font=("Segoe UI", 12, "bold"),
+                 fg="#38bdf8", bg="#0f172a").pack(anchor="w", pady=(0, 6))
+
+        info_text = (
+            f"The wing geometry has been exported for JavaFoil:\n"
+            f"  {wing_path}\n"
+            f"  (Also exported to your Desktop as wing.txt)\n\n"
+            f"How to load and analyze in JavaFoil:\n"
+            f"  1. Switch to the JavaFoil window.\n"
+            f"  2. Click the 'Geometry' tab.\n"
+            f"  3. Click the 'Open...' button.\n"
+            f"  4. Select 'wing.txt' (already located in JavaFoil's folder).\n"
+            f"  5. Click 'Analyze' to compute polars, velocities, and flow properties."
+        )
+        lbl_msg = tk.Label(frm, text=info_text, font=("Consolas", 9),
+                           fg="#cbd5e1", bg="#1e293b", justify=tk.LEFT, padx=12, pady=10, relief=tk.SOLID, bd=1)
+        lbl_msg.pack(fill=tk.X, pady=(0, 12))
+
+        status_lbl = tk.Label(frm, text="File path copied to clipboard.", font=("Segoe UI", 8, "italic"),
+                              fg="#10b981", bg="#0f172a")
+        status_lbl.pack(anchor="w", pady=(0, 12))
+
+        btn_row = tk.Frame(frm, bg="#0f172a")
+        btn_row.pack(fill=tk.X)
+
+        def open_folder():
+            try:
+                if sys.platform == "win32":
+                    os.startfile(wing_dir)
+                elif sys.platform == "darwin":
+                    subprocess.Popen(["open", wing_dir])
+                else:
+                    subprocess.Popen(["xdg-open", wing_dir])
+            except Exception as ex:
+                messagebox.showerror("Error", f"Could not open directory:\n{ex}", parent=dlg)
+
+        def copy_coords():
+            try:
+                if os.path.exists(wing_path):
+                    with open(wing_path, "r", encoding="utf-8") as f:
+                        coords = f.read()
+                    self.clipboard_clear()
+                    self.clipboard_append(coords)
+                    self.update()
+                    status_lbl.config(text="Wing coordinates copied to clipboard!", fg="#38bdf8")
+            except Exception as ex:
+                messagebox.showerror("Error", f"Could not copy coordinates:\n{ex}", parent=dlg)
+
+        tk.Button(btn_row, text="Open Wing Folder", font=("Segoe UI", 9), bg="#334155", fg="#f8fafc",
+                  activebackground="#475569", activeforeground="#ffffff", relief=tk.FLAT, padx=10, pady=4,
+                  command=open_folder).pack(side=tk.LEFT, padx=(0, 8))
+
+        tk.Button(btn_row, text="Copy Coordinates", font=("Segoe UI", 9), bg="#334155", fg="#f8fafc",
+                  activebackground="#475569", activeforeground="#ffffff", relief=tk.FLAT, padx=10, pady=4,
+                  command=copy_coords).pack(side=tk.LEFT, padx=(0, 8))
+
+        tk.Button(btn_row, text="Close", font=("Segoe UI", 9, "bold"), bg="#0284c7", fg="#ffffff",
+                  activebackground="#0369a1", activeforeground="#ffffff", relief=tk.FLAT, padx=14, pady=4,
+                  command=dlg.destroy).pack(side=tk.RIGHT)
+
+        # Center dialog relative to main window
+        try:
+            dlg.update_idletasks()
+            rx = self.winfo_rootx()
+            ry = self.winfo_rooty()
+            rw = self.winfo_width()
+            rh = self.winfo_height()
+            dw = dlg.winfo_reqwidth()
+            dh = dlg.winfo_reqheight()
+            x = rx + max(0, (rw - dw) // 2)
+            y = ry + max(0, (rh - dh) // 2)
+            dlg.geometry(f"+{x}+{y}")
+        except Exception:
+            pass
+
     def on_open_javafoil(self):
         cfg = self.read_cfg()
         if not cfg:
@@ -1559,6 +1658,8 @@ class App(tk.Tk):
         if ok:
             self.log(msg)
             self.set_status(f"JavaFoil GUI launched: {title}")
+            wing_export_path = os.path.join(A.OUT_DIR, "javafoil_gui", "wing.txt")
+            self.show_javafoil_launched_dialog(title, wing_export_path)
         else:
             messagebox.showerror("JavaFoil Launch Error", msg)
 
@@ -2888,6 +2989,8 @@ class App(tk.Tk):
         if ok:
             self.log(msg)
             self.set_status(f"JavaFoil GUI launched: {pkg.get('name')}")
+            wing_export_path = os.path.join(A.OUT_DIR, "javafoil_gui", "wing.txt")
+            self.show_javafoil_launched_dialog(pkg.get('name', 'FSAE Wing'), wing_export_path)
         else:
             messagebox.showerror("JavaFoil Error", msg)
 
@@ -4648,10 +4751,13 @@ class App(tk.Tk):
         except Exception:
             pass
         rid = r.get('Run_ID', 'Run')
-        ok, msg, _ = A.launch_javafoil_gui(cfg, ground_h=gh, re=re_val, title=f"Run {rid} ({cfg[0]})")
+        title = f"Run {rid} ({cfg[0]})"
+        ok, msg, _ = A.launch_javafoil_gui(cfg, ground_h=gh, re=re_val, title=title)
         if ok:
             self.log(msg)
             self.set_status(f"JavaFoil GUI launched for Run {rid}.")
+            wing_export_path = os.path.join(A.OUT_DIR, "javafoil_gui", "wing.txt")
+            self.show_javafoil_launched_dialog(title, wing_export_path)
         else:
             messagebox.showerror("JavaFoil Error", msg)
 
@@ -6729,6 +6835,8 @@ class App(tk.Tk):
         if ok:
             self.log(msg)
             self.set_status(f"JavaFoil GUI launched for Candidate #{cand.get('iter')}")
+            wing_export_path = os.path.join(A.OUT_DIR, "javafoil_gui", "wing.txt")
+            self.show_javafoil_launched_dialog(title, wing_export_path)
         else:
             messagebox.showerror("JavaFoil Launch Error", msg)
 

@@ -31,7 +31,7 @@ SOURCE_FILES = [
     "flowfield.py", "render_field.py", "launcher.py", "_sim_worker.py",
     "run_sim_terminal.py", "make_icon.py",
     "requirements.txt", "pyproject.toml", "aero_ui.spec",
-    "run_ui.sh", "run_ui.bat",
+    "run_ui.sh", "run_ui.bat", "START_AERO_AUTO.bat",
     "create_standalone.sh", "create_standalone.bat", "build_dist.py",
     "README_WINDOWS.txt", "run_ui_debug.bat",
 ]
@@ -89,15 +89,61 @@ def _archive(items, out, kind, size_mb=False):
     print(f"  {os.path.relpath(out, HERE)}  ({shown})")
 
 
+def _iter_windows_source():
+    for p, a in _iter_source():
+        yield p, a
+    standalone_exe = os.path.join(HERE, "dist_win", "aero_ui_standalone.exe")
+    if not os.path.isfile(standalone_exe):
+        standalone_exe = os.path.join(DIST, "aero_ui_standalone.exe")
+    if os.path.isfile(standalone_exe):
+        yield standalone_exe, f"{NAME}_{VERSION}/aero_ui_standalone.exe"
+
+
+def _iter_standalone_bundle():
+    standalone_exe = os.path.join(HERE, "dist_win", "aero_ui_standalone.exe")
+    if not os.path.isfile(standalone_exe):
+        standalone_exe = os.path.join(DIST, "aero_ui_standalone.exe")
+    if os.path.isfile(standalone_exe):
+        yield standalone_exe, "aero_ui_standalone.exe"
+
+    for root_file in ["START_AERO_AUTO.bat", "run_ui.bat", "run_ui_debug.bat", "README_WINDOWS.txt", "wing.txt"]:
+        rf = os.path.join(HERE, root_file)
+        if os.path.isfile(rf):
+            yield rf, root_file
+
+    for d in ["assets", "docs"]:
+        root = os.path.join(HERE, d)
+        if not os.path.isdir(root):
+            continue
+        for dirpath, dirs, files in os.walk(root):
+            _wanted(dirs)
+            for n in files:
+                if n in SKIP_FILES:
+                    continue
+                p = os.path.join(dirpath, n)
+                yield p, os.path.relpath(p, HERE)
+
+
 def main():
     os.makedirs(DIST, exist_ok=True)
+    import shutil
     print(f"building {NAME} {VERSION}")
 
-    print("source kits:")
+    standalone_exe = os.path.join(HERE, "dist_win", "aero_ui_standalone.exe")
+    if os.path.isfile(standalone_exe):
+        shutil.copy2(standalone_exe, os.path.join(DIST, "aero_ui_standalone.exe"))
+        print(f"  dist/aero_ui_standalone.exe  ({os.path.getsize(standalone_exe) / 1024 / 1024:.1f} MB)")
+
+    print("source & standard packages:")
     _archive(_iter_source(), os.path.join(DIST, f"{NAME}_linux_{VERSION}.tar.gz"),
              "tar")
-    _archive(_iter_source(), os.path.join(DIST, f"{NAME}_windows_{VERSION}.zip"),
-             "zip")
+    _archive(_iter_windows_source(), os.path.join(DIST, f"{NAME}_windows_{VERSION}.zip"),
+             "zip", size_mb=True)
+
+    if os.path.isfile(standalone_exe) or os.path.isfile(os.path.join(DIST, "aero_ui_standalone.exe")):
+        print("portable standalone package:")
+        _archive(_iter_standalone_bundle(), os.path.join(DIST, f"{NAME}_windows_standalone_{VERSION}.zip"),
+                 "zip", size_mb=True)
 
     print("standalone apps:")
     for platform, kind in (("linux", "tar"), ("windows", "zip")):
@@ -110,32 +156,28 @@ def main():
         docs_src = os.path.join(HERE, "docs")
         docs_dst = os.path.join(app_dir, "docs")
         if os.path.isdir(docs_src):
-            import shutil
             shutil.copytree(docs_src, docs_dst, dirs_exist_ok=True)
         # Ensure assets/ folder (including JavaFoil & airfoils) is directly visible at root level
         assets_src = os.path.join(HERE, "assets")
         assets_dst = os.path.join(app_dir, "assets")
         if os.path.isdir(assets_src):
-            import shutil
             shutil.copytree(assets_src, assets_dst, dirs_exist_ok=True)
+        # Copy START_AERO_AUTO.bat
+        start_bat = os.path.join(HERE, "START_AERO_AUTO.bat")
+        if os.path.isfile(start_bat):
+            shutil.copy2(start_bat, os.path.join(app_dir, "START_AERO_AUTO.bat"))
         # Copy README_WINDOWS.txt
         readme_src = os.path.join(HERE, "README_WINDOWS.txt")
         if os.path.isfile(readme_src):
-            import shutil
             shutil.copy2(readme_src, os.path.join(app_dir, "README_WINDOWS.txt"))
         # Copy run_ui_debug.bat
         debug_bat = os.path.join(HERE, "run_ui_debug.bat")
         if os.path.isfile(debug_bat):
-            import shutil
             shutil.copy2(debug_bat, os.path.join(app_dir, "run_ui_debug.bat"))
         ext = "tar.gz" if kind == "tar" else "zip"
         out = os.path.join(DIST, f"{NAME}_{platform}_app_{VERSION}.{ext}")
         _archive(_iter_tree(app_dir, "aero_ui"), out, kind, size_mb=True)
 
-    standalone_exe = os.path.join(HERE, "dist_win", "aero_ui_standalone.exe")
-    if os.path.isfile(standalone_exe):
-        shutil.copy2(standalone_exe, os.path.join(DIST, "aero_ui_standalone.exe"))
-        print(f"  dist/aero_ui_standalone.exe  ({os.path.getsize(standalone_exe) / 1024 / 1024:.1f} MB)")
     return 0
 
 
