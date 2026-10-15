@@ -1352,8 +1352,20 @@ class App(tk.Tk):
         batch_btn.grid(row=29, column=0, columnspan=2, sticky='we', pady=2)
         add_tooltip(batch_btn, "Run multiple main/flap combinations sequentially. Select airfoils from dialogs.")
 
+        cad_frame = ttk.LabelFrame(cfg, text="CAD Export (2D & 3D Solid)")
+        cad_frame.grid(row=30, column=0, columnspan=2, sticky='we', pady=3)
+        btn_cfg_dxf = ttk.Button(cad_frame, text="Export DXF (2D)", command=self.on_export_config_dxf)
+        btn_cfg_dxf.pack(side='left', fill='x', expand=True, padx=2, pady=2)
+        add_tooltip(btn_cfg_dxf, "Export 2D continuous spline profile to AutoCAD DXF format.")
+        btn_cfg_step = ttk.Button(cad_frame, text="Export STEP (3D)", command=self.on_export_config_step)
+        btn_cfg_step.pack(side='left', fill='x', expand=True, padx=2, pady=2)
+        add_tooltip(btn_cfg_step, "Export 3D extruded solid model to standard ISO STEP (AP214) format.")
+        btn_cfg_fcm = ttk.Button(cad_frame, text="FreeCAD Macro", command=self.on_export_config_macro)
+        btn_cfg_fcm.pack(side='left', fill='x', expand=True, padx=2, pady=2)
+        add_tooltip(btn_cfg_fcm, "Export parametric Python macro (.FCMacro) for FreeCAD with C2 B-spline solids.")
+
         self.derive_state = tk.StringVar(value='')
-        ttk.Label(cfg, textvariable=self.derive_state, wraplength=330, justify='left', foreground=MUTED).grid(row=29, column=0, columnspan=2, sticky='w', pady=(8, 0))
+        ttk.Label(cfg, textvariable=self.derive_state, wraplength=330, justify='left', foreground=MUTED).grid(row=31, column=0, columnspan=2, sticky='w', pady=(8, 0))
 
         for k in ('chord', 'speed', 're'):
             self.vars[k].trace_add('write', lambda *_: self._update_derived())
@@ -1594,6 +1606,127 @@ class App(tk.Tk):
         except Exception:
             pass
         self.set_status("Switched to Graphs view.")
+
+    def on_export_config_dxf(self):
+        cfg = self.read_cfg()
+        if not cfg:
+            messagebox.showwarning("Incomplete Configuration", "Please select a main airfoil and valid flap parameters first.")
+            return
+        p = filedialog.asksaveasfilename(
+            title="Export 2D CAD Model (DXF) - Configure",
+            defaultextension=".dxf",
+            initialfile=f"wing_{cfg[0]}.dxf",
+            filetypes=[("AutoCAD DXF File", "*.dxf"), ("All Files", "*.*")]
+        )
+        if not p:
+            return
+        try:
+            chord = float(self.vars['chord'].get() or A.DEFAULT_CHORD_MM)
+        except ValueError:
+            chord = A.DEFAULT_CHORD_MM
+        gh = None
+        try:
+            if self.ge_state.get() and self.gh_state.get().strip() not in ('', 'none', 'None'):
+                gh = float(self.gh_state.get())
+        except ValueError:
+            gh = None
+        try:
+            A.export_dxf(cfg, p, chord_mm=chord, ground_h=gh, title=f"FSAE Wing - {A.describe(cfg)}")
+            self.log(f"Exported continuous 2D CAD DXF to {p}")
+            messagebox.showinfo("DXF Export Successful",
+                                f"Successfully exported 2D CAD profile:\n\n{p}\n\nUses continuous C2 splines and polylines ready for SolidWorks, AutoCAD, Siemens NX, CATIA, and Onshape.")
+        except Exception as e:
+            messagebox.showerror("Export Failed", f"DXF export failed: {e}")
+
+    def on_export_config_step(self):
+        cfg = self.read_cfg()
+        if not cfg:
+            messagebox.showwarning("Incomplete Configuration", "Please select a main airfoil and valid flap parameters first.")
+            return
+        default_span = 1000.0
+        if self._role_state.get() == 'custom':
+            try:
+                default_span = float(self.custom_span_state.get())
+            except ValueError:
+                default_span = 1000.0
+        else:
+            default_span = float(ATTR.get(self._role_state.get(), (0, 1000.0))[1])
+
+        span = simpledialog.askfloat("Extrusion Span", "Enter wing span in millimeters (3D solid extrusion length):",
+                                    initialvalue=default_span, minvalue=1.0, maxvalue=5000.0)
+        if span is None:
+            return
+
+        p = filedialog.asksaveasfilename(
+            title="Export 3D CAD Solid (STEP) - Configure",
+            defaultextension=".step",
+            initialfile=f"wing_{cfg[0]}_solid.step",
+            filetypes=[("STEP 3D Solid (*.step, *.stp)", "*.step;*.stp"), ("STEP Files (*.step)", "*.step"), ("STP Files (*.stp)", "*.stp"), ("All Files", "*.*")]
+        )
+        if not p:
+            return
+        try:
+            chord = float(self.vars['chord'].get() or A.DEFAULT_CHORD_MM)
+        except ValueError:
+            chord = A.DEFAULT_CHORD_MM
+        gh = None
+        try:
+            if self.ge_state.get() and self.gh_state.get().strip() not in ('', 'none', 'None'):
+                gh = float(self.gh_state.get())
+        except ValueError:
+            gh = None
+        try:
+            A.export_step(cfg, p, chord_mm=chord, span_mm=span, ground_h=gh, title=f"FSAE Wing 3D - {A.describe(cfg)}")
+            self.log(f"Exported 3D CAD STEP solid model to {p}")
+            messagebox.showinfo("STEP Export Successful",
+                                f"Successfully exported 3D CAD solid model:\n\n{p}\n\nFeatures authentic closed manifold solid bodies (span = {span:.1f} mm) compatible with SolidWorks, Fusion 360, FreeCAD, Inventor, CATIA, and ANSYS.")
+        except Exception as e:
+            messagebox.showerror("Export Failed", f"STEP export failed: {e}")
+
+    def on_export_config_macro(self):
+        cfg = self.read_cfg()
+        if not cfg:
+            messagebox.showwarning("Incomplete Configuration", "Please select a main airfoil and valid flap parameters first.")
+            return
+        default_span = 1000.0
+        if self._role_state.get() == 'custom':
+            try:
+                default_span = float(self.custom_span_state.get())
+            except ValueError:
+                default_span = 1000.0
+        else:
+            default_span = float(ATTR.get(self._role_state.get(), (0, 1000.0))[1])
+
+        span = simpledialog.askfloat("Extrusion Span", "Enter wing span in millimeters for FreeCAD extrusion:",
+                                    initialvalue=default_span, minvalue=1.0, maxvalue=5000.0)
+        if span is None:
+            return
+
+        p = filedialog.asksaveasfilename(
+            title="Export FreeCAD Macro (.FCMacro) - Configure",
+            defaultextension=".FCMacro",
+            initialfile=f"wing_{cfg[0]}_builder.FCMacro",
+            filetypes=[("FreeCAD Macro (*.FCMacro)", "*.FCMacro"), ("Python Script (*.py)", "*.py"), ("All Files", "*.*")]
+        )
+        if not p:
+            return
+        try:
+            chord = float(self.vars['chord'].get() or A.DEFAULT_CHORD_MM)
+        except ValueError:
+            chord = A.DEFAULT_CHORD_MM
+        gh = None
+        try:
+            if self.ge_state.get() and self.gh_state.get().strip() not in ('', 'none', 'None'):
+                gh = float(self.gh_state.get())
+        except ValueError:
+            gh = None
+        try:
+            A.export_freecad_macro(cfg, p, chord_mm=chord, span_mm=span, ground_h=gh, title=f"FSAE Wing - {A.describe(cfg)}")
+            self.log(f"Exported FreeCAD macro to {p}")
+            messagebox.showinfo("FreeCAD Macro Export Successful",
+                                f"Successfully exported FreeCAD Macro:\n\n{p}\n\nExecute in FreeCAD via: Macro -> Macros... -> select file -> Execute.\nBuilds smooth C2 B-spline wires and extruded 3D solid elements.")
+        except Exception as e:
+            messagebox.showerror("Export Failed", f"FreeCAD Macro export failed: {e}")
 
     def draw_geometry(self, cfg, chord, ground_h):
         if not self.canvas:
@@ -2447,9 +2580,17 @@ class App(tk.Tk):
         btn_url.pack(side='left', padx=2)
         add_tooltip(btn_url, "Open team website / technical reference documentation in web browser.")
 
-        btn_dxf = ttk.Button(act_frame, text="Export AutoCAD DXF", command=self._comb_export_dxf)
+        btn_dxf = ttk.Button(act_frame, text="Export DXF (2D)", command=self._comb_export_dxf)
         btn_dxf.pack(side='left', padx=2)
-        add_tooltip(btn_dxf, "Export precise 2D spline airfoil outlines to AutoCAD DXF for SolidWorks / CAD / CFD.")
+        add_tooltip(btn_dxf, "Export precise 2D continuous spline airfoil outlines to AutoCAD DXF for CAD / CFD.")
+
+        btn_step = ttk.Button(act_frame, text="Export STEP (3D)", command=self._comb_export_step)
+        btn_step.pack(side='left', padx=2)
+        add_tooltip(btn_step, "Export 3D extruded solid model to standard ISO STEP (AP214) format.")
+
+        btn_fcm = ttk.Button(act_frame, text="FreeCAD Macro", command=self._comb_export_macro)
+        btn_fcm.pack(side='left', padx=2)
+        add_tooltip(btn_fcm, "Export parametric Python macro (.FCMacro) for FreeCAD with C2 B-spline solids.")
 
         geom_container = ttk.Frame(right_pane)
         geom_container.pack(fill='both', expand=True, padx=4, pady=4)
@@ -2938,6 +3079,72 @@ class App(tk.Tk):
                                 f"Successfully exported 2D CAD profile:\n\n{p}\n\nReady for import into SolidWorks, AutoCAD, Siemens NX, CATIA, and Onshape.")
         except Exception as e:
             messagebox.showerror("Export Error", f"Failed to export DXF: {e}")
+
+    def _comb_export_step(self, pkg=None):
+        pkg = pkg or getattr(self, '_comb_current_pkg', None) or self._get_selected_comb_pkg()
+        if not pkg:
+            messagebox.showinfo("Select Package", "Please select a wing package first.")
+            return
+
+        default_span = float(pkg.get('span_mm', 1000.0))
+        span = simpledialog.askfloat("Extrusion Span", "Enter wing span in millimeters (3D solid extrusion length):",
+                                    initialvalue=default_span, minvalue=1.0, maxvalue=5000.0)
+        if span is None:
+            return
+
+        initial = f"{pkg['id']}_solid.step"
+        p = filedialog.asksaveasfilename(
+            title=f"Export 3D CAD Solid (STEP) - {pkg['name']}",
+            defaultextension=".step",
+            initialfile=initial,
+            filetypes=[("STEP 3D Solid (*.step, *.stp)", "*.step;*.stp"), ("STEP Files (*.step)", "*.step"), ("STP Files (*.stp)", "*.stp"), ("All Files", "*.*")]
+        )
+        if not p:
+            return
+
+        try:
+            cfg = (pkg['main'], tuple(pkg.get('flaps', [])))
+            gh_val = pkg.get('gh_pct') if pkg.get('ge') else None
+            A.export_step(cfg, p, chord_mm=pkg.get('chord', 250.0), span_mm=span, ground_h=gh_val,
+                          title=f"{pkg['name']} ({pkg.get('team', '')})")
+            self.log(f"Exported 3D CAD STEP solid model to {p}")
+            messagebox.showinfo("STEP Export Successful",
+                                f"Successfully exported 3D CAD solid model:\n\n{p}\n\nFeatures authentic closed manifold solid bodies (span = {span:.1f} mm) compatible with SolidWorks, Fusion 360, FreeCAD, Inventor, CATIA, and ANSYS.")
+        except Exception as e:
+            messagebox.showerror("Export Error", f"Failed to export STEP: {e}")
+
+    def _comb_export_macro(self, pkg=None):
+        pkg = pkg or getattr(self, '_comb_current_pkg', None) or self._get_selected_comb_pkg()
+        if not pkg:
+            messagebox.showinfo("Select Package", "Please select a wing package first.")
+            return
+
+        default_span = float(pkg.get('span_mm', 1000.0))
+        span = simpledialog.askfloat("Extrusion Span", "Enter wing span in millimeters for FreeCAD extrusion:",
+                                    initialvalue=default_span, minvalue=1.0, maxvalue=5000.0)
+        if span is None:
+            return
+
+        initial = f"{pkg['id']}_builder.FCMacro"
+        p = filedialog.asksaveasfilename(
+            title=f"Export FreeCAD Macro (.FCMacro) - {pkg['name']}",
+            defaultextension=".FCMacro",
+            initialfile=initial,
+            filetypes=[("FreeCAD Macro (*.FCMacro)", "*.FCMacro"), ("Python Script (*.py)", "*.py"), ("All Files", "*.*")]
+        )
+        if not p:
+            return
+
+        try:
+            cfg = (pkg['main'], tuple(pkg.get('flaps', [])))
+            gh_val = pkg.get('gh_pct') if pkg.get('ge') else None
+            A.export_freecad_macro(cfg, p, chord_mm=pkg.get('chord', 250.0), span_mm=span, ground_h=gh_val,
+                                   title=f"{pkg['name']} ({pkg.get('team', '')})")
+            self.log(f"Exported FreeCAD macro to {p}")
+            messagebox.showinfo("FreeCAD Macro Export Successful",
+                                f"Successfully exported FreeCAD Macro:\n\n{p}\n\nExecute in FreeCAD via: Macro -> Macros... -> select file -> Execute.\nBuilds smooth C2 B-spline wires and extruded 3D solid elements.")
+        except Exception as e:
+            messagebox.showerror("Export Error", f"Failed to export FreeCAD Macro: {e}")
 
 
     # --- CAMPAIGNS TAB ---
@@ -3714,7 +3921,10 @@ class App(tk.Tk):
         
         gen_btn = ttk.Button(top2, text='Generate Graphs', command=self.on_gen_graphs)
         gen_btn.pack(side='right', padx=2)
-        add_tooltip(gen_btn, 'Generate high-resolution polar curves, velocity flow field, JavaFoil native graphs, and 2D CAD for the selected run.')
+        add_tooltip(gen_btn, 'Generate high-resolution polar curves, velocity flow field, JavaFoil native graphs, and CAD models for the selected run.')
+        cad_btn = ttk.Button(top2, text='Export CAD', command=self._on_results_export_cad_menu)
+        cad_btn.pack(side='right', padx=2)
+        add_tooltip(cad_btn, 'Export selected run to CAD: 2D DXF, 3D solid STEP, FreeCAD Macro, or SVG.')
         ttk.Button(top2, text='Load to Configure', command=self.on_apply_to_config).pack(side='right', padx=2)
         ttk.Button(top2, text='Open in JavaFoil GUI', command=self.on_open_selected_run_in_javafoil).pack(side='right', padx=2)
         ttk.Button(top2, text='Send to Optimizer', command=self.on_send_to_optimizer).pack(side='right', padx=2)
@@ -4406,6 +4616,8 @@ class App(tk.Tk):
         menu.add_command(label="Load to Configure Tab", command=self.on_apply_to_config)
         menu.add_separator()
         menu.add_command(label="Export 2D CAD Model (AutoCAD DXF)...", command=lambda: self.on_export_cad_dxf(r))
+        menu.add_command(label="Export 3D CAD Solid (STEP / STP)...", command=lambda: self.on_export_cad_step(r))
+        menu.add_command(label="Export FreeCAD Macro (.FCMacro)...", command=lambda: self.on_export_cad_macro(r))
         menu.add_command(label="Export Vector Geometry (SVG)...", command=lambda: self.on_export_cad_svg(r))
         menu.add_command(label="Generate All Graphs (Code + JavaFoil) & View", command=lambda: self._gen_graphs(r, switch=True))
         menu.add_command(label="Open Run Graphs Folder in File Manager", command=lambda: self.on_open_run_folder(r))
@@ -4453,6 +4665,26 @@ class App(tk.Tk):
         if ok:
             self.log(f"Transferred Run {r.get('Run_ID')} to Optimizer as base design.")
 
+    def _on_results_export_cad_menu(self):
+        r = self._selected_row()
+        if r is None or (hasattr(r, 'empty') and r.empty):
+            messagebox.showwarning("No Run Selected", "Please select a simulation run first.")
+            return
+        m = tk.Menu(self, tearoff=0)
+        rid = r.get('Run_ID', '')
+        m.add_command(label=f"CAD Export for Run {rid}:", state='disabled')
+        m.add_separator()
+        m.add_command(label="Export 2D CAD Model (AutoCAD DXF)...", command=lambda: self.on_export_cad_dxf(r))
+        m.add_command(label="Export 3D CAD Solid (STEP / STP)...", command=lambda: self.on_export_cad_step(r))
+        m.add_command(label="Export FreeCAD Macro (.FCMacro)...", command=lambda: self.on_export_cad_macro(r))
+        m.add_command(label="Export Vector Geometry (SVG)...", command=lambda: self.on_export_cad_svg(r))
+        try:
+            x = self.winfo_pointerx()
+            y = self.winfo_pointery()
+            m.tk_popup(x, y)
+        except Exception:
+            m.tk_popup(200, 200)
+
     def on_export_cad_dxf(self, r=None):
         if r is None:
             r = self._selected_row()
@@ -4480,6 +4712,90 @@ class App(tk.Tk):
             messagebox.showinfo("Export Complete", f"Successfully exported 2D CAD model:\n{p}\n\nLayers created: MAIN_ELEMENT, FLAP_1..N, GROUND_PLANE, BOUNDING_BOX.")
         except Exception as e:
             messagebox.showerror("Export Failed", f"DXF export failed: {e}")
+
+    def on_export_cad_step(self, r=None):
+        if r is None:
+            r = self._selected_row()
+        if r is None or (hasattr(r, 'empty') and r.empty):
+            messagebox.showwarning("No Run Selected", "Please select a simulation run first.")
+            return
+        cfg = self._row_to_cfg(r)
+        if not cfg:
+            messagebox.showerror("Error", "Could not extract wing configuration from this run.")
+            return
+        rid = str(r.get('Run_ID', 'wing'))
+        default_span = 1000.0
+        try:
+            if 'Span_mm' in r and pd.notna(r['Span_mm']):
+                default_span = float(r['Span_mm'])
+            elif hasattr(A, 'SPAN') and A.SPAN:
+                default_span = float(A.SPAN)
+        except Exception:
+            default_span = 1000.0
+
+        span = simpledialog.askfloat("Extrusion Span", "Enter wing span in millimeters (3D solid extrusion length):",
+                                    initialvalue=default_span, minvalue=1.0, maxvalue=5000.0)
+        if span is None:
+            return
+
+        p = filedialog.asksaveasfilename(
+            title="Export 3D CAD Solid (STEP)",
+            defaultextension=".step",
+            initialfile=f"wing_run_{rid}_solid.step",
+            filetypes=[("STEP 3D Solid (*.step, *.stp)", "*.step;*.stp"), ("STEP Files (*.step)", "*.step"), ("STP Files (*.stp)", "*.stp"), ("All Files", "*.*")]
+        )
+        if not p:
+            return
+        chord = A.CHORD_MM or A.DEFAULT_CHORD_MM
+        gh = float(r['Height_pct']) if str(r.get('Flow', '')).lower() == 'ground' and 'Height_pct' in r and pd.notna(r['Height_pct']) else None
+        try:
+            A.export_step(cfg, p, chord_mm=chord, span_mm=span, ground_h=gh, title=f"Run {rid} - {A.describe(cfg)}")
+            self.log(f"Exported 3D CAD STEP solid model to {p}")
+            messagebox.showinfo("Export Complete", f"Successfully exported 3D CAD solid model:\n{p}\n\nFeatures authentic closed manifold solid bodies (span = {span:.1f} mm) compatible with SolidWorks, Fusion 360, FreeCAD, Inventor, CATIA, and ANSYS.")
+        except Exception as e:
+            messagebox.showerror("Export Failed", f"STEP export failed: {e}")
+
+    def on_export_cad_macro(self, r=None):
+        if r is None:
+            r = self._selected_row()
+        if r is None or (hasattr(r, 'empty') and r.empty):
+            messagebox.showwarning("No Run Selected", "Please select a simulation run first.")
+            return
+        cfg = self._row_to_cfg(r)
+        if not cfg:
+            messagebox.showerror("Error", "Could not extract wing configuration from this run.")
+            return
+        rid = str(r.get('Run_ID', 'wing'))
+        default_span = 1000.0
+        try:
+            if 'Span_mm' in r and pd.notna(r['Span_mm']):
+                default_span = float(r['Span_mm'])
+            elif hasattr(A, 'SPAN') and A.SPAN:
+                default_span = float(A.SPAN)
+        except Exception:
+            default_span = 1000.0
+
+        span = simpledialog.askfloat("Extrusion Span", "Enter wing span in millimeters for FreeCAD extrusion:",
+                                    initialvalue=default_span, minvalue=1.0, maxvalue=5000.0)
+        if span is None:
+            return
+
+        p = filedialog.asksaveasfilename(
+            title="Export FreeCAD Macro (.FCMacro)",
+            defaultextension=".FCMacro",
+            initialfile=f"wing_run_{rid}_builder.FCMacro",
+            filetypes=[("FreeCAD Macro (*.FCMacro)", "*.FCMacro"), ("Python Script (*.py)", "*.py"), ("All Files", "*.*")]
+        )
+        if not p:
+            return
+        chord = A.CHORD_MM or A.DEFAULT_CHORD_MM
+        gh = float(r['Height_pct']) if str(r.get('Flow', '')).lower() == 'ground' and 'Height_pct' in r and pd.notna(r['Height_pct']) else None
+        try:
+            A.export_freecad_macro(cfg, p, chord_mm=chord, span_mm=span, ground_h=gh, title=f"Run {rid} - {A.describe(cfg)}")
+            self.log(f"Exported FreeCAD macro to {p}")
+            messagebox.showinfo("Export Complete", f"Successfully exported FreeCAD Macro:\n{p}\n\nExecute in FreeCAD via: Macro -> Macros... -> select file -> Execute.\nBuilds smooth C2 B-spline wires and extruded 3D solid elements.")
+        except Exception as e:
+            messagebox.showerror("Export Failed", f"FreeCAD Macro export failed: {e}")
 
     def on_export_cad_svg(self, r=None):
         if r is None:
@@ -4664,17 +4980,31 @@ class App(tk.Tk):
                 except Exception as e:
                     self.log(f"JavaFoil graph extraction failed: {e}")
 
-            # 4. Automatic 2D CAD DXF and SVG generation in run folder
-            self.ui_q.put(('gr_prog', (90, f"Run {rid} [4/4]: Generating 2D CAD models (DXF + SVG)...")))
+            # 4. Automatic CAD models (2D DXF, 3D STEP solid, FreeCAD Macro, SVG) generation in run folder
+            self.ui_q.put(('gr_prog', (90, f"Run {rid} [4/4]: Generating CAD models (DXF + STEP 3D + SVG)...")))
             if cfg:
                 try:
                     dxf_p = os.path.join(run_gdir, f"wing_{rid}.dxf")
+                    step_p = os.path.join(run_gdir, f"wing_{rid}.step")
+                    fcm_p = os.path.join(run_gdir, f"wing_{rid}.FCMacro")
                     svg_p = os.path.join(run_gdir, f"wing_{rid}.svg")
+                    span_val = 1000.0
+                    try:
+                        if 'Span_mm' in r and pd.notna(r['Span_mm']):
+                            span_val = float(r['Span_mm'])
+                        elif hasattr(A, 'SPAN') and A.SPAN:
+                            span_val = float(A.SPAN)
+                    except Exception:
+                        span_val = 1000.0
                     if not os.path.exists(dxf_p) or force_regen:
                         A.export_dxf(cfg, dxf_p, chord_mm=chord, ground_h=gh)
+                    if not os.path.exists(step_p) or force_regen:
+                        A.export_step(cfg, step_p, chord_mm=chord, span_mm=span_val, ground_h=gh)
+                    if not os.path.exists(fcm_p) or force_regen:
+                        A.export_freecad_macro(cfg, fcm_p, chord_mm=chord, span_mm=span_val, ground_h=gh)
                     if not os.path.exists(svg_p) or force_regen:
                         A.export_svg(cfg, svg_p, chord_mm=chord, ground_h=gh)
-                    outs.append("CAD DXF + SVG")
+                    outs.append("CAD (DXF, STEP 3D, FreeCAD Macro, SVG)")
                 except Exception:
                     pass
 
@@ -5654,6 +5984,18 @@ class App(tk.Tk):
         self.btn_opt_set_base.pack(side='left', padx=2)
         add_tooltip(self.btn_opt_set_base, 'Promote this candidate to be the Optimizer baseline for new tuning iterations.')
 
+        self.btn_opt_dxf = ttk.Button(cbtns, text='Export DXF (2D)', command=self._opt_export_candidate_dxf)
+        self.btn_opt_dxf.pack(side='left', padx=2)
+        add_tooltip(self.btn_opt_dxf, 'Export continuous 2D spline airfoil outlines for this candidate to AutoCAD DXF.')
+
+        self.btn_opt_step = ttk.Button(cbtns, text='Export STEP (3D)', command=self._opt_export_candidate_step)
+        self.btn_opt_step.pack(side='left', padx=2)
+        add_tooltip(self.btn_opt_step, 'Export 3D extruded solid model for this candidate to standard ISO STEP (AP214) format.')
+
+        self.btn_opt_fcm = ttk.Button(cbtns, text='FreeCAD Macro', command=self._opt_export_candidate_macro)
+        self.btn_opt_fcm.pack(side='left', padx=2)
+        add_tooltip(self.btn_opt_fcm, 'Export parametric Python macro (.FCMacro) for FreeCAD with C2 B-spline solids.')
+
         self.opt_cand_detail = ttk.Label(
             cand_frame, text='No candidate selected yet (run optimization or click a row).',
             font=('Segoe UI', 8), foreground='#94a3b8'
@@ -6465,6 +6807,134 @@ class App(tk.Tk):
                 self.ui_q.put(("log", f"Candidate #{it_num} graph generation failed: {e}"))
 
         threading.Thread(target=work, daemon=True).start()
+
+    def _opt_export_candidate_dxf(self, cand=None):
+        if cand is None:
+            cand = self._get_selected_opt_candidate()
+        if not cand or not cand.get('cfg'):
+            messagebox.showwarning("No Candidate Selected", "Please select an optimization candidate from the table first.")
+            return
+        cfg = cand['cfg']
+        it_num = cand.get('iter', 'cand')
+        initial = f"optimizer_iter_{it_num}_{cfg[0]}.dxf"
+        p = filedialog.asksaveasfilename(
+            title=f"Export Candidate #{it_num} (DXF)",
+            defaultextension=".dxf",
+            initialfile=initial,
+            filetypes=[("AutoCAD DXF File", "*.dxf"), ("All Files", "*.*")]
+        )
+        if not p:
+            return
+        try:
+            chord_val = float(self.opt_vars['chord'].get())
+        except Exception:
+            chord_val = 250.0
+        gh0_val = None
+        try:
+            if self.opt_ge_v.get() and self.opt_gh_state.get().strip() not in ('', 'none', 'None'):
+                gh0_val = float(self.opt_gh_state.get())
+        except Exception:
+            gh0_val = None
+        try:
+            A.export_dxf(cfg, p, chord_mm=chord_val, ground_h=gh0_val, title=f"Candidate #{it_num} - {A.describe(cfg)}")
+            self.log(f"Exported Candidate #{it_num} DXF to {p}")
+            messagebox.showinfo("DXF Export Successful", f"Successfully exported Candidate #{it_num} 2D CAD profile:\n\n{p}")
+        except Exception as e:
+            messagebox.showerror("Export Failed", f"DXF export failed: {e}")
+
+    def _opt_export_candidate_step(self, cand=None):
+        if cand is None:
+            cand = self._get_selected_opt_candidate()
+        if not cand or not cand.get('cfg'):
+            messagebox.showwarning("No Candidate Selected", "Please select an optimization candidate from the table first.")
+            return
+        cfg = cand['cfg']
+        it_num = cand.get('iter', 'cand')
+        default_span = 1000.0
+        try:
+            if hasattr(self, 'custom_span_state'):
+                default_span = float(self.custom_span_state.get())
+        except Exception:
+            default_span = 1000.0
+
+        span = simpledialog.askfloat("Extrusion Span", "Enter wing span in millimeters (3D solid extrusion length):",
+                                    initialvalue=default_span, minvalue=1.0, maxvalue=5000.0)
+        if span is None:
+            return
+
+        initial = f"optimizer_iter_{it_num}_{cfg[0]}_solid.step"
+        p = filedialog.asksaveasfilename(
+            title=f"Export Candidate #{it_num} (STEP 3D)",
+            defaultextension=".step",
+            initialfile=initial,
+            filetypes=[("STEP 3D Solid (*.step, *.stp)", "*.step;*.stp"), ("STEP Files (*.step)", "*.step"), ("STP Files (*.stp)", "*.stp"), ("All Files", "*.*")]
+        )
+        if not p:
+            return
+        try:
+            chord_val = float(self.opt_vars['chord'].get())
+        except Exception:
+            chord_val = 250.0
+        gh0_val = None
+        try:
+            if self.opt_ge_v.get() and self.opt_gh_state.get().strip() not in ('', 'none', 'None'):
+                gh0_val = float(self.opt_gh_state.get())
+        except Exception:
+            gh0_val = None
+        try:
+            A.export_step(cfg, p, chord_mm=chord_val, span_mm=span, ground_h=gh0_val, title=f"Candidate #{it_num} - {A.describe(cfg)}")
+            self.log(f"Exported Candidate #{it_num} 3D CAD STEP solid model to {p}")
+            messagebox.showinfo("STEP Export Successful",
+                                f"Successfully exported Candidate #{it_num} 3D CAD solid model:\n\n{p}\n\nFeatures authentic closed manifold solid bodies (span = {span:.1f} mm) compatible with SolidWorks, Fusion 360, FreeCAD, Inventor, CATIA, and ANSYS.")
+        except Exception as e:
+            messagebox.showerror("Export Failed", f"STEP export failed: {e}")
+
+    def _opt_export_candidate_macro(self, cand=None):
+        if cand is None:
+            cand = self._get_selected_opt_candidate()
+        if not cand or not cand.get('cfg'):
+            messagebox.showwarning("No Candidate Selected", "Please select an optimization candidate from the table first.")
+            return
+        cfg = cand['cfg']
+        it_num = cand.get('iter', 'cand')
+        default_span = 1000.0
+        try:
+            if hasattr(self, 'custom_span_state'):
+                default_span = float(self.custom_span_state.get())
+        except Exception:
+            default_span = 1000.0
+
+        span = simpledialog.askfloat("Extrusion Span", "Enter wing span in millimeters for FreeCAD extrusion:",
+                                    initialvalue=default_span, minvalue=1.0, maxvalue=5000.0)
+        if span is None:
+            return
+
+        initial = f"optimizer_iter_{it_num}_{cfg[0]}_builder.FCMacro"
+        p = filedialog.asksaveasfilename(
+            title=f"Export Candidate #{it_num} FreeCAD Macro (.FCMacro)",
+            defaultextension=".FCMacro",
+            initialfile=initial,
+            filetypes=[("FreeCAD Macro (*.FCMacro)", "*.FCMacro"), ("Python Script (*.py)", "*.py"), ("All Files", "*.*")]
+        )
+        if not p:
+            return
+        try:
+            chord_val = float(self.opt_vars['chord'].get())
+        except Exception:
+            chord_val = 250.0
+        gh0_val = None
+        try:
+            if self.opt_ge_v.get() and self.opt_gh_state.get().strip() not in ('', 'none', 'None'):
+                gh0_val = float(self.opt_gh_state.get())
+        except Exception:
+            gh0_val = None
+        try:
+            A.export_freecad_macro(cfg, p, chord_mm=chord_val, span_mm=span, ground_h=gh0_val, title=f"Candidate #{it_num} - {A.describe(cfg)}")
+            self.log(f"Exported Candidate #{it_num} FreeCAD macro to {p}")
+            messagebox.showinfo("FreeCAD Macro Export Successful",
+                                f"Successfully exported Candidate #{it_num} FreeCAD Macro:\n\n{p}\n\nExecute in FreeCAD via: Macro -> Macros... -> select file -> Execute.\nBuilds smooth C2 B-spline wires and extruded 3D solid elements.")
+        except Exception as e:
+            messagebox.showerror("Export Failed", f"FreeCAD Macro export failed: {e}")
 
     def _opt_apply_best(self):
         if getattr(self, '_opt_candidates', None):

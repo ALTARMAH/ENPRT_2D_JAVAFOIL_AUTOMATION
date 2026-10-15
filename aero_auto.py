@@ -3415,10 +3415,13 @@ JavaFoil.Exit();
 
 
 
-def export_dxf(cfg, out_path, chord_mm=None, ground_h=None, title="Multi-Element Wing"):
+def export_dxf(cfg, out_path, chord_mm=None, ground_h=None, title="Multi-Element Wing", spline_mode=True):
     """
-    Export the multi-element wing geometry as a standard AutoCAD ASCII DXF (R12 / AC1009 compatible).
-    Includes separate layers for each element, ground plane line, and stack bounding box in millimeters.
+    Export the multi-element wing geometry as a standard AutoCAD DXF (AC1015 / AutoCAD 2000+ compatible).
+    Includes continuous B-splines (SPLINE) and closed lightweight polylines (LWPOLYLINE),
+    eliminating zero-length closing segments and facet discontinuities in modern CAD packages (SolidWorks,
+    Fusion 360, FreeCAD, Inventor, AutoCAD).
+    Separate layers for each element, ground plane line, and stack bounding box in millimeters.
     """
     if not AIRFOILS:
         AIRFOILS.update(load_all(AIRFOIL_DIR))
@@ -3430,13 +3433,14 @@ def export_dxf(cfg, out_path, chord_mm=None, ground_h=None, title="Multi-Element
     outlines_mm = [pts * chord for pts in outlines]
 
     lines = []
-    lines += ['0', 'SECTION', '2', 'HEADER', '9', '', '1', 'AC1009', '9', '', '70', '4', '0', 'ENDSEC']
-    lines += ['0', 'SECTION', '2', 'TABLES', '0', 'TABLE', '2', 'LAYER', '70', '10']
+    lines += ['0', 'SECTION', '2', 'HEADER', '9', '$ACADVER', '1', 'AC1015', '0', 'ENDSEC']
+    lines += ['0', 'SECTION', '2', 'TABLES', '0', 'TABLE', '2', 'LAYER', '70', str(len(outlines_mm) * 2 + 4)]
 
     layer_names = ['MAIN_ELEMENT'] + [f'FLAP_{i}' for i in range(1, len(outlines_mm))]
     colors = [1, 3, 5, 2, 4, 6]  # Red, Green, Blue, Yellow, Cyan, Magenta
     for i, name in enumerate(layer_names):
         lines += ['0', 'LAYER', '2', name, '70', '0', '62', str(colors[i % len(colors)]), '6', 'CONTINUOUS']
+        lines += ['0', 'LAYER', '2', f'{name}_POLY', '70', '0', '62', str(colors[i % len(colors)]), '6', 'CONTINUOUS']
     if ground_h is not None:
         lines += ['0', 'LAYER', '2', 'GROUND_PLANE', '70', '0', '62', '8', '6', 'CONTINUOUS']
     lines += ['0', 'LAYER', '2', 'BOUNDING_BOX', '70', '0', '62', '9', '6', 'CONTINUOUS']
@@ -3444,19 +3448,52 @@ def export_dxf(cfg, out_path, chord_mm=None, ground_h=None, title="Multi-Element
 
     lines += ['0', 'SECTION', '2', 'ENTITIES']
 
-    # Airfoil elements as closed polylines
+    # Airfoil elements as continuous SPLINE and closed LWPOLYLINE
     for i, pts in enumerate(outlines_mm):
         lname = layer_names[i]
-        lines += ['0', 'POLYLINE', '8', lname, '66', '1', '70', '1']
+
+        clean_pts = []
         for pt in pts:
-            lines += ['0', 'VERTEX', '8', lname, '10', f'{pt[0]:.4f}', '20', f'{pt[1]:.4f}', '30', '0.0']
-        lines += ['0', 'SEQEND', '8', lname]
+            if not clean_pts or np.hypot(pt[0] - clean_pts[-1][0], pt[1] - clean_pts[-1][1]) > 1e-6:
+                clean_pts.append(pt)
+        if len(clean_pts) > 2 and np.hypot(clean_pts[0][0] - clean_pts[-1][0], clean_pts[0][1] - clean_pts[-1][1]) < 1e-4:
+            clean_pts = clean_pts[:-1]
+
+        # 1. Native AutoCAD SPLINE entity (Cubic B-spline with fit points)
+        lines += [
+            '0', 'SPLINE',
+            '5', f'{1000 + i * 2:X}',
+            '100', 'AcDbEntity',
+            '8', lname,
+            '100', 'AcDbSpline',
+            '70', '8',  # Planar spline
+            '71', '3',  # Degree 3 (cubic)
+            '74', str(len(clean_pts)),  # Number of fit points
+        ]
+        for pt in clean_pts:
+            lines += ['11', f'{pt[0]:.5f}', '21', f'{pt[1]:.5f}', '31', '0.0']
+
+        # 2. Modern closed LWPOLYLINE entity on companion layer for legacy/polyline CAD workflows
+        lines += [
+            '0', 'LWPOLYLINE',
+            '5', f'{1001 + i * 2:X}',
+            '100', 'AcDbEntity',
+            '8', f'{lname}_POLY',
+            '100', 'AcDbPolyline',
+            '90', str(len(clean_pts)),
+            '70', '1',  # 1 = Closed polyline
+            '43', '0.0'
+        ]
+        for pt in clean_pts:
+            lines += ['10', f'{pt[0]:.5f}', '20', f'{pt[1]:.5f}']
 
     # Ground plane line
     if ground_h is not None:
         all_x = np.concatenate([p[:, 0] for p in outlines_mm])
         x0, x1 = all_x.min() - 50.0, all_x.max() + 50.0
-        lines += ['0', 'LINE', '8', 'GROUND_PLANE', '10', f'{x0:.4f}', '20', '0.0', '30', '0.0',
+        lines += ['0', 'LINE', '5', '2001', '100', 'AcDbEntity', '8', 'GROUND_PLANE',
+                  '100', 'AcDbLine',
+                  '10', f'{x0:.4f}', '20', '0.0', '30', '0.0',
                   '11', f'{x1:.4f}', '21', '0.0', '31', '0.0']
 
     # Bounding box
@@ -3465,15 +3502,435 @@ def export_dxf(cfg, out_path, chord_mm=None, ground_h=None, title="Multi-Element
     bx0, bx1 = all_x.min(), all_x.max()
     by0, by1 = all_y.min(), all_y.max()
     bbox_pts = [[bx0, by0], [bx1, by0], [bx1, by1], [bx0, by1]]
-    lines += ['0', 'POLYLINE', '8', 'BOUNDING_BOX', '66', '1', '70', '1']
+    lines += ['0', 'LWPOLYLINE', '5', '2002', '100', 'AcDbEntity', '8', 'BOUNDING_BOX',
+              '100', 'AcDbPolyline', '90', '4', '70', '1', '43', '0.0']
     for pt in bbox_pts:
-        lines += ['0', 'VERTEX', '8', 'BOUNDING_BOX', '10', f'{pt[0]:.4f}', '20', f'{pt[1]:.4f}', '30', '0.0']
-    lines += ['0', 'SEQEND', '8', 'BOUNDING_BOX']
+        lines += ['10', f'{pt[0]:.4f}', '20', f'{pt[1]:.4f}']
 
     lines += ['0', 'ENDSEC', '0', 'EOF']
     os.makedirs(os.path.dirname(os.path.abspath(out_path)) or '.', exist_ok=True)
     with open(out_path, 'w', encoding='ascii') as f:
         f.write('\n'.join(lines) + '\n')
+    return out_path
+
+
+def _try_export_step_freecad(outlines_mm, out_path, span_mm, title):
+    """Attempt STEP export via FreeCAD CLI (C2 continuous B-spline approximation)."""
+    freecad_cmd = shutil.which("freecadcmd") or shutil.which("FreeCAD") or shutil.which("freecad")
+    if not freecad_cmd:
+        return False
+    clean_outlines = []
+    for pts in outlines_mm:
+        c_pts = []
+        for pt in pts:
+            if not c_pts or np.hypot(pt[0] - c_pts[-1][0], pt[1] - c_pts[-1][1]) > 1e-6:
+                c_pts.append([float(pt[0]), float(pt[1])])
+        clean_outlines.append(c_pts)
+
+    script = f'''
+import FreeCAD, Part
+from FreeCAD import Vector as V
+
+doc = FreeCAD.newDocument("WingDoc")
+outlines_data = {clean_outlines!r}
+
+for idx, pts_mm in enumerate(outlines_data):
+    vecs = [V(x, y, 0.0) for x, y in pts_mm]
+    bs = Part.BSplineCurve()
+    try:
+        bs.approximate(Points=vecs, DegMin=3, DegMax=8, Tolerance=0.02, Continuity="C2", ParamType="Centripetal")
+    except Exception:
+        bs.interpolate(Points=vecs, PeriodicFlag=False)
+    
+    edge = bs.toShape()
+    edges = [edge]
+    if bs.StartPoint.distanceToPoint(bs.EndPoint) > 1e-5:
+        edges.append(Part.LineSegment(bs.EndPoint, bs.StartPoint).toShape())
+    
+    wire = Part.Wire(edges)
+    face = Part.Face(wire)
+    solid = face.extrude(V(0, 0, {span_mm}))
+    feat = doc.addObject("Part::Feature", f"Element_{{idx}}")
+    feat.Shape = solid
+
+doc.recompute()
+Part.export(doc.Objects, {out_path!r})
+'''
+    with tempfile.NamedTemporaryFile("w", suffix=".py", delete=False) as f:
+        f.write(script)
+        tmp_py = f.name
+    try:
+        res = subprocess.run([freecad_cmd, tmp_py], capture_output=True, text=True, timeout=30)
+        return os.path.isfile(out_path) and os.path.getsize(out_path) > 500
+    except Exception:
+        return False
+    finally:
+        try: os.remove(tmp_py)
+        except Exception: pass
+
+
+def _try_export_step_gmsh(outlines_mm, out_path, span_mm, title):
+    """Attempt STEP export via Gmsh OpenCASCADE kernel."""
+    try:
+        import gmsh
+        gmsh.initialize()
+        gmsh.option.setNumber("General.Verbosity", 0)
+        gmsh.model.add("wing_step")
+        for idx, o in enumerate(outlines_mm):
+            p_tags = []
+            prev = None
+            for pt in o:
+                if prev is None or ((pt[0]-prev[0])**2 + (pt[1]-prev[1])**2) > 1e-8:
+                    p_tags.append(gmsh.model.occ.addPoint(float(pt[0]), float(pt[1]), 0.0))
+                    prev = pt
+            if len(p_tags) < 3:
+                continue
+            dist_te = ((o[0][0]-o[-1][0])**2 + (o[0][1]-o[-1][1])**2)**0.5
+            if dist_te < 1e-4:
+                p_tags[-1] = p_tags[0]
+                spline = gmsh.model.occ.addBSpline(p_tags)
+                wire = gmsh.model.occ.addWire([spline])
+            else:
+                spline = gmsh.model.occ.addBSpline(p_tags)
+                line = gmsh.model.occ.addLine(p_tags[-1], p_tags[0])
+                wire = gmsh.model.occ.addWire([spline, line])
+            face = gmsh.model.occ.addPlaneSurface([wire])
+            gmsh.model.occ.extrude([(2, face)], 0, 0, float(span_mm))
+        gmsh.model.occ.synchronize()
+        gmsh.write(out_path)
+        gmsh.finalize()
+        return os.path.isfile(out_path) and os.path.getsize(out_path) > 500
+    except Exception:
+        try: gmsh.finalize()
+        except Exception: pass
+        return False
+
+
+def _export_step_builtin(outlines_mm, out_path, span_mm, title):
+    """Pure-Python ISO 10303-21 AP214 MANIFOLD_SOLID_BREP generator (0 dependencies)."""
+    lines = [
+        'ISO-10303-21;',
+        'HEADER;',
+        'FILE_DESCRIPTION((\'aero_auto Multi-Element Wing Solid\'),\'2;1\');',
+        'FILE_NAME(\'wing.step\',\'2026-10-15T09:00:00\',(\'aero_auto\'),(\'FSAE\'),\'aero_auto STEP AP214 Generator\',\'aero_auto\',\'\');',
+        'FILE_SCHEMA((\'AUTOMOTIVE_DESIGN { 1 0 10303 214 1 1 1 1 }\'));',
+        'ENDSEC;',
+        'DATA;'
+    ]
+    eid = 1
+    def get_id():
+        nonlocal eid
+        i = eid
+        eid += 1
+        return i
+
+    app_ctx = get_id()
+    lines.append(f"#{app_ctx} = APPLICATION_CONTEXT('core data for automotive mechanical design processes');")
+    app_proto = get_id()
+    lines.append(f"#{app_proto} = APPLICATION_PROTOCOL_DEFINITION('international standard','automotive_design',2000,#{app_ctx});")
+    prod_ctx = get_id()
+    lines.append(f"#{prod_ctx} = PRODUCT_CONTEXT('',#{app_ctx},'mechanical');")
+    prod_def_ctx = get_id()
+    lines.append(f"#{prod_def_ctx} = PRODUCT_DEFINITION_CONTEXT('part definition',#{app_ctx},'design');")
+
+    u_len = get_id()
+    lines.append(f"#{u_len} = ( LENGTH_UNIT() NAMED_UNIT(*) SI_UNIT(.MILLI.,.METRE.) );")
+    u_ang = get_id()
+    lines.append(f"#{u_ang} = ( NAMED_UNIT(*) PLANE_ANGLE_UNIT() SI_UNIT($,.RADIAN.) );")
+    u_sol = get_id()
+    lines.append(f"#{u_sol} = ( NAMED_UNIT(*) SI_UNIT($,.STERADIAN.) SOLID_ANGLE_UNIT() );")
+    u_unc = get_id()
+    lines.append(f"#{u_unc} = UNCERTAINTY_MEASURE_WITH_UNIT(LENGTH_MEASURE(1.E-07),#{u_len},'distance_accuracy_value','confusion accuracy');")
+    geom_ctx = get_id()
+    lines.append(f"#{geom_ctx} = ( GEOMETRIC_REPRESENTATION_CONTEXT(3) GLOBAL_UNCERTAINTY_ASSIGNED_CONTEXT((#{u_unc})) GLOBAL_UNIT_ASSIGNED_CONTEXT((#{u_len},#{u_ang},#{u_sol})) REPRESENTATION_CONTEXT('Context #1','3D Context with UNIT and UNCERTAINTY') );")
+
+    origin = get_id()
+    lines.append(f"#{origin} = CARTESIAN_POINT('',(0.,0.,0.));")
+    dir_z = get_id()
+    lines.append(f"#{dir_z} = DIRECTION('',(0.,0.,1.));")
+    dir_x = get_id()
+    lines.append(f"#{dir_x} = DIRECTION('',(1.,0.,0.));")
+    axis_root = get_id()
+    lines.append(f"#{axis_root} = AXIS2_PLACEMENT_3D('',#{origin},#{dir_z},#{dir_x});")
+
+    solid_ids = []
+    for el_idx, pts in enumerate(outlines_mm):
+        clean_pts = []
+        for pt in pts:
+            if not clean_pts or np.hypot(pt[0] - clean_pts[-1][0], pt[1] - clean_pts[-1][1]) > 1e-6:
+                clean_pts.append(pt)
+        if len(clean_pts) > 2 and np.hypot(clean_pts[0][0] - clean_pts[-1][0], clean_pts[0][1] - clean_pts[-1][1]) < 1e-4:
+            clean_pts = clean_pts[:-1]
+
+        N = len(clean_pts)
+        if N < 3:
+            continue
+
+        cp_bottom = []
+        cp_top = []
+        for x, y in clean_pts:
+            p0 = get_id()
+            lines.append(f"#{p0} = CARTESIAN_POINT('',({float(x):.6f},{float(y):.6f},0.));")
+            cp_bottom.append(p0)
+            p1 = get_id()
+            lines.append(f"#{p1} = CARTESIAN_POINT('',({float(x):.6f},{float(y):.6f},{float(span_mm):.6f}));")
+            cp_top.append(p1)
+
+        v_bottom = [get_id() for _ in range(N)]
+        v_top = [get_id() for _ in range(N)]
+        for vb, vt, p0, p1 in zip(v_bottom, v_top, cp_bottom, cp_top):
+            lines.append(f"#{vb} = VERTEX_POINT('',#{p0});")
+            lines.append(f"#{vt} = VERTEX_POINT('',#{p1});")
+
+        e_bottom = []
+        e_top = []
+        e_vertical = []
+
+        for k in range(N):
+            k_next = (k + 1) % N
+            dx = float(clean_pts[k_next][0] - clean_pts[k][0])
+            dy = float(clean_pts[k_next][1] - clean_pts[k][1])
+            dist = max(1e-7, (dx*dx + dy*dy)**0.5)
+
+            d_id = get_id()
+            lines.append(f"#{d_id} = DIRECTION('',({dx/dist:.6f},{dy/dist:.6f},0.));")
+            v_vec = get_id()
+            lines.append(f"#{v_vec} = VECTOR('',#{d_id},{dist:.6f});")
+            l_b = get_id()
+            lines.append(f"#{l_b} = LINE('',#{cp_bottom[k]},#{v_vec});")
+            edge_b = get_id()
+            lines.append(f"#{edge_b} = EDGE_CURVE('',#{v_bottom[k]},#{v_bottom[k_next]},#{l_b},.T.);")
+            e_bottom.append(edge_b)
+
+            l_top = get_id()
+            lines.append(f"#{l_top} = LINE('',#{cp_top[k]},#{v_vec});")
+            edge_t = get_id()
+            lines.append(f"#{edge_t} = EDGE_CURVE('',#{v_top[k]},#{v_top[k_next]},#{l_top},.T.);")
+            e_top.append(edge_t)
+
+            v_vec_z = get_id()
+            lines.append(f"#{v_vec_z} = VECTOR('',#{dir_z},{float(span_mm):.6f});")
+            l_v = get_id()
+            lines.append(f"#{l_v} = LINE('',#{cp_bottom[k]},#{v_vec_z});")
+            edge_v = get_id()
+            lines.append(f"#{edge_v} = EDGE_CURVE('',#{v_bottom[k]},#{v_top[k]},#{l_v},.T.);")
+            e_vertical.append(edge_v)
+
+        faces = []
+        for k in range(N):
+            k_next = (k + 1) % N
+            oe1, oe2, oe3, oe4 = get_id(), get_id(), get_id(), get_id()
+            lines.append(f"#{oe1} = ORIENTED_EDGE('',*,*,#{e_bottom[k]},.T.);")
+            lines.append(f"#{oe2} = ORIENTED_EDGE('',*,*,#{e_vertical[k_next]},.T.);")
+            lines.append(f"#{oe3} = ORIENTED_EDGE('',*,*,#{e_top[k]},.F.);")
+            lines.append(f"#{oe4} = ORIENTED_EDGE('',*,*,#{e_vertical[k]},.F.);")
+
+            loop = get_id()
+            lines.append(f"#{loop} = EDGE_LOOP('',(#{oe1},#{oe2},#{oe3},#{oe4}));")
+            bound = get_id()
+            lines.append(f"#{bound} = FACE_OUTER_BOUND('',#{loop},.T.);")
+
+            dx = float(clean_pts[k_next][0] - clean_pts[k][0])
+            dy = float(clean_pts[k_next][1] - clean_pts[k][1])
+            dist = max(1e-7, (dx*dx + dy*dy)**0.5)
+            nx, ny = dy / dist, -dx / dist
+
+            sn = get_id()
+            lines.append(f"#{sn} = DIRECTION('',({nx:.6f},{ny:.6f},0.));")
+            sx = get_id()
+            lines.append(f"#{sx} = DIRECTION('',({dx/dist:.6f},{dy/dist:.6f},0.));")
+            pl_axis = get_id()
+            lines.append(f"#{pl_axis} = AXIS2_PLACEMENT_3D('',#{cp_bottom[k]},#{sn},#{sx});")
+            plane = get_id()
+            lines.append(f"#{plane} = PLANE('',#{pl_axis});")
+            face = get_id()
+            lines.append(f"#{face} = ADVANCED_FACE('',(#{bound}),#{plane},.T.);")
+            faces.append(face)
+
+        # Bottom cap (z=0, reversed loop)
+        oe_b = []
+        for k in reversed(range(N)):
+            oe = get_id()
+            lines.append(f"#{oe} = ORIENTED_EDGE('',*,*,#{e_bottom[k]},.F.);")
+            oe_b.append(oe)
+        loop_b = get_id()
+        lines.append(f"#{loop_b} = EDGE_LOOP('',({','.join(f'#{o}' for o in oe_b)}));")
+        bound_b = get_id()
+        lines.append(f"#{bound_b} = FACE_OUTER_BOUND('',#{loop_b},.T.);")
+        dir_down = get_id()
+        lines.append(f"#{dir_down} = DIRECTION('',(0.,0.,-1.));")
+        axis_b = get_id()
+        lines.append(f"#{axis_b} = AXIS2_PLACEMENT_3D('',#{origin},#{dir_down},#{dir_x});")
+        pl_b = get_id()
+        lines.append(f"#{pl_b} = PLANE('',#{axis_b});")
+        face_b = get_id()
+        lines.append(f"#{face_b} = ADVANCED_FACE('',(#{bound_b}),#{pl_b},.T.);")
+        faces.append(face_b)
+
+        # Top cap (z=span, forward loop)
+        oe_t = []
+        for k in range(N):
+            oe = get_id()
+            lines.append(f"#{oe} = ORIENTED_EDGE('',*,*,#{e_top[k]},.T.);")
+            oe_t.append(oe)
+        loop_t = get_id()
+        lines.append(f"#{loop_t} = EDGE_LOOP('',({','.join(f'#{o}' for o in oe_t)}));")
+        bound_t = get_id()
+        lines.append(f"#{bound_t} = FACE_OUTER_BOUND('',#{loop_t},.T.);")
+        p_top_orig = get_id()
+        lines.append(f"#{p_top_orig} = CARTESIAN_POINT('',(0.,0.,{float(span_mm):.6f}));")
+        axis_t = get_id()
+        lines.append(f"#{axis_t} = AXIS2_PLACEMENT_3D('',#{p_top_orig},#{dir_z},#{dir_x});")
+        pl_t = get_id()
+        lines.append(f"#{pl_t} = PLANE('',#{axis_t});")
+        face_t = get_id()
+        lines.append(f"#{face_t} = ADVANCED_FACE('',(#{bound_t}),#{pl_t},.T.);")
+        faces.append(face_t)
+
+        shell = get_id()
+        lines.append(f"#{shell} = CLOSED_SHELL('',({','.join(f'#{f}' for f in faces)}));")
+        solid = get_id()
+        lines.append(f"#{solid} = MANIFOLD_SOLID_BREP('Element_{el_idx}',#{shell});")
+        solid_ids.append(solid)
+
+    shape_rep = get_id()
+    solids_str = ','.join(f'#{s}' for s in solid_ids)
+    lines.append(f"#{shape_rep} = SHAPE_REPRESENTATION('',(#{axis_root},{solids_str}),#{geom_ctx});")
+
+    prod = get_id()
+    lines.append(f"#{prod} = PRODUCT('FSAE_Wing','FSAE_Wing','',({prod_ctx}));")
+    form = get_id()
+    lines.append(f"#{form} = PRODUCT_DEFINITION_FORMATION('','',#{prod});")
+    pdef = get_id()
+    lines.append(f"#{pdef} = PRODUCT_DEFINITION('design','',#{form},#{prod_def_ctx});")
+    pds = get_id()
+    lines.append(f"#{pds} = PRODUCT_DEFINITION_SHAPE('','',#{pdef});")
+    lines.append(f"#{get_id()} = SHAPE_DEFINITION_REPRESENTATION(#{pds},#{shape_rep});")
+
+    lines.append('ENDSEC;')
+    lines.append('END-ISO-10303-21;')
+
+    with open(out_path, 'w', encoding='ascii') as f:
+        f.write('\n'.join(lines) + '\n')
+    return out_path
+
+
+def export_step(cfg, out_path, chord_mm=None, span_mm=500.0, ground_h=None, title="Multi-Element Wing"):
+    """
+    Export the multi-element wing geometry as a standard ISO 10303-21 STEP AP214 3D solid model (.step / .stp).
+    Produces authentic 3D closed manifold solid bodies (MANIFOLD_SOLID_BREP) for each element,
+    extruded to the specified span length along the Z-axis in millimeters.
+    Tries FreeCAD and Gmsh OpenCASCADE if available, with a built-in pure-Python AP214 generator fallback.
+    """
+    if not AIRFOILS:
+        AIRFOILS.update(load_all(AIRFOIL_DIR))
+        if os.path.isdir(AIRFOIL_STORE):
+            AIRFOILS.update(load_all(AIRFOIL_STORE))
+
+    chord = float(chord_mm or CHORD_MM or DEFAULT_CHORD_MM)
+    span = float(span_mm or SPAN_MM or 500.0)
+    outlines = build_outlines(cfg, ground_h)
+    outlines_mm = [pts * chord for pts in outlines]
+    os.makedirs(os.path.dirname(os.path.abspath(out_path)) or '.', exist_ok=True)
+
+    # 1. Try FreeCAD CLI if installed (generates exact C2 B-spline approximation)
+    if _try_export_step_freecad(outlines_mm, out_path, span, title):
+        return out_path
+
+    # 2. Try Gmsh OpenCASCADE if gmsh is available
+    if _try_export_step_gmsh(outlines_mm, out_path, span, title):
+        return out_path
+
+    # 3. Built-in Pure-Python ISO 10303-21 AP214 MANIFOLD_SOLID_BREP generator (0 dependencies)
+    _export_step_builtin(outlines_mm, out_path, span, title)
+    return out_path
+
+
+def export_freecad_macro(cfg, out_path, chord_mm=None, span_mm=500.0, ground_h=None, title="Multi-Element Wing"):
+    """
+    Generate a standalone FreeCAD Python macro (.FCMacro) that builds the multi-element wing
+    parametrically in FreeCAD with smooth C2 B-spline approximation curves and 3D solid extrusions.
+    Can be run directly via FreeCAD -> Macro -> Macros... -> Execute.
+    """
+    if not AIRFOILS:
+        AIRFOILS.update(load_all(AIRFOIL_DIR))
+        if os.path.isdir(AIRFOIL_STORE):
+            AIRFOILS.update(load_all(AIRFOIL_STORE))
+
+    chord = float(chord_mm or CHORD_MM or DEFAULT_CHORD_MM)
+    span = float(span_mm or SPAN_MM or 500.0)
+    outlines = build_outlines(cfg, ground_h)
+    outlines_mm = [pts * chord for pts in outlines]
+
+    main_name = cfg[0]
+    element_names = [f"Main_{main_name}"] + [f"Flap_{i}_{fl[0]}" for i, fl in enumerate(cfg[1], start=1)]
+
+    clean_outlines = []
+    for pts in outlines_mm:
+        c_pts = []
+        for pt in pts:
+            if not c_pts or np.hypot(pt[0] - c_pts[-1][0], pt[1] - c_pts[-1][1]) > 1e-6:
+                c_pts.append([round(float(pt[0]), 5), round(float(pt[1]), 5)])
+        clean_outlines.append(c_pts)
+
+    macro_text = f'''# -*- coding: utf-8 -*-
+"""
+{title} - FreeCAD Multi-Element Wing Generator
+Generated automatically by aero_auto.
+
+How to use in FreeCAD:
+  1. Open FreeCAD.
+  2. Macro -> Macros... -> Select this file -> Execute.
+  3. The multi-element wing is built as smooth C2 B-spline wires and extruded 3D solids.
+"""
+import FreeCAD as App
+import Part
+from FreeCAD import Vector as V
+
+SPAN_MM = {span:.1f}
+TOL_MM = 0.02
+ELEMENT_NAMES = {element_names!r}
+ELEMENT_OUTLINES = {clean_outlines!r}
+
+doc = App.ActiveDocument or App.newDocument("FSAE_Wing")
+
+for idx, (name, pts_mm) in enumerate(zip(ELEMENT_NAMES, ELEMENT_OUTLINES)):
+    vecs = [V(x, y, 0.0) for x, y in pts_mm]
+    bs = Part.BSplineCurve()
+    try:
+        bs.approximate(Points=vecs, DegMin=3, DegMax=8, Tolerance=TOL_MM, Continuity="C2", ParamType="Centripetal")
+    except Exception:
+        bs.interpolate(Points=vecs, PeriodicFlag=False)
+        
+    edge = bs.toShape()
+    edges = [edge]
+    if bs.StartPoint.distanceToPoint(bs.EndPoint) > 1e-5:
+        edges.append(Part.LineSegment(bs.EndPoint, bs.StartPoint).toShape())
+        
+    wire = Part.Wire(edges)
+    prof = doc.addObject("Part::Feature", name + "_profile")
+    prof.Shape = wire
+    
+    face = Part.Face(wire)
+    solid = face.extrude(V(0, 0, SPAN_MM))
+    solid_obj = doc.addObject("Part::Feature", name)
+    solid_obj.Shape = solid
+    try:
+        prof.ViewObject.Visibility = False
+    except Exception:
+        pass
+
+doc.recompute()
+try:
+    import FreeCADGui
+    FreeCADGui.SendMsgToActiveView("ViewFit")
+except Exception:
+    pass
+print(f"Built {{len(ELEMENT_OUTLINES)}} wing elements successfully.")
+'''
+    os.makedirs(os.path.dirname(os.path.abspath(out_path)) or '.', exist_ok=True)
+    with open(out_path, 'w', encoding='utf-8') as f:
+        f.write(macro_text)
     return out_path
 
 
