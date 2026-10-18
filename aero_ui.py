@@ -10,6 +10,7 @@ import io
 import re
 import sys
 import time
+import json
 import glob
 import math
 import shutil
@@ -80,6 +81,101 @@ ATTR = {
     "rear wing": ("rw", 950.0),
     "custom": ("custom", 1000.0)
 }
+
+ENPRT_PRESETS = [
+    {
+        "id": "FWA_hero",
+        "name": "FWA Hero (Front Wing Maximum Downforce)",
+        "role": FW,
+        "main": "e423",
+        "chord": 300.0,
+        "gh": 35.0,
+        "speed": 16.6667,
+        "re": 570000,
+        "note": "CL*A = 2.0975. High-downforce front wing with E423 main and 2 slotted S1223 flaps.",
+        "flaps": [
+            ["s1223", 43.0, -24.0, 101.0, 9.0],
+            ["s1223", 32.0, -30.0, 141.55, 19.0]
+        ]
+    },
+    {
+        "id": "FWA_stable",
+        "name": "FWA Pitch-Stable (Front Wing Safe Handling)",
+        "role": FW,
+        "main": "s1223",
+        "chord": 300.0,
+        "gh": 35.0,
+        "speed": 16.6667,
+        "re": 570000,
+        "note": "Pitch drop only 0.249. Predictable handling under braking dive with S1223 main and 2 S1223 flaps.",
+        "flaps": [
+            ["s1223", 43.0, -24.0, 101.0, 5.0],
+            ["s1223", 32.0, -16.0, 141.55, 15.0]
+        ]
+    },
+    {
+        "id": "FWB_hero",
+        "name": "FWB Hero (Front Wing Separation Resistant)",
+        "role": FW,
+        "main": "NACA8412",
+        "chord": 300.0,
+        "gh": 35.0,
+        "speed": 16.6667,
+        "re": 570000,
+        "note": "CL*A = 1.8283. High laminar boundary layer attachment with NACA 8412 main and 2 FX 63-137 flaps.",
+        "flaps": [
+            ["WORTMANN FX 63-137", 43.0, -24.0, 98.0, 5.0],
+            ["WORTMANN FX 63-137", 32.0, -30.0, 138.55, 15.0]
+        ]
+    },
+    {
+        "id": "FWB_stable",
+        "name": "FWB Pitch-Stable (Ultra-Robust Pitch Margin)",
+        "role": FW,
+        "main": "NACA8412",
+        "chord": 300.0,
+        "gh": 35.0,
+        "speed": 16.6667,
+        "re": 570000,
+        "note": "Pitch drop only 0.102. NACA 8412 main + FX 63-137 flap 1 + Clark Y flap 2 for linear stall recovery.",
+        "flaps": [
+            ["WORTMANN FX 63-137", 40.0, -26.0, 98.0, 5.0],
+            ["clarky", 32.0, -30.0, 136.0, 15.0]
+        ]
+    },
+    {
+        "id": "RW_hero",
+        "name": "RW Hero (Rear Wing 4-Element Baseline)",
+        "role": RW,
+        "main": "e423",
+        "chord": 300.0,
+        "gh": 35.0,
+        "speed": 16.6667,
+        "re": 570000,
+        "note": "CL*A = 1.6713 @ 0 deg. 4-element high-lift cascade (E423 + 2 S1223 + E423 upper flap) meeting FS 950mm envelope.",
+        "flaps": [
+            ["s1223", 39.0, -26.0, 101.0, 11.0],
+            ["s1223", 31.0, -36.0, 138.15, 15.0],
+            ["e423", 28.0, -36.0, 168.5, 21.0]
+        ]
+    },
+    {
+        "id": "RW_incidence3",
+        "name": "RW +3 deg Incidence (Rear Wing Maximum Downforce)",
+        "role": RW,
+        "main": "e423",
+        "chord": 300.0,
+        "gh": 35.0,
+        "speed": 16.6667,
+        "re": 570000,
+        "note": "CL*A = 1.8083 @ +3 deg incidence. All-S1223 flap cascade for maximum high-speed downforce and cornering traction.",
+        "flaps": [
+            ["s1223", 39.0, -26.0, 101.0, 11.0],
+            ["s1223", 31.0, -36.0, 138.15, 15.0],
+            ["s1223", 28.0, -36.0, 168.5, 21.0]
+        ]
+    }
+]
 
 THEMES = {
     'dark': {
@@ -1052,6 +1148,9 @@ class App(tk.Tk):
     def _build_menu(self):
         m = tk.Menu(self)
         fm = tk.Menu(m, tearoff=0)
+        fm.add_command(label="Load ENPRT Campaign Preset...", accelerator="Ctrl+P", command=self.on_load_enprt_preset_dialog)
+        fm.add_command(label="Open Wing Config JSON...", accelerator="Ctrl+O", command=self.on_open_config_json_file)
+        fm.add_separator()
         fm.add_command(label="Open output folder", command=self._open_cur_out)
         fm.add_command(label="Open current results file", command=self._open_cur_results)
         fm.add_separator()
@@ -1102,6 +1201,10 @@ class App(tk.Tk):
 
         self.config(menu=m)
         self.bind_all('<Control-r>', lambda e=None: self.on_report_picked())
+        self.bind_all('<Control-p>', lambda e=None: self.on_load_enprt_preset_dialog())
+        self.bind_all('<Control-P>', lambda e=None: self.on_load_enprt_preset_dialog())
+        self.bind_all('<Control-o>', lambda e=None: self.on_open_config_json_file())
+        self.bind_all('<Control-O>', lambda e=None: self.on_open_config_json_file())
         self.bind_all('<F5>', lambda e=None: self._refresh_all())
         self.bind_all('<Control-q>', lambda e=None: self._on_close())
         for i, tab in enumerate((self.tab_cfg, self.tab_af, self.tab_comb, self.tab_cam, self.tab_res, self.tab_gr, self.tab_opt, self.tab_set), start=1):
@@ -1215,6 +1318,16 @@ class App(tk.Tk):
     def build_configure(self):
         outer_cfg = ttk.Frame(self.tab_cfg)
         outer_cfg.pack(side='left', fill='both', padx=6, pady=6)
+
+        preset_bar = ttk.Frame(outer_cfg)
+        preset_bar.pack(side='top', fill='x', pady=(0, 6))
+        btn_preset = ttk.Button(preset_bar, text="Load ENPRT Campaign Preset...", command=self.on_load_enprt_preset_dialog)
+        btn_preset.pack(side='left', fill='x', expand=True, padx=(0, 2))
+        add_tooltip(btn_preset, "Load pre-validated ENPRT FSUK 2027 wing campaigns (FWA, FWB, RW).")
+        btn_open_json = ttk.Button(preset_bar, text="Open JSON...", command=self.on_open_config_json_file)
+        btn_open_json.pack(side='left', fill='x', padx=(2, 0))
+        add_tooltip(btn_open_json, "Open an external wing configuration JSON file into Configure tab.")
+
         cfg_canvas = tk.Canvas(outer_cfg, highlightthickness=0, width=420)
         cfg_vsb = ttk.Scrollbar(outer_cfg, orient='vertical', command=cfg_canvas.yview)
         cfg = ttk.Frame(cfg_canvas)
@@ -1545,11 +1658,18 @@ class App(tk.Tk):
         wing_path = os.path.abspath(wing_path)
         wing_dir = os.path.dirname(wing_path)
 
-        # Copy path to clipboard immediately
+        # Copy coordinates to clipboard immediately so user can easily paste anywhere
         try:
-            self.clipboard_clear()
-            self.clipboard_append(wing_path)
-            self.update()
+            if os.path.exists(wing_path):
+                with open(wing_path, "r", encoding="utf-8") as f:
+                    coords = f.read()
+                self.clipboard_clear()
+                self.clipboard_append(coords)
+                self.update()
+            else:
+                self.clipboard_clear()
+                self.clipboard_append(wing_path)
+                self.update()
         except Exception:
             pass
 
@@ -1566,21 +1686,21 @@ class App(tk.Tk):
                  fg="#38bdf8", bg="#0f172a").pack(anchor="w", pady=(0, 6))
 
         info_text = (
-            f"The wing geometry has been exported for JavaFoil:\n"
-            f"  {wing_path}\n"
-            f"  (Also exported to your Desktop as wing.txt)\n\n"
-            f"How to load and analyze in JavaFoil:\n"
+            f"The wing geometry is automatically pre-loaded into JavaFoil!\n"
+            f"File: {wing_path}\n"
+            f"(Coordinates also copied to your clipboard & saved to Desktop)\n\n"
+            f"How to view and analyze:\n"
             f"  1. Switch to the JavaFoil window.\n"
-            f"  2. Click the 'Geometry' tab.\n"
-            f"  3. Click the 'Open...' button.\n"
-            f"  4. Select 'wing.txt' (already located in JavaFoil's folder).\n"
-            f"  5. Click 'Analyze' to compute polars, velocities, and flow properties."
+            f"  2. On the 'Geometry' tab, click 'Update View' (coordinates already written!).\n"
+            f"  3. If coordinates are not shown, click 'Open...' -> select 'wing.txt'\n"
+            f"     or paste directly from your clipboard.\n"
+            f"  4. Switch to 'Analyze' to compute aerodynamic polars and flow fields."
         )
         lbl_msg = tk.Label(frm, text=info_text, font=("Consolas", 9),
                            fg="#cbd5e1", bg="#1e293b", justify=tk.LEFT, padx=12, pady=10, relief=tk.SOLID, bd=1)
         lbl_msg.pack(fill=tk.X, pady=(0, 12))
 
-        status_lbl = tk.Label(frm, text="File path copied to clipboard.", font=("Segoe UI", 8, "italic"),
+        status_lbl = tk.Label(frm, text="Wing coordinates automatically copied to clipboard.", font=("Segoe UI", 8, "italic"),
                               fg="#10b981", bg="#0f172a")
         status_lbl.pack(anchor="w", pady=(0, 12))
 
@@ -1598,6 +1718,15 @@ class App(tk.Tk):
             except Exception as ex:
                 messagebox.showerror("Error", f"Could not open directory:\n{ex}", parent=dlg)
 
+        def copy_path():
+            try:
+                self.clipboard_clear()
+                self.clipboard_append(wing_path)
+                self.update()
+                status_lbl.config(text="File path copied to clipboard!", fg="#38bdf8")
+            except Exception as ex:
+                messagebox.showerror("Error", f"Could not copy file path:\n{ex}", parent=dlg)
+
         def copy_coords():
             try:
                 if os.path.exists(wing_path):
@@ -1612,17 +1741,277 @@ class App(tk.Tk):
 
         tk.Button(btn_row, text="Open Wing Folder", font=("Segoe UI", 9), bg="#334155", fg="#f8fafc",
                   activebackground="#475569", activeforeground="#ffffff", relief=tk.FLAT, padx=10, pady=4,
-                  command=open_folder).pack(side=tk.LEFT, padx=(0, 8))
+                  command=open_folder).pack(side=tk.LEFT, padx=(0, 6))
+
+        tk.Button(btn_row, text="Copy File Path", font=("Segoe UI", 9), bg="#334155", fg="#f8fafc",
+                  activebackground="#475569", activeforeground="#ffffff", relief=tk.FLAT, padx=10, pady=4,
+                  command=copy_path).pack(side=tk.LEFT, padx=(0, 6))
 
         tk.Button(btn_row, text="Copy Coordinates", font=("Segoe UI", 9), bg="#334155", fg="#f8fafc",
                   activebackground="#475569", activeforeground="#ffffff", relief=tk.FLAT, padx=10, pady=4,
-                  command=copy_coords).pack(side=tk.LEFT, padx=(0, 8))
+                  command=copy_coords).pack(side=tk.LEFT, padx=(0, 6))
 
         tk.Button(btn_row, text="Close", font=("Segoe UI", 9, "bold"), bg="#0284c7", fg="#ffffff",
                   activebackground="#0369a1", activeforeground="#ffffff", relief=tk.FLAT, padx=14, pady=4,
                   command=dlg.destroy).pack(side=tk.RIGHT)
 
         # Center dialog relative to main window
+        try:
+            dlg.update_idletasks()
+            rx = self.winfo_rootx()
+            ry = self.winfo_rooty()
+            rw = self.winfo_width()
+            rh = self.winfo_height()
+            dw = dlg.winfo_reqwidth()
+            dh = dlg.winfo_reqheight()
+            x = rx + max(0, (rw - dw) // 2)
+            y = ry + max(0, (rh - dh) // 2)
+            dlg.geometry(f"+{x}+{y}")
+        except Exception:
+            pass
+
+    def load_config_json(self, config_data_or_path):
+        """Loads a wing configuration dictionary or JSON file into the Configure tab."""
+        if isinstance(config_data_or_path, str):
+            cfg_path = os.path.abspath(config_data_or_path)
+            if not os.path.exists(cfg_path):
+                raise FileNotFoundError(f"Config file not found: {cfg_path}")
+            with open(cfg_path, 'r', encoding='utf-8') as f:
+                cfg = json.load(f)
+        elif isinstance(config_data_or_path, dict):
+            cfg = config_data_or_path
+        else:
+            raise TypeError("Expected file path or dictionary for wing configuration.")
+
+        main_elem = cfg.get('main', 's1223')
+        role = cfg.get('role', FW)
+        if role not in (FW, RW, CUSTOM):
+            r_lower = str(role).lower().strip()
+            if 'rear' in r_lower or 'rw' in r_lower:
+                role = RW
+            elif 'front' in r_lower or 'fw' in r_lower:
+                role = FW
+            else:
+                role = CUSTOM
+
+        chord_val = str(cfg.get('chord', A.DEFAULT_CHORD_MM))
+        speed_val = str(cfg.get('speed', A.DEFAULT_SPEED))
+        re_val = str(cfg.get('re', A.RE))
+        gh_val = str(cfg.get('gh', 35.0))
+        ge_val = bool(cfg.get('ge', True))
+
+        if hasattr(self, 'vars'):
+            if 'chord' in self.vars: self.vars['chord'].set(chord_val)
+            if 'speed' in self.vars: self.vars['speed'].set(speed_val)
+            if 're' in self.vars: self.vars['re'].set(re_val)
+            if 'al0' in self.vars: self.vars['al0'].set(str(cfg.get('al0', -20)))
+            if 'al1' in self.vars: self.vars['al1'].set(str(cfg.get('al1', 5)))
+            if 'alst' in self.vars: self.vars['alst'].set(str(cfg.get('alst', 1)))
+
+        if hasattr(self, 'main_box'):
+            if main_elem in self.names:
+                self.main_box.set(main_elem)
+            else:
+                self.names.append(main_elem)
+                self.main_box['values'] = self.names
+                self.main_box.set(main_elem)
+
+        if hasattr(self, '_role_state'):
+            self._role_state.set(role)
+            try:
+                self.on_role()
+            except Exception:
+                pass
+
+        if hasattr(self, 'gh_state'):
+            self.gh_state.set(gh_val)
+        if hasattr(self, 'ge_state'):
+            self.ge_state.set(ge_val)
+            try:
+                self._toggle_ground_height()
+            except Exception:
+                pass
+
+        flaps = cfg.get('flaps', [])
+        if hasattr(self, 'flap_rows'):
+            for i, (vals, _cb) in enumerate(self.flap_rows):
+                if i < len(flaps):
+                    f = flaps[i]
+                    f_name = str(f[0])
+                    if f_name and f_name not in self.names:
+                        self.names.append(f_name)
+                        _cb['values'] = self.names
+                    vals[0].set(f_name)
+                    vals[1].set(str(f[1]))
+                    vals[2].set(str(f[2]))
+                    vals[3].set(str(f[3]))
+                    vals[4].set(str(f[4]))
+                    vals[5].set(True)
+                else:
+                    vals[0].set('')
+                    vals[1].set('30')
+                    vals[2].set('-6')
+                    vals[3].set('100')
+                    vals[4].set('5')
+                    vals[5].set(False)
+
+        cfg_name = cfg.get('name', 'Custom Config')
+        note = cfg.get('note', '')
+        self.log(f"Loaded wing configuration: {cfg_name} ({note})")
+        self.set_status(f"Configuration loaded: {cfg_name}")
+
+        try:
+            self.notebook.select(self.tab_cfg)
+        except Exception:
+            pass
+        self.after(50, self.on_check)
+
+    def on_open_config_json_file(self):
+        """Prompts user to select a wing configuration JSON file and loads it."""
+        from tkinter import filedialog
+        init_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "configs")
+        if not os.path.isdir(init_dir):
+            init_dir = os.getcwd()
+        fn = filedialog.askopenfilename(
+            parent=self,
+            title="Open Wing Configuration JSON",
+            initialdir=init_dir,
+            filetypes=[("JSON Files", "*.json"), ("All Files", "*.*")]
+        )
+        if fn:
+            try:
+                self.load_config_json(fn)
+            except Exception as e:
+                messagebox.showerror("Error Loading Config", f"Could not load configuration file:\n{e}", parent=self)
+
+    def on_load_enprt_preset_dialog(self):
+        """Displays modal dialog to select and load an ENPRT campaign preset."""
+        dlg = tk.Toplevel(self)
+        dlg.title("ENPRT FSUK 2027 Wing Campaign Presets")
+        dlg.configure(bg="#0f172a")
+        dlg.transient(self)
+        dlg.geometry("720x520")
+        dlg.minsize(680, 480)
+
+        header = tk.Frame(dlg, bg="#0f172a", padx=16, pady=12)
+        header.pack(fill=tk.X)
+        tk.Label(header, text="ENPRT FSUK 2027 Campaign Presets", font=("Segoe UI", 12, "bold"),
+                 fg="#38bdf8", bg="#0f172a").pack(anchor="w")
+        tk.Label(header, text="Select an official aerodynamic configuration to inspect or load into Configure tab.",
+                 font=("Segoe UI", 9), fg="#94a3b8", bg="#0f172a").pack(anchor="w", pady=(2, 0))
+
+        body = tk.Frame(dlg, bg="#0f172a", padx=16, pady=4)
+        body.pack(fill=tk.BOTH, expand=True)
+
+        left_frm = tk.Frame(body, bg="#1e293b", bd=1, relief=tk.SOLID)
+        left_frm.pack(side=tk.LEFT, fill=tk.BOTH, expand=False, padx=(0, 8), pady=4)
+        tk.Label(left_frm, text="Available Configurations", font=("Segoe UI", 9, "bold"),
+                 fg="#f8fafc", bg="#1e293b", padx=8, pady=6).pack(anchor="w")
+
+        lb = tk.Listbox(left_frm, font=("Segoe UI", 9), bg="#0f172a", fg="#f8fafc",
+                        selectbackground="#0284c7", selectforeground="#ffffff",
+                        highlightthickness=0, bd=0, width=28, height=14)
+        lb.pack(fill=tk.BOTH, expand=True, padx=6, pady=(0, 6))
+
+        for p in ENPRT_PRESETS:
+            lb.insert(tk.END, f"  {p['id']} ({p['role'].title()})")
+
+        right_frm = tk.Frame(body, bg="#1e293b", bd=1, relief=tk.SOLID, padx=12, pady=10)
+        right_frm.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, pady=4)
+
+        lbl_p_name = tk.Label(right_frm, text="", font=("Segoe UI", 11, "bold"), fg="#38bdf8", bg="#1e293b")
+        lbl_p_name.pack(anchor="w", pady=(0, 4))
+
+        lbl_p_role = tk.Label(right_frm, text="", font=("Segoe UI", 9), fg="#94a3b8", bg="#1e293b")
+        lbl_p_role.pack(anchor="w", pady=(0, 8))
+
+        detail_txt = tk.Text(right_frm, font=("Consolas", 9), bg="#0f172a", fg="#e2e8f0",
+                             wrap=tk.WORD, bd=0, padx=8, pady=8, state='disabled')
+        detail_txt.pack(fill=tk.BOTH, expand=True)
+
+        selected_preset = [ENPRT_PRESETS[0]]
+
+        def show_preset(p):
+            selected_preset[0] = p
+            lbl_p_name.config(text=p['name'])
+            lbl_p_role.config(text=f"Role: {p['role'].title()} | Main Chord: {p.get('chord', 300)} mm | Ground Height: {p.get('gh', 35)}% chord")
+
+            lines = []
+            lines.append(f"Target Performance / Note:\n  {p.get('note', '')}\n")
+            lines.append("Aerodynamic Elements:")
+            lines.append(f"  Main Element : {p.get('main', 's1223')}")
+            for idx, f in enumerate(p.get('flaps', []), 1):
+                lines.append(f"  Flap {idx}       : {f[0]} (Scale {f[1]}%, Angle {f[2]} deg, X {f[3]}%, Y {f[4]}%)")
+            lines.append("")
+            lines.append("Simulation Parameters:")
+            lines.append(f"  Speed         : {p.get('speed', 16.6667):.2f} m/s")
+            lines.append(f"  Reynolds No   : {p.get('re', 570000):,}")
+            lines.append(f"  Ground Effect : {'Enabled' if p.get('gh') is not None else 'Unbounded'}")
+
+            detail_txt.config(state='normal')
+            detail_txt.delete('1.0', tk.END)
+            detail_txt.insert(tk.END, "\n".join(lines))
+            detail_txt.config(state='disabled')
+
+        def on_lb_select(event=None):
+            sel = lb.curselection()
+            if sel:
+                show_preset(ENPRT_PRESETS[sel[0]])
+
+        lb.bind('<<ListboxSelect>>', on_lb_select)
+        lb.selection_set(0)
+        show_preset(ENPRT_PRESETS[0])
+
+        btn_bar = tk.Frame(dlg, bg="#0f172a", padx=16, pady=12)
+        btn_bar.pack(fill=tk.X)
+
+        def do_load():
+            p = selected_preset[0]
+            dlg.destroy()
+            self.load_config_json(p)
+
+        def do_test_jf():
+            p = selected_preset[0]
+            dlg.destroy()
+            cfg = (p['main'], tuple(p.get('flaps', [])))
+            gh = p.get('gh')
+            re_val = p.get('re', 570000)
+            title = p.get('name', 'FSAE Wing')
+            ok, msg, _ = A.launch_javafoil_gui(cfg, ground_h=gh, re_val=re_val, title=title)
+            if ok:
+                self.log(msg)
+                self.set_status(f"JavaFoil GUI launched: {p['name']}")
+                wing_export_path = os.path.join(A.OUT_DIR, "javafoil_gui", "wing.txt")
+                self.show_javafoil_launched_dialog(title, wing_export_path)
+            else:
+                messagebox.showerror("JavaFoil Error", msg, parent=self)
+
+        def do_copy_json():
+            p = selected_preset[0]
+            try:
+                self.clipboard_clear()
+                self.clipboard_append(json.dumps(p, indent=2))
+                self.update()
+                self.set_status("Preset JSON copied to clipboard.")
+            except Exception:
+                pass
+
+        tk.Button(btn_bar, text="Load Into Configure Tab", font=("Segoe UI", 9, "bold"),
+                  bg="#0284c7", fg="#ffffff", activebackground="#0369a1", activeforeground="#ffffff",
+                  relief=tk.FLAT, padx=12, pady=5, command=do_load).pack(side=tk.LEFT, padx=(0, 6))
+
+        tk.Button(btn_bar, text="Test in JavaFoil GUI", font=("Segoe UI", 9),
+                  bg="#334155", fg="#f8fafc", activebackground="#475569", activeforeground="#ffffff",
+                  relief=tk.FLAT, padx=10, pady=5, command=do_test_jf).pack(side=tk.LEFT, padx=(0, 6))
+
+        tk.Button(btn_bar, text="Copy Preset JSON", font=("Segoe UI", 9),
+                  bg="#334155", fg="#f8fafc", activebackground="#475569", activeforeground="#ffffff",
+                  relief=tk.FLAT, padx=10, pady=5, command=do_copy_json).pack(side=tk.LEFT, padx=(0, 6))
+
+        tk.Button(btn_bar, text="Close", font=("Segoe UI", 9),
+                  bg="#334155", fg="#f8fafc", activebackground="#475569", activeforeground="#ffffff",
+                  relief=tk.FLAT, padx=12, pady=5, command=dlg.destroy).pack(side=tk.RIGHT)
+
         try:
             dlg.update_idletasks()
             rx = self.winfo_rootx()
@@ -7166,7 +7555,17 @@ class App(tk.Tk):
 
 
 def main():
+    import argparse
+    ap = argparse.ArgumentParser(description="Aero Auto - FSAE Multi-Element Aerodynamics Suite")
+    ap.add_argument('--config', '-c', default=None, help='Path to wing configuration JSON to load on startup')
+    args, _ = ap.parse_known_args()
+
     app = App()
+    if args.config:
+        try:
+            app.load_config_json(args.config)
+        except Exception as e:
+            print(f"[warn] Could not load config {args.config}: {e}")
     app.mainloop()
 
 

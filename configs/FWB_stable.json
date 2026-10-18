@@ -1,0 +1,24 @@
+{
+ "name": "FWB_stable",
+ "main": "NACA8412",
+ "role": "front wing",
+ "chord": 300.0,
+ "gh": 35.0,
+ "note": "pitch drop 0.102",
+ "flaps": [
+  [
+   "WORTMANN FX 63-137",
+   40,
+   -26.0,
+   98,
+   5
+  ],
+  [
+   "clarky",
+   32,
+   -30,
+   136.0,
+   15
+  ]
+ ]
+}

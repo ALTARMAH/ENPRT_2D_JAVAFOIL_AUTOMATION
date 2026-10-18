@@ -2831,6 +2831,18 @@ def launch_javafoil_gui(cfg, ground_h=None, re_val=None, title="FSAE Multi-Eleme
             except Exception:
                 pass
 
+    # Copy coordinates to system clipboard so user can immediately paste if needed
+    try:
+        if sys.platform == "win32":
+            subprocess.run(["clip"], input=wing_content.encode("utf-8"), check=False,
+                           creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0x08000000))
+        elif shutil.which("xclip"):
+            subprocess.run(["xclip", "-selection", "clipboard"], input=wing_content.encode("utf-8"), check=False)
+        elif shutil.which("wl-copy"):
+            subprocess.run(["wl-copy"], input=wing_content.encode("utf-8"), check=False)
+    except Exception:
+        pass
+
     # Copy jars into gui_dir so working directory has javafoil.jar and mhclasses.jar
     dest_jf = os.path.join(gui_dir, JAVAFOIL_JAR)
     if not os.path.exists(dest_jf):
@@ -2846,9 +2858,50 @@ def launch_javafoil_gui(cfg, ground_h=None, re_val=None, title="FSAE Multi-Eleme
             except Exception:
                 pass
 
-    # Launch JavaFoil directly without Script= argument.
-    # In JavaFoil's bytecode, passing Script= forces headless batch mode (bShowGUI = false),
-    # which suppresses the GUI window. Launching javafoil.jar directly ensures bShowGUI = true.
+    # Create gui_startup.jfs:
+    # 1. Opens wing.txt automatically into the Geometry tab
+    # 2. Configures default options (ground effect, Reynolds number, country)
+    # 3. Explicitly forces the AWT/Swing JFrame to become visible, focused, and frontmost.
+    # When Script= is given WITHOUT JavaFoil.Exit(), JavaFoil executes the script and stays
+    # open interactively with the wing coordinates pre-written in the Geometry tab!
+    ge_flag = 1 if ground_h is not None else 0
+    try:
+        re_int = int(float(effective_re))
+    except Exception:
+        re_int = 570000
+
+    startup_script = (
+        "Options.Country(10);\n"
+        "Geometry.Open(\"wing.txt\");\n"
+        "Options.MachNumber(0);\n"
+        "Options.StallModel(0);\n"
+        "Options.TransitionModel(1);\n"
+        f"Options.GroundEffect({ge_flag});\n"
+        "Options.HeightOverSpan(0.5);\n"
+        "Options.AspectRatio(0);\n"
+        "Options.SweepAngle(0.0);\n\n"
+        "// JavaFoil suppresses GUI visibility by default when launched with Script= parameter.\n"
+        "// We explicitly make all AWT/Swing frames visible, normal (unminimized), and focused.\n"
+        "try {\n"
+        "    var Frame = Java.type(\"java.awt.Frame\");\n"
+        "    var frames = Frame.getFrames();\n"
+        "    for (var i = 0; i < frames.length; i++) {\n"
+        "        var fr = frames[i];\n"
+        "        if (fr.getTitle() == \"JavaFoil\") {\n"
+        "            fr.setExtendedState(0);\n"
+        "            fr.setState(0);\n"
+        "            fr.setVisible(true);\n"
+        "            fr.toFront();\n"
+        "            fr.requestFocus();\n"
+        "        }\n"
+        "    }\n"
+        "} catch (e) {}\n"
+    )
+
+    script_path = os.path.join(gui_dir, "gui_startup.jfs")
+    with open(script_path, "w", encoding="utf-8") as f:
+        f.write(startup_script)
+
     env = os.environ.copy()
     if sys.platform != "win32":
         if not env.get("DISPLAY"):
@@ -2869,12 +2922,11 @@ def launch_javafoil_gui(cfg, ground_h=None, re_val=None, title="FSAE Multi-Eleme
     proc = None
     launch_err = None
 
-    # Tier 1: Launch via detected Java binary
+    # Tier 1: Scripted launch (pre-loads wing geometry into Geometry tab)
     if java_bin:
-        cmd = [java_bin, "-jar", dest_jf]
+        cmd_script = [java_bin, "-jar", dest_jf, "Script=gui_startup.jfs"]
         popen_kwargs = {"cwd": gui_dir, "env": env}
         if sys.platform == "win32":
-            # DETACHED_PROCESS and CREATE_NEW_PROCESS_GROUP ensure an independent foreground window
             popen_kwargs["creationflags"] = (
                 getattr(subprocess, "DETACHED_PROCESS", 0x00000008) |
                 getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0x00000200)
@@ -2883,17 +2935,33 @@ def launch_javafoil_gui(cfg, ground_h=None, re_val=None, title="FSAE Multi-Eleme
             popen_kwargs["stdout"] = subprocess.DEVNULL
             popen_kwargs["stderr"] = subprocess.DEVNULL
         try:
-            proc = subprocess.Popen(cmd, **popen_kwargs)
+            proc = subprocess.Popen(cmd_script, **popen_kwargs)
+            time.sleep(0.6)
+            if proc.poll() is None:
+                # Successfully running with wing pre-loaded!
+                return True, (
+                    f"JavaFoil GUI launched successfully with {len(outs)} wing elements pre-loaded!\n"
+                    f"Wing geometry written to: {wing_path}\n"
+                    f"In JavaFoil: Click 'Update View' on the Geometry tab to render."
+                ), proc
+            else:
+                launch_err = f"Scripted Java launch exited (code {proc.returncode})"
+        except Exception as e:
+            launch_err = str(e)
+
+        # Fallback to direct launch without Script= parameter (e.g. if Nashorn engine is unavailable)
+        cmd_direct = [java_bin, "-jar", dest_jf]
+        try:
+            proc = subprocess.Popen(cmd_direct, **popen_kwargs)
             time.sleep(0.4)
             if proc.poll() is None:
-                # Running successfully
                 return True, (
-                    f"JavaFoil GUI launched successfully.\n"
+                    f"JavaFoil GUI launched (direct mode).\n"
                     f"Wing geometry exported to: {wing_path}\n"
                     f"In JavaFoil: Click 'Geometry' -> 'Open...' -> select 'wing.txt'."
                 ), proc
             else:
-                launch_err = f"Java exited immediately (code {proc.returncode})"
+                launch_err = f"Direct Java launch exited (code {proc.returncode})"
         except Exception as e:
             launch_err = str(e)
 

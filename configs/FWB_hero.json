@@ -1,0 +1,24 @@
+{
+ "name": "FWB_hero",
+ "main": "NACA8412",
+ "role": "front wing",
+ "chord": 300.0,
+ "gh": 35.0,
+ "note": "CL*A=1.8283",
+ "flaps": [
+  [
+   "WORTMANN FX 63-137",
+   43.0,
+   -24,
+   98,
+   5
+  ],
+  [
+   "WORTMANN FX 63-137",
+   32,
+   -30,
+   138.55,
+   15
+  ]
+ ]
+}
