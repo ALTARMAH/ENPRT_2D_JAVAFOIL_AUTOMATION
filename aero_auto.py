@@ -4108,7 +4108,7 @@ def export_svg(cfg, out_path, chord_mm=None, ground_h=None, title="Multi-Element
     return out_path
 
 
-def run_one(cfg, phase, ground_h=UNSET):
+def run_one(cfg, phase, ground_h=UNSET, run_id=None):
     h = GROUND_H if ground_h is UNSET else ground_h
     wdir = WORKER_DIRS.get()
     try:
@@ -4128,7 +4128,7 @@ def run_one(cfg, phase, ground_h=UNSET):
         row.update(m)
         row.update(force_columns(m))
     with LOCK:
-        row["Run_ID"] = f"Run_{next(RUN_COUNTER)}"
+        row["Run_ID"] = str(run_id) if run_id else f"Run_{next(RUN_COUNTER)}"
         row["Date"] = datetime.datetime.now().isoformat(timespec="seconds")
         row["Duration_s"] = round(took, 1)
         row["Alpha_Interval"] = (f"{ALPHA[0]:g}..{ALPHA[1]:g} step {ALPHA[2]:g} "

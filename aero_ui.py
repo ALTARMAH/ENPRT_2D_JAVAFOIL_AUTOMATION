@@ -912,7 +912,8 @@ class App(tk.Tk):
                         if hasattr(self, 'gr_prog_lbl'):
                             self.gr_prog_lbl.configure(text=status_txt)
                     elif kind == 'gr_done':
-                        r, p, rid, run_gdir, already_existed = payload
+                        r, p, rid, run_gdir, already_existed = payload[:5]
+                        show_dest_dialog = payload[5] if len(payload) > 5 else True
                         if hasattr(self, 'gr_prog_bar'):
                             self.gr_prog_bar['value'] = 100
                         if hasattr(self, 'gr_prog_lbl'):
@@ -925,7 +926,8 @@ class App(tk.Tk):
                             self.notebook.select(self.tab_gr)
                         except Exception:
                             pass
-                        self.ask_graph_destination(r, rid, run_gdir, already_existed=already_existed)
+                        if show_dest_dialog:
+                            self.ask_graph_destination(r, rid, run_gdir, already_existed=already_existed)
                     elif kind == 'opt_log':
                         self._append_log(getattr(self, 'opt_log', None), payload)
                     elif kind == 'opt_prog':
@@ -1150,6 +1152,7 @@ class App(tk.Tk):
         fm = tk.Menu(m, tearoff=0)
         fm.add_command(label="Load ENPRT Campaign Preset...", accelerator="Ctrl+P", command=self.on_load_enprt_preset_dialog)
         fm.add_command(label="Open Wing Config JSON...", accelerator="Ctrl+O", command=self.on_open_config_json_file)
+        fm.add_command(label="Save Wing Config JSON...", accelerator="Ctrl+S", command=self.on_save_config_json)
         fm.add_separator()
         fm.add_command(label="Open output folder", command=self._open_cur_out)
         fm.add_command(label="Open current results file", command=self._open_cur_results)
@@ -1205,6 +1208,8 @@ class App(tk.Tk):
         self.bind_all('<Control-P>', lambda e=None: self.on_load_enprt_preset_dialog())
         self.bind_all('<Control-o>', lambda e=None: self.on_open_config_json_file())
         self.bind_all('<Control-O>', lambda e=None: self.on_open_config_json_file())
+        self.bind_all('<Control-s>', lambda e=None: self.on_save_config_json())
+        self.bind_all('<Control-S>', lambda e=None: self.on_save_config_json())
         self.bind_all('<F5>', lambda e=None: self._refresh_all())
         self.bind_all('<Control-q>', lambda e=None: self._on_close())
         for i, tab in enumerate((self.tab_cfg, self.tab_af, self.tab_comb, self.tab_cam, self.tab_res, self.tab_gr, self.tab_opt, self.tab_set), start=1):
@@ -1325,8 +1330,11 @@ class App(tk.Tk):
         btn_preset.pack(side='left', fill='x', expand=True, padx=(0, 2))
         add_tooltip(btn_preset, "Load pre-validated ENPRT FSUK 2027 wing campaigns (FWA, FWB, RW).")
         btn_open_json = ttk.Button(preset_bar, text="Open JSON...", command=self.on_open_config_json_file)
-        btn_open_json.pack(side='left', fill='x', padx=(2, 0))
+        btn_open_json.pack(side='left', fill='x', padx=(2, 2))
         add_tooltip(btn_open_json, "Open an external wing configuration JSON file into Configure tab.")
+        btn_save_json = ttk.Button(preset_bar, text="Save JSON...", command=self.on_save_config_json)
+        btn_save_json.pack(side='left', fill='x', padx=(2, 0))
+        add_tooltip(btn_save_json, "Save current wing configuration as a JSON file to configs/ or custom folder.")
 
         cfg_canvas = tk.Canvas(outer_cfg, highlightthickness=0, width=420)
         cfg_vsb = ttk.Scrollbar(outer_cfg, orient='vertical', command=cfg_canvas.yview)
@@ -1339,17 +1347,23 @@ class App(tk.Tk):
         bind_scrollable(cfg_canvas)
 
         self.vars = {}
-        ttk.Label(cfg, text="Main element").grid(row=0, column=0, sticky='w')
+        self.cfg_name_var = tk.StringVar(value="Run_1")
+        ttk.Label(cfg, text="Run / Design Name").grid(row=0, column=0, sticky='w')
+        cfg_name_entry = ttk.Entry(cfg, textvariable=self.cfg_name_var)
+        cfg_name_entry.grid(row=0, column=1, sticky='we', pady=2)
+        add_tooltip(cfg_name_entry, "Custom name for this configuration and its simulation runs (e.g. FrontWing_V2, Hero_Run_310).")
+
+        ttk.Label(cfg, text="Main element").grid(row=1, column=0, sticky='w')
         self.main_box = ttk.Combobox(cfg, values=self.names, state='readonly')
-        self.main_box.grid(row=0, column=1, sticky='we', pady=2)
+        self.main_box.grid(row=1, column=1, sticky='we', pady=2)
         add_tooltip(self.main_box, "Main element airfoil (defines the wing). Select from library.")
         if 's1223' in self.names:
             self.main_box.set('s1223')
 
         self.role_lbl = tk.StringVar(value=FW + " (span 1400 mm)")
-        ttk.Label(cfg, textvariable=self.role_lbl).grid(row=1, column=0, columnspan=2, sticky='w')
+        ttk.Label(cfg, textvariable=self.role_lbl).grid(row=2, column=0, columnspan=2, sticky='w')
         self._role_state = tk.StringVar(value=FW)
-        for r, c in ((FW, 2), (RW, 3), (CUSTOM, 4)):
+        for r, c in ((FW, 3), (RW, 4), (CUSTOM, 5)):
             rb = tk.Radiobutton(cfg, text=r, value=r, command=self.on_role, variable=self._role_state)
             rb.grid(row=c, column=0, columnspan=2, sticky='w')
             tips = {
@@ -1359,7 +1373,7 @@ class App(tk.Tk):
             }
             add_tooltip(rb, tips.get(r, ''))
 
-        ttk.Separator(cfg, orient='horizontal').grid(row=5, column=0, columnspan=2, sticky='we', pady=4)
+        ttk.Separator(cfg, orient='horizontal').grid(row=6, column=0, columnspan=2, sticky='we', pady=4)
 
         fields = [
             ('chord', 'Main chord (mm)', A.DEFAULT_CHORD_MM, "Physical chord length of the main element in millimeters. Used for force calculations and mm-scaled geometry."),
@@ -1370,11 +1384,11 @@ class App(tk.Tk):
             ('alst', 'Alpha step (deg)', A.ALPHA[2], "Angle increment between polar points. Smaller = more resolution, longer compute.")
         ]
         for i, (k, lab, default, tip) in enumerate(fields):
-            ttk.Label(cfg, text=lab).grid(row=6 + i, column=0, sticky='w')
+            ttk.Label(cfg, text=lab).grid(row=7 + i, column=0, sticky='w')
             v = tk.StringVar(value=str(default))
             self.vars[k] = v
             entry = ttk.Entry(cfg, textvariable=v, width=10)
-            entry.grid(row=6 + i, column=1, sticky='we')
+            entry.grid(row=7 + i, column=1, sticky='we')
             add_tooltip(entry, tip)
 
         ttk.Separator(cfg, orient='horizontal').grid(row=13, column=0, columnspan=2, sticky='we', pady=4)
@@ -1441,7 +1455,7 @@ class App(tk.Tk):
 
         sim_btn = ttk.Button(cfg, text="Simulate this wing now (JavaFoil)", command=self.on_simulate)
         sim_btn.grid(row=25, column=0, columnspan=2, sticky='we', pady=2)
-        add_tooltip(sim_btn, "Run single JavaFoil analysis in background. Appends row to results.csv.")
+        add_tooltip(sim_btn, "Run JavaFoil analysis for this named wing. Appends row to results.csv.")
 
         jf_btn = ttk.Button(cfg, text="Open in JavaFoil GUI", command=self.on_open_javafoil)
         jf_btn.grid(row=26, column=0, columnspan=2, sticky='we', pady=2)
@@ -1455,18 +1469,22 @@ class App(tk.Tk):
 
         nav_gr_btn = ttk.Button(nav_frame, text="Go to Graphs", command=self.on_go_to_graphs)
         nav_gr_btn.pack(side='left', fill='x', expand=True, padx=(2, 0))
-        add_tooltip(nav_gr_btn, "Switch directly to Graphs (Tab 5) to inspect aerodynamic polars and flow fields.")
+        add_tooltip(nav_gr_btn, "Generate and switch directly to Graphs (Tab 5) to inspect aerodynamic polars and flow fields.")
+
+        save_run_btn = ttk.Button(cfg, text="Save Run Archive (ZIP)...", command=self.on_save_current_run_archive)
+        save_run_btn.grid(row=28, column=0, columnspan=2, sticky='we', pady=2)
+        add_tooltip(save_run_btn, "Export full telemetry, polars, JavaFoil data and CAD models for this run as a ZIP archive.")
 
         term_btn = ttk.Button(cfg, text="Run in Terminal (konsole)", command=self.on_simulate_terminal)
-        term_btn.grid(row=28, column=0, columnspan=2, sticky='we', pady=2)
+        term_btn.grid(row=29, column=0, columnspan=2, sticky='we', pady=2)
         add_tooltip(term_btn, "Launch simulation in separate konsole terminal (avoids GUI fork deadlock on Linux).")
 
         batch_btn = ttk.Button(cfg, text="Batch: Multiple Main/Flaps", command=self.on_batch_simulate)
-        batch_btn.grid(row=29, column=0, columnspan=2, sticky='we', pady=2)
+        batch_btn.grid(row=30, column=0, columnspan=2, sticky='we', pady=2)
         add_tooltip(batch_btn, "Run multiple main/flap combinations sequentially. Select airfoils from dialogs.")
 
         cad_frame = ttk.LabelFrame(cfg, text="CAD Export (2D & 3D Solid)")
-        cad_frame.grid(row=30, column=0, columnspan=2, sticky='we', pady=3)
+        cad_frame.grid(row=31, column=0, columnspan=2, sticky='we', pady=3)
         btn_cfg_dxf = ttk.Button(cad_frame, text="Export DXF (2D)", command=self.on_export_config_dxf)
         btn_cfg_dxf.pack(side='left', fill='x', expand=True, padx=2, pady=2)
         add_tooltip(btn_cfg_dxf, "Export 2D continuous spline profile to AutoCAD DXF format.")
@@ -1478,7 +1496,7 @@ class App(tk.Tk):
         add_tooltip(btn_cfg_fcm, "Export parametric Python macro (.FCMacro) for FreeCAD with C2 B-spline solids.")
 
         self.derive_state = tk.StringVar(value='')
-        ttk.Label(cfg, textvariable=self.derive_state, wraplength=330, justify='left', foreground=MUTED).grid(row=31, column=0, columnspan=2, sticky='w', pady=(8, 0))
+        ttk.Label(cfg, textvariable=self.derive_state, wraplength=330, justify='left', foreground=MUTED).grid(row=32, column=0, columnspan=2, sticky='w', pady=(8, 0))
 
         for k in ('chord', 'speed', 're'):
             self.vars[k].trace_add('write', lambda *_: self._update_derived())
@@ -1857,6 +1875,8 @@ class App(tk.Tk):
 
         cfg_name = cfg.get('name', 'Custom Config')
         note = cfg.get('note', '')
+        if hasattr(self, 'cfg_name_var') and cfg_name:
+            self.cfg_name_var.set(cfg_name)
         self.log(f"Loaded wing configuration: {cfg_name} ({note})")
         self.set_status(f"Configuration loaded: {cfg_name}")
 
@@ -1883,6 +1903,171 @@ class App(tk.Tk):
                 self.load_config_json(fn)
             except Exception as e:
                 messagebox.showerror("Error Loading Config", f"Could not load configuration file:\n{e}", parent=self)
+
+    def on_save_config_json(self):
+        """Saves current wing configuration to a JSON file."""
+        from tkinter import filedialog
+        cfg = self.read_cfg()
+        if not cfg:
+            messagebox.showwarning("Incomplete Configuration", "Please select a main airfoil and valid flap parameters first.", parent=self)
+            return
+
+        cfg_name = self.cfg_name_var.get().strip() if hasattr(self, 'cfg_name_var') else 'Run_1'
+        if not cfg_name:
+            cfg_name = f"Config_{cfg[0]}"
+
+        init_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "configs")
+        if not os.path.isdir(init_dir):
+            init_dir = os.getcwd()
+
+        initial_file = f"{re.sub(r'[^a-zA-Z0-9_-]', '_', cfg_name)}.json"
+
+        p = filedialog.asksaveasfilename(
+            parent=self,
+            title="Save Wing Configuration (JSON)",
+            initialdir=init_dir,
+            initialfile=initial_file,
+            defaultextension=".json",
+            filetypes=[("JSON Files", "*.json"), ("All Files", "*.*")]
+        )
+        if not p:
+            return
+
+        try:
+            chord_val = float(self.vars['chord'].get() if 'chord' in self.vars else A.DEFAULT_CHORD_MM)
+        except Exception:
+            chord_val = A.DEFAULT_CHORD_MM
+
+        try:
+            speed_val = float(self.vars['speed'].get() if 'speed' in self.vars else A.DEFAULT_SPEED)
+        except Exception:
+            speed_val = A.DEFAULT_SPEED
+
+        try:
+            re_val = float(self.vars['re'].get() if 're' in self.vars else A.RE)
+        except Exception:
+            re_val = A.RE
+
+        try:
+            al0 = float(self.vars['al0'].get() if 'al0' in self.vars else A.ALPHA[0])
+            al1 = float(self.vars['al1'].get() if 'al1' in self.vars else A.ALPHA[1])
+            alst = float(self.vars['alst'].get() if 'alst' in self.vars else A.ALPHA[2])
+        except Exception:
+            al0, al1, alst = A.ALPHA
+
+        role_val = self._role_state.get() if hasattr(self, '_role_state') else FW
+        ge_val = bool(self.ge_state.get()) if hasattr(self, 'ge_state') else True
+        gh_val = self.gh_state.get().strip() if hasattr(self, 'gh_state') else "35.0"
+
+        config_data = {
+            "name": cfg_name,
+            "role": role_val,
+            "main": cfg[0],
+            "chord": chord_val,
+            "speed": speed_val,
+            "re": re_val,
+            "al0": al0,
+            "al1": al1,
+            "alst": alst,
+            "ge": ge_val,
+            "gh": gh_val,
+            "note": f"Exported from aero_auto Configure tab for {cfg_name}",
+            "flaps": [[f[0], float(f[1]), float(f[2]), float(f[3]), float(f[4])] for f in cfg[1]]
+        }
+
+        try:
+            with open(p, 'w', encoding='utf-8') as f:
+                json.dump(config_data, f, indent=2)
+            self.log(f"Saved configuration '{cfg_name}' to {p}")
+            self.set_status(f"Saved config: {os.path.basename(p)}")
+            messagebox.showinfo("Config Saved", f"Configuration successfully saved to:\n\n{p}", parent=self)
+        except Exception as e:
+            messagebox.showerror("Save Failed", f"Failed to save configuration JSON: {e}", parent=self)
+
+    def on_save_current_run_archive(self):
+        """Packages configuration, CAD models, telemetry, and any generated graphs into a ZIP archive."""
+        from tkinter import filedialog
+        cfg = self.read_cfg()
+        if not cfg:
+            messagebox.showwarning("Incomplete Configuration", "Please configure a valid wing design first.", parent=self)
+            return
+
+        user_name = self.cfg_name_var.get().strip() if hasattr(self, 'cfg_name_var') else ''
+        rid = re.sub(r'[^a-zA-Z0-9_\-]', '_', user_name or f"Config_{cfg[0]}")
+
+        out = filedialog.asksaveasfilename(
+            parent=self,
+            title="Save Run Archive (.zip)",
+            defaultextension=".zip",
+            initialfile=f"run_{rid}_archive.zip",
+            filetypes=[('Zip archive', '*.zip'), ('All Files', '*.*')]
+        )
+        if not out:
+            return
+
+        try:
+            import zipfile
+            with zipfile.ZipFile(out, 'w', zipfile.ZIP_DEFLATED) as z:
+                # 1. Save config JSON
+                cfg_data = {
+                    "name": user_name or rid,
+                    "main": cfg[0],
+                    "flaps": [[f[0], float(f[1]), float(f[2]), float(f[3]), float(f[4])] for f in cfg[1]],
+                    "chord": float(self.vars['chord'].get() if 'chord' in self.vars else A.DEFAULT_CHORD_MM),
+                    "speed": float(self.vars['speed'].get() if 'speed' in self.vars else A.DEFAULT_SPEED),
+                    "re": float(self.vars['re'].get() if 're' in self.vars else A.RE),
+                }
+                z.writestr(f"config_{rid}.json", json.dumps(cfg_data, indent=2))
+
+                # 2. Check results.csv for matching run
+                res_p = os.path.expanduser(self.res_file.get()) if hasattr(self, 'res_file') else os.path.join(A.OUT_DIR, "results.csv")
+                row_found = None
+                if os.path.exists(res_p):
+                    try:
+                        df = pd.read_csv(res_p)
+                        if 'Run_ID' in df.columns:
+                            matches = df[df['Run_ID'].astype(str) == rid]
+                            if not matches.empty:
+                                row_found = matches.iloc[-1].to_dict()
+                                z.writestr(f"telemetry_{rid}.txt", self.row_detail(row_found))
+                                z.writestr(f"data_{rid}.csv", pd.DataFrame([row_found]).to_csv(index=False))
+                    except Exception:
+                        pass
+
+                # 3. Graphs folder
+                base_dir = os.path.dirname(res_p) if os.path.exists(res_p) else A.OUT_DIR
+                run_gdir = os.path.join(base_dir, 'graphs', f"run_{rid}")
+                if os.path.isdir(run_gdir):
+                    for root, _, files in os.walk(run_gdir):
+                        for f in files:
+                            fp = os.path.join(root, f)
+                            z.write(fp, os.path.join('graphs', f))
+                else:
+                    gdir = os.path.join(base_dir, 'graphs')
+                    if os.path.isdir(gdir):
+                        for f in glob.glob(os.path.join(gdir, f"*{rid}*.png")):
+                            z.write(f, os.path.join('graphs', os.path.basename(f)))
+
+                # 4. Generate CAD into archive if not already in run_gdir
+                import tempfile
+                with tempfile.TemporaryDirectory() as tmp_dir:
+                    dxf_tmp = os.path.join(tmp_dir, f"wing_{rid}.dxf")
+                    try:
+                        chord_mm = float(self.vars['chord'].get() if 'chord' in self.vars else A.DEFAULT_CHORD_MM)
+                    except Exception:
+                        chord_mm = A.DEFAULT_CHORD_MM
+                    try:
+                        A.export_dxf(cfg, dxf_tmp, chord_mm=chord_mm)
+                        if os.path.exists(dxf_tmp):
+                            z.write(dxf_tmp, f"cad/wing_{rid}.dxf")
+                    except Exception:
+                        pass
+
+            self.log(f"Saved run archive to {out}")
+            self.set_status(f"Saved run archive: {os.path.basename(out)}")
+            messagebox.showinfo("Export Complete", f"Exported complete run archive:\n\n{out}", parent=self)
+        except Exception as e:
+            messagebox.showerror("Export Failed", f"Archive export failed: {e}", parent=self)
 
     def on_load_enprt_preset_dialog(self):
         """Displays modal dialog to select and load an ENPRT campaign preset."""
@@ -2096,6 +2281,190 @@ class App(tk.Tk):
         except Exception:
             pass
         self.set_status("Switched to Graphs view.")
+        cfg = self.read_cfg()
+        if not cfg:
+            return
+        user_name = self.cfg_name_var.get().strip() if hasattr(self, 'cfg_name_var') else ''
+        rid = re.sub(r'[^a-zA-Z0-9_\-]', '_', user_name or f"Config_{cfg[0]}")
+        self.generate_configured_graphs(cfg, run_name=rid, switch=True)
+
+    def generate_configured_graphs(self, cfg=None, run_name=None, switch=True):
+        """Generates aerodynamic polars, flow fields, authentic JavaFoil native charts, and CAD models for the configured wing."""
+        if cfg is None:
+            cfg = self.read_cfg()
+        if not cfg:
+            messagebox.showwarning("Incomplete Configuration", "Please select a main airfoil and valid flap parameters first.")
+            return
+
+        user_name = run_name or (self.cfg_name_var.get().strip() if hasattr(self, 'cfg_name_var') else '')
+        rid = re.sub(r'[^a-zA-Z0-9_\-]', '_', user_name or f"Config_{cfg[0]}")
+
+        res_p = os.path.expanduser(self.res_file.get()) if hasattr(self, 'res_file') else os.path.join(A.OUT_DIR, "results.csv")
+        base_dir = os.path.dirname(res_p) if os.path.exists(res_p) else A.OUT_DIR
+        gdir = os.path.join(base_dir, 'graphs')
+        run_gdir = os.path.join(gdir, f"run_{rid}")
+        os.makedirs(gdir, exist_ok=True)
+        os.makedirs(run_gdir, exist_ok=True)
+
+        if switch:
+            try:
+                self.notebook.select(self.tab_gr)
+            except Exception:
+                pass
+
+        # Check if already generated
+        existing_pngs = glob.glob(os.path.join(run_gdir, "*.png")) if os.path.isdir(run_gdir) else []
+        if not existing_pngs and os.path.isdir(gdir):
+            existing_pngs = glob.glob(os.path.join(gdir, f"*_{rid}.png"))
+
+        if existing_pngs:
+            self.gr_results.set(res_p)
+            self.gr_selected_rid = rid
+            self.refresh_graph_files(res_p, select_rid=rid)
+            self.set_status(f"Graphs ready for {rid} (loaded from cache).")
+            return
+
+        try:
+            chord = float(self.vars['chord'].get() if 'chord' in self.vars else A.DEFAULT_CHORD_MM)
+        except Exception:
+            chord = A.DEFAULT_CHORD_MM
+        try:
+            speed = float(self.vars['speed'].get() if 'speed' in self.vars else A.DEFAULT_SPEED)
+        except Exception:
+            speed = A.DEFAULT_SPEED
+        try:
+            re_val = float(self.vars['re'].get() if 're' in self.vars else A.RE)
+        except Exception:
+            re_val = A.RE
+        try:
+            al0 = float(self.vars['al0'].get() if 'al0' in self.vars else A.ALPHA[0])
+            al1 = float(self.vars['al1'].get() if 'al1' in self.vars else A.ALPHA[1])
+            alst = float(self.vars['alst'].get() if 'alst' in self.vars else A.ALPHA[2])
+        except Exception:
+            al0, al1, alst = A.ALPHA
+
+        gh = None
+        if hasattr(self, 'ge_state') and self.ge_state.get() and hasattr(self, 'gh_state') and self.gh_state.get().strip() not in ('', 'none', 'None'):
+            try:
+                gh = float(self.gh_state.get())
+            except ValueError:
+                gh = None
+
+        span_fw = getattr(A, 'DEFAULT_SPAN_FW_MM', 1400.0)
+        span_rw = getattr(A, 'DEFAULT_SPAN_RW_MM', 950.0)
+        span_val = span_fw if (hasattr(self, '_role_state') and self._role_state.get() == FW) else span_rw
+
+        self.gr_results.set(res_p)
+        self.gr_selected_rid = rid
+        self.ui_q.put(('gr_prog', (5, f"Starting generation for {rid}...")))
+        self.set_status(f"Generating graphs for {rid}...")
+
+        def work():
+            outs = []
+            try:
+                # 1. Run simulation or check cache
+                self.ui_q.put(('gr_prog', (20, f"Config {rid} [1/5]: Running JavaFoil analysis...")))
+                row = None
+                if A.is_java_available():
+                    try:
+                        A.RE = re_val
+                        A.SPEED = speed
+                        A.CHORD_MM = chord
+                        A.RESULTS_FILE[0] = res_p
+                        row = A.run_one(cfg, 'ui', gh, run_id=rid)
+                        row['Run_Name'] = user_name or rid
+                    except Exception as e:
+                        self.log(f"JavaFoil analysis notice: {e}")
+
+                if not row:
+                    row = {
+                        "Main": cfg[0],
+                        "Main_Airfoil": cfg[0],
+                        "Elements": 1 + len(cfg[1]),
+                        "Cl_a0": 0.0, "Cd_a0": 0.0, "Cm_a0": 0.0, "Max_LD": 0.0, "Downforce_N": 0.0,
+                        "Flow": "ground" if gh is not None else "unbounded",
+                        "Height_pct": gh or 0,
+                        "Run_ID": rid,
+                        "Run_Name": user_name or rid,
+                        "Chord_mm": chord,
+                        "Speed": speed,
+                        "Re": re_val,
+                        "Alpha_Interval": f"{al0:g}..{al1:g} step {alst:g} (RE {re_val:g})"
+                    }
+                    for k, (fn, sc, ang, xpos, ypos) in enumerate(cfg[1], 1):
+                        row[f"F{k}_Airfoil"] = fn
+                        row[f"F{k}_Scale"] = sc
+                        row[f"F{k}_Angle"] = ang
+                        row[f"F{k}_X"] = xpos
+                        row[f"F{k}_Y"] = ypos
+
+                # 2. Polar & Geometry
+                self.ui_q.put(('gr_prog', (40, f"Config {rid} [2/5]: Plotting aerodynamic polar & geometry...")))
+                if R:
+                    polar_p = os.path.join(run_gdir, f"polar_{rid}.png")
+                    geom_p = os.path.join(run_gdir, f"geometry_{rid}.png")
+                    try:
+                        R.plot_polar(row, polar_p)
+                        outs.append("polar")
+                        shutil.copy2(polar_p, os.path.join(gdir, os.path.basename(polar_p)))
+                    except Exception as e:
+                        self.log(f"Polar plot failed: {e}")
+                    try:
+                        R.plot_geometry(row, geom_p, chord)
+                        outs.append("geometry")
+                        shutil.copy2(geom_p, os.path.join(gdir, os.path.basename(geom_p)))
+                    except Exception as e:
+                        self.log(f"Geometry plot failed: {e}")
+
+                # 3. Flow Field
+                self.ui_q.put(('gr_prog', (60, f"Config {rid} [3/5]: Simulating velocity flow field...")))
+                if R:
+                    field_p = os.path.join(run_gdir, f"field_{rid}.png")
+                    try:
+                        R.plot_field(row, field_p, chord, span_fw, span_rw)
+                        outs.append("velocity field")
+                        shutil.copy2(field_p, os.path.join(gdir, os.path.basename(field_p)))
+                    except Exception as e:
+                        self.log(f"Flow field plot failed: {e}")
+
+                # 4. JavaFoil Native Graphs
+                self.ui_q.put(('gr_prog', (75, f"Config {rid} [4/5]: Extracting authentic JavaFoil charts (Cp, Cf, delta*)...")))
+                try:
+                    jf_outs = A.export_javafoil_graphs(cfg, gh, run_gdir, run_id=rid, re=re_val, alphas=(al0, al1, alst), v_inf=speed)
+                    if jf_outs:
+                        outs.append(f"JavaFoil native ({len(jf_outs)} plots)")
+                        file_list = list(jf_outs.values()) if isinstance(jf_outs, dict) else list(jf_outs)
+                        for jf_f in file_list:
+                            try:
+                                shutil.copy2(jf_f, os.path.join(gdir, os.path.basename(jf_f)))
+                            except Exception:
+                                pass
+                except Exception as e:
+                    self.log(f"JavaFoil native extraction notice: {e}")
+
+                # 5. CAD Export
+                self.ui_q.put(('gr_prog', (90, f"Config {rid} [5/5]: Generating CAD models (DXF, STEP, FreeCAD, SVG)...")))
+                try:
+                    dxf_p = os.path.join(run_gdir, f"wing_{rid}.dxf")
+                    step_p = os.path.join(run_gdir, f"wing_{rid}.step")
+                    fcm_p = os.path.join(run_gdir, f"wing_{rid}.FCMacro")
+                    svg_p = os.path.join(run_gdir, f"wing_{rid}.svg")
+                    A.export_dxf(cfg, dxf_p, chord_mm=chord, ground_h=gh)
+                    A.export_step(cfg, step_p, chord_mm=chord, span_mm=span_val, ground_h=gh)
+                    A.export_freecad_macro(cfg, fcm_p, chord_mm=chord, span_mm=span_val, ground_h=gh)
+                    A.export_svg(cfg, svg_p, chord_mm=chord, ground_h=gh)
+                    outs.append("CAD models")
+                except Exception as e:
+                    self.log(f"CAD generation notice: {e}")
+
+                self.ui_q.put(('gr_prog', (100, f"Config {rid}: Graphs generated successfully!")))
+                self.ui_q.put(('gr_done', (row, res_p, rid, run_gdir, False, False)))
+                self.ui_q.put(('log', f"Generated graphs for {rid}: {', '.join(outs) or 'done'}"))
+            except Exception as e:
+                self.ui_q.put(('gr_prog', (0, f"Error generating graphs: {e}")))
+                self.ui_q.put(('log', f"Graph generation error: {e}"))
+
+        threading.Thread(target=work, daemon=True).start()
 
     def on_export_config_dxf(self):
         cfg = self.read_cfg()
@@ -2406,14 +2775,17 @@ class App(tk.Tk):
 
         reg0 = self.reg_state.get()
         desc = cfg[0]
+        user_name = self.cfg_name_var.get().strip() if hasattr(self, 'cfg_name_var') else ''
+        run_tag = user_name or desc
+        clean_rid = re.sub(r'[^a-zA-Z0-9_\-]', '_', run_tag)
 
         prog = tk.Toplevel(self)
-        prog.title("Simulating...")
-        prog.geometry("360x120")
+        prog.title(f"Simulating {run_tag}...")
+        prog.geometry("380x120")
         prog.transient(self)
         prog.grab_set()
-        ttk.Label(prog, text=f"Running JavaFoil simulation...\n{desc} + flaps\nThis may take 10-30 seconds.").pack(padx=20, pady=15)
-        pb = ttk.Progressbar(prog, mode='indeterminate', length=300)
+        ttk.Label(prog, text=f"Running JavaFoil simulation: {run_tag}\n{desc} + {len(cfg[1])} flaps\nThis may take 10-30 seconds.").pack(padx=20, pady=15)
+        pb = ttk.Progressbar(prog, mode='indeterminate', length=320)
         pb.pack(padx=20, pady=(0, 15))
         pb.start(100)
         self._sim_prog = prog
@@ -2421,7 +2793,7 @@ class App(tk.Tk):
 
         try:
             run_dir, results_path = self._new_run(
-                'single', desc, main=desc,
+                'single', clean_rid, main=desc,
                 flow='ground' if gh0 else 'unbounded',
                 height_pct=gh0, n_runs=0
             )
@@ -2431,7 +2803,7 @@ class App(tk.Tk):
             self.log(f"could not create run folder: {e}")
             return
 
-        self.log(f"simulating {desc} + flaps at alpha {A.ALPHA[0]}..{A.ALPHA[1]} step {A.ALPHA[2]}, RE={re0:g}, {'ground' if gh0 else 'unbounded'} ...")
+        self.log(f"simulating [{run_tag}] {desc} + flaps at alpha {A.ALPHA[0]}..{A.ALPHA[1]} step {A.ALPHA[2]}, RE={re0:g}, {'ground' if gh0 else 'unbounded'} ...")
 
         def work():
             try:
@@ -2444,17 +2816,20 @@ class App(tk.Tk):
                 A.REG_ENFORCE = reg0
                 A.set_ground_h(gh0)
                 A.RESULTS_FILE[0] = results_path
-                row = A.run_one(cfg, 'ui', gh0)
-                A.write_run_meta(run_dir, n_runs=1, status=row.get('Status'), score=row.get('Score'))
-                self.ui_q.put(('sim_done', (row, None)))
+                row = A.run_one(cfg, 'ui', gh0, run_id=clean_rid)
+                row['Run_Name'] = run_tag
+                row['Config_Name'] = run_tag
+                A.write_run_meta(run_dir, n_runs=1, status=row.get('Status'), score=row.get('Score'), label=run_tag, run_name=run_tag)
+                self.ui_q.put(('sim_done', (row, None, clean_rid)))
             except Exception as e:
                 import traceback
-                self.ui_q.put(('sim_done', (None, f"{e}\n" + traceback.format_exc()[-1200:])))
+                self.ui_q.put(('sim_done', (None, f"{e}\n" + traceback.format_exc()[-1200:], clean_rid)))
 
         threading.Thread(target=work, daemon=True).start()
 
     def _sim_done(self, payload):
-        row, err = payload
+        row, err = payload[0], payload[1]
+        clean_rid = payload[2] if len(payload) > 2 else (row.get('Run_ID') if row else None)
         self._sim_running = False
         prog = getattr(self, '_sim_prog', None)
         if prog:
@@ -2483,8 +2858,10 @@ class App(tk.Tk):
             f"Cl@0 {f('Cl_a0', '.3f')}  Cd@0 {f('Cd_a0', '.4f')}  max|L/D| {f('Max_LD', '.1f')}  "
             f"stall {row.get('Stall_Angle')} deg | downforce {f('Downforce_N', '.0f')} N"
         )
+        if clean_rid:
+            self.gr_selected_rid = clean_rid
         self.load_results_cache()
-        self.refresh_graph_files()
+        self.refresh_graph_files(select_rid=clean_rid)
         self._refresh_runs()
 
     def on_simulate_terminal(self):
@@ -5830,53 +6207,12 @@ class App(tk.Tk):
 
     def on_extract_configured_graphs(self):
         """Extracts JavaFoil's authentic native graphs for the currently configured wing."""
-        cfg_tuple = self.read_cfg()
-        if not cfg_tuple:
+        cfg = self.read_cfg()
+        if not cfg:
             return
-        main, flaps, gh, rle, ch, v, re_val, a0, a1, st, sp = cfg_tuple
-        cfg = (main, flaps)
-        ground_h = gh
-        run_tag = f"live_{main}_{len(flaps)}elem"
-        gdir = os.path.join(A.OUT_DIR, "graphs")
-        os.makedirs(gdir, exist_ok=True)
-        self.log(f"Extracting JavaFoil native graphs for {run_tag} in background...")
-
-        def work():
-            outs = []
-            try:
-                dummy_r = {
-                    "Main": main,
-                    "Elements": 1 + len(flaps),
-                    "Cl_a0": 0.0, "Cd_a0": 0.0, "Cm_a0": 0.0, "Max_LD": 0.0, "Downforce_N": 0.0,
-                    "Flow": "ground" if ground_h is not None else "unbounded",
-                    "Height_pct": ground_h or 0,
-                    "Run_ID": run_tag
-                }
-                for k, (fn, sc, ang, xpos, ypos) in enumerate(flaps, 1):
-                    dummy_r[f"F{k}_Airfoil"] = fn
-                    dummy_r[f"F{k}_Scale"] = sc
-                    dummy_r[f"F{k}_Angle"] = ang
-                    dummy_r[f"F{k}_X"] = xpos
-                    dummy_r[f"F{k}_Y"] = ypos
-                if R is not None:
-                    try:
-                        R.plot_geometry(dummy_r, os.path.join(gdir, f"geometry_{run_tag}.png"), ch)
-                        outs.append("custom geometry")
-                    except Exception:
-                        pass
-
-                jf_outs = A.export_javafoil_graphs(cfg, ground_h, gdir, run_id=run_tag,
-                                                   re=re_val, alphas=(a0, a1, st), v_inf=v)
-                if jf_outs:
-                    outs.append(f"JavaFoil native ({len(jf_outs)} plots: polar, Cp, BL)")
-
-                self.ui_q.put(("refreshgr", os.path.join(A.OUT_DIR, "results.csv")))
-                self.ui_q.put(("log", f"Graphs extracted to {gdir}: {', '.join(outs) or 'none'}"))
-                self.after(200, lambda: self.notebook.select(self.tab_gr))
-            except Exception as e:
-                self.ui_q.put(("log", f"JavaFoil graph extraction failed: {e}"))
-
-        threading.Thread(target=work, daemon=True).start()
+        user_name = self.cfg_name_var.get().strip() if hasattr(self, 'cfg_name_var') else ''
+        rid = re.sub(r'[^a-zA-Z0-9_\-]', '_', user_name or f"Config_{cfg[0]}")
+        self.generate_configured_graphs(cfg, run_name=rid, switch=True)
 
     on_extract_javafoil_graphs = on_extract_configured_graphs
 
