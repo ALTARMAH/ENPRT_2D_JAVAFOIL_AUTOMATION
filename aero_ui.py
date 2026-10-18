@@ -942,6 +942,10 @@ class App(tk.Tk):
                         self._handle_opt_candidate(payload)
                     elif kind == 'sim_done':
                         self._sim_done(payload)
+                    elif kind == 'su2_done':
+                        self._handle_su2_done(payload)
+                    elif kind == 'cross_check_done':
+                        self._handle_cross_check_done(payload)
                 except Exception as e:
                     self._append_log(getattr(self, 'status', None), f"UI update error ({kind}): {e}")
         except queue.Empty:
@@ -1461,12 +1465,20 @@ class App(tk.Tk):
         sim_btn.grid(row=25, column=0, columnspan=2, sticky='we', pady=2)
         add_tooltip(sim_btn, "Run JavaFoil analysis for this named wing. Appends row to results.csv.")
 
+        su2_btn = ttk.Button(cfg, text="Simulate with SU2 (2D RANS)", command=self.on_simulate_su2)
+        su2_btn.grid(row=26, column=0, columnspan=2, sticky='we', pady=2)
+        add_tooltip(su2_btn, "Run independent 2D incompressible RANS simulation (k-omega SST) with SU2 and Gmsh.")
+
+        cross_btn = ttk.Button(cfg, text="Cross-Check: JavaFoil vs SU2", command=self.on_cross_check)
+        cross_btn.grid(row=27, column=0, columnspan=2, sticky='we', pady=2)
+        add_tooltip(cross_btn, "Run both JavaFoil and SU2 on this configuration and display side-by-side comparison modal with divergence flags.")
+
         jf_btn = ttk.Button(cfg, text="Open in JavaFoil GUI", command=self.on_open_javafoil)
-        jf_btn.grid(row=26, column=0, columnspan=2, sticky='we', pady=2)
+        jf_btn.grid(row=28, column=0, columnspan=2, sticky='we', pady=2)
         add_tooltip(jf_btn, "Launch JavaFoil interactive GUI with this multi-element wing stack pre-loaded into Geometry.")
 
         nav_frame = ttk.Frame(cfg)
-        nav_frame.grid(row=27, column=0, columnspan=2, sticky='we', pady=2)
+        nav_frame.grid(row=29, column=0, columnspan=2, sticky='we', pady=2)
         nav_opt_btn = ttk.Button(nav_frame, text="Send to Optimizer", command=self.on_send_configure_to_optimizer)
         nav_opt_btn.pack(side='left', fill='x', expand=True, padx=(0, 2))
         add_tooltip(nav_opt_btn, "Transfer current wing setup into Optimizer (Tab 6) as base design and switch tabs.")
@@ -1476,19 +1488,19 @@ class App(tk.Tk):
         add_tooltip(nav_gr_btn, "Generate and switch directly to Graphs (Tab 5) to inspect aerodynamic polars and flow fields.")
 
         save_run_btn = ttk.Button(cfg, text="Save Run Archive (ZIP)...", command=self.on_save_current_run_archive)
-        save_run_btn.grid(row=28, column=0, columnspan=2, sticky='we', pady=2)
+        save_run_btn.grid(row=30, column=0, columnspan=2, sticky='we', pady=2)
         add_tooltip(save_run_btn, "Export full telemetry, polars, JavaFoil data and CAD models for this run as a ZIP archive.")
 
         term_btn = ttk.Button(cfg, text="Run in Terminal (konsole)", command=self.on_simulate_terminal)
-        term_btn.grid(row=29, column=0, columnspan=2, sticky='we', pady=2)
+        term_btn.grid(row=31, column=0, columnspan=2, sticky='we', pady=2)
         add_tooltip(term_btn, "Launch simulation in separate konsole terminal (avoids GUI fork deadlock on Linux).")
 
         batch_btn = ttk.Button(cfg, text="Batch: Multiple Main/Flaps", command=self.on_batch_simulate)
-        batch_btn.grid(row=30, column=0, columnspan=2, sticky='we', pady=2)
+        batch_btn.grid(row=32, column=0, columnspan=2, sticky='we', pady=2)
         add_tooltip(batch_btn, "Run multiple main/flap combinations sequentially. Select airfoils from dialogs.")
 
         cad_frame = ttk.LabelFrame(cfg, text="CAD Export (2D & 3D Solid)")
-        cad_frame.grid(row=31, column=0, columnspan=2, sticky='we', pady=3)
+        cad_frame.grid(row=33, column=0, columnspan=2, sticky='we', pady=3)
         btn_cfg_dxf = ttk.Button(cad_frame, text="Export DXF (2D)", command=self.on_export_config_dxf)
         btn_cfg_dxf.pack(side='left', fill='x', expand=True, padx=2, pady=2)
         add_tooltip(btn_cfg_dxf, "Export 2D continuous spline profile to AutoCAD DXF format.")
@@ -1500,7 +1512,7 @@ class App(tk.Tk):
         add_tooltip(btn_cfg_fcm, "Export parametric Python macro (.FCMacro) for FreeCAD with C2 B-spline solids.")
 
         self.derive_state = tk.StringVar(value='')
-        ttk.Label(cfg, textvariable=self.derive_state, wraplength=330, justify='left', foreground=MUTED).grid(row=32, column=0, columnspan=2, sticky='w', pady=(8, 0))
+        ttk.Label(cfg, textvariable=self.derive_state, wraplength=330, justify='left', foreground=MUTED).grid(row=34, column=0, columnspan=2, sticky='w', pady=(8, 0))
 
         for k in ('chord', 'speed', 're'):
             self.vars[k].trace_add('write', lambda *_: self._update_derived())
@@ -2877,6 +2889,264 @@ class App(tk.Tk):
         self.load_results_cache()
         self.refresh_graph_files(select_rid=clean_rid)
         self._refresh_runs()
+
+    def on_simulate_su2(self):
+        cfg = self.read_cfg()
+        if not cfg:
+            return
+        if getattr(self, '_sim_running', False):
+            self.log("a simulation is already running")
+            return
+        try:
+            chord0 = float(self.vars['chord'].get())
+            speed0 = float(self.vars['speed'].get())
+            re0 = float(self.vars['re'].get())
+        except ValueError:
+            self.log("numeric chord/speed/RE required")
+            return
+
+        gh0 = None
+        if self.ge_state.get() and self.gh_state.get().strip() not in ('', 'none', 'None'):
+            try:
+                gh0 = float(self.gh_state.get())
+                if gh0 <= 0:
+                    self.log("ground height must be positive (% of the main chord)")
+                    return
+            except ValueError:
+                self.log("ground height must be a number")
+                return
+
+        try:
+            import su2_engine as su2
+        except ImportError as e:
+            messagebox.showerror("SU2 Engine Error", f"Could not load su2_engine: {e}")
+            return
+
+        desc = cfg[0]
+        user_name = self.cfg_name_var.get().strip() if hasattr(self, 'cfg_name_var') else ''
+        run_tag = user_name or desc
+
+        prog = tk.Toplevel(self)
+        prog.title(f"SU2 CFD: {run_tag}")
+        prog.geometry("420x150")
+        prog.transient(self)
+        prog.grab_set()
+        ttk.Label(prog, text=f"Running SU2 (2D RANS SST): {run_tag}\n{desc} + {len(cfg[1])} flaps\nUsing 4 MPI cores. Please wait...").pack(padx=20, pady=15)
+        pb = ttk.Progressbar(prog, mode='indeterminate', length=360)
+        pb.pack(padx=20, pady=(0, 15))
+        pb.start(100)
+        self._sim_prog = prog
+        self._sim_running = True
+
+        self.log(f"Running SU2 simulation for [{run_tag}] (speed={speed0:.1f} m/s, RE={re0:g}, ground={'yes' if gh0 else 'no'})...")
+
+        def work():
+            try:
+                res = su2.run(cfg, alpha_deg=0.0, speed=speed0, re_val=re0, ground_h=gh0, engine='su2', density='medium')
+                self.ui_q.put(('su2_done', (res, None, run_tag)))
+            except Exception as e:
+                import traceback
+                self.ui_q.put(('su2_done', (None, f"{e}\n" + traceback.format_exc()[-800:], run_tag)))
+
+        threading.Thread(target=work, daemon=True).start()
+
+    def _handle_su2_done(self, payload):
+        res, err, run_tag = payload
+        self._sim_running = False
+        prog = getattr(self, '_sim_prog', None)
+        if prog:
+            try:
+                prog.destroy()
+            except Exception:
+                pass
+            self._sim_prog = None
+        if err:
+            self.log(f"SU2 simulation failed: {err}")
+            messagebox.showerror("SU2 Simulation Failed", f"Error during SU2 CFD execution:\n\n{err}")
+            return
+        if not res:
+            return
+
+        cl_val = res.get('Cl', 0.0)
+        cd_val = res.get('Cd', 0.0)
+        self.log(f"SU2 CFD [{run_tag}] Completed: Cl={cl_val:.4f}, Cd={cd_val:.5f}, Converged={res.get('converged')} ({res.get('runtime_s', 0):.1f}s)")
+
+        dlg = tk.Toplevel(self)
+        dlg.title(f"SU2 RANS Results - {run_tag}")
+        dlg.configure(bg="#0f172a")
+        dlg.transient(self)
+        dlg.geometry("520x420")
+        dlg.resizable(False, False)
+
+        frm = tk.Frame(dlg, bg="#0f172a", padx=20, pady=16)
+        frm.pack(fill=tk.BOTH, expand=True)
+
+        tk.Label(frm, text=f"SU2 RANS Simulation: {run_tag}", font=("Segoe UI", 12, "bold"),
+                 fg="#38bdf8", bg="#0f172a").pack(anchor="w", pady=(0, 10))
+
+        conv_text = "CONVERGED" if res.get('converged') else "UNCONVERGED"
+        conv_color = "#4ade80" if res.get('converged') else "#f87171"
+        tk.Label(frm, text=f"Status: {conv_text} ({res.get('iterations', 0)} iter, res drop: {res.get('residual_drop', 0):.2f})",
+                 font=("Segoe UI", 10, "bold"), fg=conv_color, bg="#0f172a").pack(anchor="w", pady=(0, 12))
+
+        info = [
+            ("Angle of Attack (alpha):", f"{res.get('alpha', 0.0):.1f} deg"),
+            ("Cl (Main Element Ref c=1.0):", f"{res.get('Cl', 0.0):.4f}"),
+            ("Cd (Main Element Ref c=1.0):", f"{res.get('Cd', 0.0):.5f}"),
+            ("Cl (Assembly Ref c_asm):", f"{res.get('Cl_assembly', 0.0):.4f}"),
+            ("Cd (Assembly Ref c_asm):", f"{res.get('Cd_assembly', 0.0):.5f}"),
+            ("Lift-to-Drag Ratio (L/D):", f"{(res.get('Cl', 0.0) / max(res.get('Cd', 1e-4), 1e-5)):.2f}"),
+            ("Cl stability (std last 30 iter):", f"{res.get('cl_std', 0.0):.6f}"),
+            ("Mesh Nodes / Elements:", f"{res.get('mesh_meta', {}).get('nodes', 'N/A')} nodes / {res.get('mesh_meta', {}).get('elements', 'N/A')} elems"),
+            ("CFD Engine & Runtime:", f"{res.get('engine', 'SU2')} ({res.get('runtime_s', 0):.2f} s)"),
+        ]
+
+        grid_f = tk.Frame(frm, bg="#1e293b", padx=12, pady=10)
+        grid_f.pack(fill=tk.BOTH, expand=True, pady=(0, 15))
+        for r_idx, (k, v) in enumerate(info):
+            tk.Label(grid_f, text=k, font=("Segoe UI", 9), fg="#94a3b8", bg="#1e293b").grid(row=r_idx, column=0, sticky="w", pady=2)
+            tk.Label(grid_f, text=v, font=("Segoe UI", 9, "bold"), fg="#f8fafc", bg="#1e293b").grid(row=r_idx, column=1, sticky="e", padx=(20, 0), pady=2)
+        grid_f.grid_columnconfigure(0, weight=1)
+
+        ttk.Button(frm, text="Close", command=dlg.destroy).pack(anchor="e")
+
+    def on_cross_check(self):
+        cfg = self.read_cfg()
+        if not cfg:
+            return
+        if getattr(self, '_sim_running', False):
+            self.log("a simulation is already running")
+            return
+        try:
+            chord0 = float(self.vars['chord'].get())
+            speed0 = float(self.vars['speed'].get())
+            re0 = float(self.vars['re'].get())
+        except ValueError:
+            self.log("numeric chord/speed/RE required")
+            return
+
+        threshold = simpledialog.askfloat("Cross-Check Threshold",
+                                          "Enter Cl divergence threshold (|Cl_JF - Cl_SU2|):",
+                                          initialvalue=0.5, minvalue=0.01, maxvalue=50.0, parent=self)
+        if threshold is None:
+            return
+
+        try:
+            import su2_engine as su2
+        except ImportError as e:
+            messagebox.showerror("SU2 Engine Error", f"Could not load su2_engine: {e}")
+            return
+
+        desc = cfg[0]
+        user_name = self.cfg_name_var.get().strip() if hasattr(self, 'cfg_name_var') else ''
+        run_tag = user_name or desc
+
+        prog = tk.Toplevel(self)
+        prog.title(f"Cross-Check: {run_tag}")
+        prog.geometry("450x150")
+        prog.transient(self)
+        prog.grab_set()
+        ttk.Label(prog, text=f"Running Cross-Check: JavaFoil vs SU2 RANS\n{desc} + {len(cfg[1])} flaps\nRunning both solvers side-by-side...").pack(padx=20, pady=15)
+        pb = ttk.Progressbar(prog, mode='indeterminate', length=380)
+        pb.pack(padx=20, pady=(0, 15))
+        pb.start(100)
+        self._sim_prog = prog
+        self._sim_running = True
+
+        self.log(f"Starting Cross-Check for [{run_tag}] with threshold |delta_Cl| > {threshold}...")
+
+        def work():
+            try:
+                res = su2.cross_check(cfg, alpha_deg=0.0, speed=speed0, re_val=re0, ground_h=None, threshold_cl=threshold)
+                self.ui_q.put(('cross_check_done', (res, None, run_tag, threshold)))
+            except Exception as e:
+                import traceback
+                self.ui_q.put(('cross_check_done', (None, f"{e}\n" + traceback.format_exc()[-800:], run_tag, threshold)))
+
+        threading.Thread(target=work, daemon=True).start()
+
+    def _handle_cross_check_done(self, payload):
+        res, err, run_tag, threshold = payload
+        self._sim_running = False
+        prog = getattr(self, '_sim_prog', None)
+        if prog:
+            try:
+                prog.destroy()
+            except Exception:
+                pass
+            self._sim_prog = None
+        if err:
+            self.log(f"Cross-check failed: {err}")
+            messagebox.showerror("Cross-Check Failed", f"Error during Cross-Check:\n\n{err}")
+            return
+        if not res:
+            return
+
+        jf_cl = res.get('javafoil_cl')
+        jf_cd = res.get('javafoil_cd')
+        su2_cl = res.get('su2_cl')
+        su2_cd = res.get('su2_cd')
+        diff_cl = res.get('diff_cl')
+        diff_cd = res.get('diff_cd')
+        ratio_cl = res.get('ratio_cl')
+        diverged = res.get('diverged')
+
+        self.log(f"Cross-Check [{run_tag}]: JF_Cl={jf_cl:.3f}, SU2_Cl={su2_cl:.3f}, Delta={diff_cl:.3f}, Diverged={diverged}")
+
+        dlg = tk.Toplevel(self)
+        dlg.title(f"Cross-Check Comparison - {run_tag}")
+        dlg.configure(bg="#0f172a")
+        dlg.transient(self)
+        dlg.geometry("640x520")
+        dlg.resizable(False, False)
+
+        frm = tk.Frame(dlg, bg="#0f172a", padx=20, pady=16)
+        frm.pack(fill=tk.BOTH, expand=True)
+
+        status_text = f"DIVERGENCE DETECTED (|Delta Cl| = {diff_cl:.3f} > {threshold})" if diverged else f"SOLVERS AGREE (|Delta Cl| = {diff_cl:.3f} <= {threshold})"
+        status_color = "#f87171" if diverged else "#4ade80"
+
+        tk.Label(frm, text="Cross-Check: JavaFoil vs SU2 RANS", font=("Segoe UI", 12, "bold"),
+                 fg="#38bdf8", bg="#0f172a").pack(anchor="w", pady=(0, 4))
+        tk.Label(frm, text=status_text, font=("Segoe UI", 10, "bold"),
+                 fg=status_color, bg="#0f172a").pack(anchor="w", pady=(0, 12))
+
+        cols = ("Metric", "JavaFoil (Panel + BL)", "SU2 (RANS k-omega SST)", "Difference / Ratio")
+        tree = ttk.Treeview(frm, columns=cols, show='headings', height=6)
+        for c in cols:
+            tree.heading(c, text=c)
+            tree.column(c, width=145, anchor='center')
+        tree.column("Metric", width=150, anchor='w')
+
+        rows = [
+            ("Lift Coefficient (Cl)", f"{jf_cl:.4f}" if jf_cl else "N/A", f"{su2_cl:.4f}" if su2_cl else "N/A", f"Delta = {diff_cl:.4f}" if diff_cl else "N/A"),
+            ("Drag Coefficient (Cd)", f"{jf_cd:.5f}" if jf_cd else "N/A", f"{su2_cd:.5f}" if su2_cd else "N/A", f"Delta = {diff_cd:.5f}" if diff_cd else "N/A"),
+            ("Cl Ratio (JF / SU2)", "-", "-", f"{ratio_cl:.2f}x" if ratio_cl else "N/A"),
+            ("Convergence", "Converged", "Converged" if res.get('su2_converged') else "Unconverged", "-"),
+            ("Runtime", f"{res.get('javafoil_runtime_s', 0):.2f} s", f"{res.get('su2_runtime_s', 0):.2f} s", f"{res.get('su2_runtime_s', 0) / max(res.get('javafoil_runtime_s', 1), 0.1):.1f}x slower")
+        ]
+        for r in rows:
+            tree.insert("", "end", values=r)
+        tree.pack(fill=tk.X, pady=(0, 15))
+
+        expl_f = tk.LabelFrame(frm, text="Aerodynamic Diagnostic & Explanation", bg="#1e293b", fg="#38bdf8", padx=10, pady=8)
+        expl_f.pack(fill=tk.BOTH, expand=True, pady=(0, 15))
+
+        if diverged:
+            diag_msg = (
+                "CAUSE OF DISAGREEMENT:\n"
+                "JavaFoil couples inviscid potential flow with an integral boundary layer method.\n"
+                "In multi-element wings at high camber/deflection, trailing-edge stall and wake-flap\n"
+                "impingement violate potential-flow assumptions, causing JavaFoil's solver to severely\n"
+                "overpredict circulation (unphysical Cl). SU2 2D RANS solves full Navier-Stokes with\n"
+                "k-omega SST closure, capturing flow detachment, slot shear layers, and wake deficits."
+            )
+        else:
+            diag_msg = "Both solvers agree within the specified tolerance. The flow remains well-attached."
+
+        tk.Label(expl_f, text=diag_msg, font=("Segoe UI", 9), fg="#e2e8f0", bg="#1e293b", justify="left", wraplength=580).pack(anchor="w")
+
+        ttk.Button(frm, text="Close", command=dlg.destroy).pack(anchor="e")
 
     def on_simulate_terminal(self):
         cfg = self.read_cfg()

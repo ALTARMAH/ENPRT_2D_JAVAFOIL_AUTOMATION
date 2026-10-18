@@ -1,0 +1,2 @@
+Configuration,Reynolds_Number,Alpha_deg,SU2_CL,NASA_Exp_CL,CL_Error_pct,SU2_CD,NASA_Exp_CD,CD_Error_pct,Converged,Residual_Drop,Runtime_s
+NASA 30P-30N (3-Element High-Lift),5000000.0,4.0,1.1157,2.167,-48.52,0.03868,0.0332,16.52,True,0.0,224.39

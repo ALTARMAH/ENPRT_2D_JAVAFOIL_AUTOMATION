@@ -1,0 +1,4 @@
+Mesh_Density,Nodes,Elements,Cl_Assembly,Cd_Assembly,Cl_Main,Cd_Main,Delta_Cl_pct,Delta_Cd_pct,Residual_Drop,Iterations,Runtime_s
+Coarse,15375,30988,-1.0799,0.17974,-1.8279,0.30422,0.0,0.0,0.0,250,52.83
+Medium,26104,52446,-1.0377,0.16092,-1.7564,0.27238,3.91,-10.47,0.0,250,92.2
+Fine,54625,109488,-1.6267,0.17085,-2.7535,0.28919,-56.77,6.17,0.0,250,239.84

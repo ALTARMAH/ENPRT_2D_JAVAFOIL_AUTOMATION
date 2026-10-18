@@ -1,0 +1,15 @@
+# Reproducible CFD Pipeline Versions
+# Generated for ENPRT FSUK 2027 Aerodynamic Verification Suite
+
+SU2=8.5.0 (linux64-mpi prebuilt release from github.com/su2code/SU2/releases/tag/v8.5.0)
+OpenMPI=5.0.11
+Gmsh=4.15.2
+XFOIL=6.99 (official Drela release)
+Python=3.14.7
+NumPy=2.5.3
+SciPy=1.18.1
+Pandas=2.3.3
+Matplotlib=3.11.2
+OS=cachyos-x86_64 (Linux kernel 7.2.9)
+CPU=Intel Core i5-9300H @ 2.40GHz (4 physical cores, 8 threads)
+RAM=15.0 GiB
