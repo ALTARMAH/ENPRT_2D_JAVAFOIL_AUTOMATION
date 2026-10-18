@@ -154,10 +154,49 @@ BUILTIN_PRESETS = [
 
 
 def launch_in_aero_auto(cfg):
-    """Launches the main Aero Auto application with the given configuration pre-loaded."""
+    """Launches the main Aero Auto application with the given configuration pre-loaded.
+    Uses an independent subprocess to ensure a completely clean GUI session on Linux/Windows.
+    """
+    cfg_path = None
+    if isinstance(cfg, str):
+        if os.path.exists(cfg):
+            cfg_path = os.path.abspath(cfg)
+    elif isinstance(cfg, dict):
+        cfg_id = cfg.get("id", "launch_cfg").replace(" ", "_")
+        cfg_dir = os.path.join(APP_DIR, "configs")
+        os.makedirs(cfg_dir, exist_ok=True)
+        target_path = os.path.join(cfg_dir, f"{cfg_id}.json")
+        try:
+            with open(target_path, "w", encoding="utf-8") as f:
+                json.dump(cfg, f, indent=2)
+            cfg_path = target_path
+        except Exception:
+            import tempfile
+            fd, tmp_path = tempfile.mkstemp(prefix=f"aero_cfg_{cfg_id}_", suffix=".json")
+            with open(fd, "w", encoding="utf-8") as f:
+                json.dump(cfg, f, indent=2)
+            cfg_path = tmp_path
+
+    ui_py = os.path.join(APP_DIR, "aero_ui.py")
+    if os.path.exists(ui_py):
+        cmd = [sys.executable, ui_py]
+        if cfg_path:
+            cmd.extend(["--config", cfg_path])
+        env = os.environ.copy()
+        env["PYTHONPATH"] = APP_DIR + (os.pathsep + env.get("PYTHONPATH", "") if env.get("PYTHONPATH") else "")
+        try:
+            kwargs = {}
+            if sys.platform != "win32":
+                kwargs["start_new_session"] = True
+            proc = subprocess.Popen(cmd, cwd=APP_DIR, env=env, **kwargs)
+            return proc
+        except Exception as e:
+            print(f"[warn] Subprocess launch failed ({e}), falling back to in-process App...", file=sys.stderr)
+
+    # In-process fallback
     app = aero_ui.App()
     try:
-        app.load_config_json(cfg)
+        app.load_config_json(cfg if isinstance(cfg, dict) else cfg_path)
     except Exception as e:
         print(f"[warn] Failed to load config into App: {e}", file=sys.stderr)
     try:
@@ -240,18 +279,39 @@ class LauncherApp(tk.Tk):
 
         left_header = tk.Frame(left_col, bg="#1e293b", padx=10, pady=8)
         left_header.pack(fill=tk.X)
-        tk.Label(left_header, text="Select Configuration:", font=("Segoe UI", 10, "bold"),
-                 fg="#f8fafc", bg="#1e293b").pack(anchor="w")
+        tk.Label(left_header, text="Select or Double-Click Config:", font=("Segoe UI", 10, "bold"),
+                 fg="#38bdf8", bg="#1e293b").pack(anchor="w")
+        tk.Label(left_header, text="Double-click opens Aero Auto immediately.", font=("Segoe UI", 8),
+                 fg="#94a3b8", bg="#1e293b").pack(anchor="w", pady=(1, 0))
 
         self.preset_listbox = tk.Listbox(left_col, font=("Segoe UI", 9), bg="#0f172a", fg="#f8fafc",
                                          selectbackground="#0284c7", selectforeground="#ffffff",
                                          highlightthickness=0, bd=0, activestyle="none")
-        self.preset_listbox.pack(fill=tk.BOTH, expand=True, padx=8, pady=(0, 8))
+        self.preset_listbox.pack(fill=tk.BOTH, expand=True, padx=8, pady=(0, 6))
         self.preset_listbox.bind("<<ListboxSelect>>", self._on_preset_select)
+        self.preset_listbox.bind("<Double-Button-1>", lambda e: self.on_launch_aero())
+        self.preset_listbox.bind("<Return>", lambda e: self.on_launch_aero())
 
         for p in self.presets:
             tag = "[FW]" if "front" in p.get("role", "").lower() else "[RW]"
             self.preset_listbox.insert(tk.END, f" {tag} {p['id']}")
+
+        # Auto-open checkbox
+        self.auto_open_var = tk.BooleanVar(value=False)
+        cb_auto = tk.Checkbutton(left_col, text="Open Aero Auto on 1-click",
+                                 variable=self.auto_open_var,
+                                 font=("Segoe UI", 8), fg="#cbd5e1", bg="#1e293b",
+                                 selectcolor="#0f172a", activebackground="#1e293b",
+                                 activeforeground="#38bdf8")
+        cb_auto.pack(fill=tk.X, padx=8, pady=(0, 4))
+
+        # Direct big 1-click launch button right under the list!
+        self.btn_left_launch = tk.Button(left_col, text="Open in Aero Auto Now",
+                                         font=("Segoe UI", 10, "bold"),
+                                         bg="#0284c7", fg="#ffffff", activebackground="#0369a1",
+                                         activeforeground="#ffffff", relief=tk.FLAT, padx=8, pady=7,
+                                         cursor="hand2", command=self.on_launch_aero)
+        self.btn_left_launch.pack(fill=tk.X, padx=8, pady=(0, 6))
 
         btn_bar = tk.Frame(left_col, bg="#1e293b")
         btn_bar.pack(fill=tk.X, padx=8, pady=(0, 8))
@@ -351,6 +411,8 @@ class LauncherApp(tk.Tk):
         sel = self.preset_listbox.curselection()
         if sel:
             self._display_config(self.presets[sel[0]])
+            if getattr(self, 'auto_open_var', None) and self.auto_open_var.get():
+                self.on_launch_aero()
 
     def _display_config(self, cfg):
         self.current_cfg = cfg
@@ -501,23 +563,47 @@ class LauncherApp(tk.Tk):
 
 def main():
     ap = argparse.ArgumentParser(description="ENPRT FSUK 2027 Wing Configuration Launcher")
-    ap.add_argument("--config", "-c", default=None, help="Path to config JSON file in configs/ (CLI direct launch)")
-    ap.add_argument("--gui", action="store_true", help="Force open interactive launcher GUI")
+    ap.add_argument("target", nargs="?", default=None,
+                    help="Config JSON file path or preset ID (e.g. FWA_hero, configs/FWA_hero.json) to launch immediately")
+    ap.add_argument("--config", "-c", default=None,
+                    help="Path to config JSON file in configs/ (CLI direct launch)")
+    ap.add_argument("--gui", action="store_true",
+                    help="Force open interactive launcher GUI even if config is specified")
     args = ap.parse_args()
 
-    if args.config and not args.gui:
-        # CLI direct launch into Aero Auto
-        cfg_path = args.config if os.path.isabs(args.config) else os.path.join(SCRIPT_DIR, args.config)
-        if not os.path.exists(cfg_path):
-            print(f"Error: Config file not found: {cfg_path}", file=sys.stderr)
-            sys.exit(1)
-        with open(cfg_path, "r", encoding="utf-8") as f:
-            cfg = json.load(f)
-        launch_in_aero_auto(cfg)
-    else:
-        # Launch standalone GUI App
-        app = LauncherApp(initial_cfg_path=args.config)
-        app.mainloop()
+    cfg_arg = args.target or args.config
+
+    if cfg_arg and not args.gui:
+        # Check if argument matches a built-in preset ID directly
+        cfg = None
+        for p in BUILTIN_PRESETS:
+            if p.get("id", "").lower() == str(cfg_arg).lower():
+                cfg = p
+                break
+
+        if not cfg:
+            candidates = [
+                cfg_arg,
+                os.path.join(SCRIPT_DIR, cfg_arg),
+                os.path.join(SCRIPT_DIR, "configs", cfg_arg),
+                os.path.join(SCRIPT_DIR, "configs", f"{cfg_arg}.json") if not str(cfg_arg).endswith('.json') else ""
+            ]
+            for cand in candidates:
+                if cand and os.path.exists(cand):
+                    with open(cand, "r", encoding="utf-8") as f:
+                        cfg = json.load(f)
+                    break
+
+        if cfg:
+            print(f"Launching Aero Auto with configuration: {cfg.get('name', cfg.get('id', 'Wing'))}...")
+            launch_in_aero_auto(cfg)
+            return
+        else:
+            print(f"Notice: Config '{cfg_arg}' not found as preset or file. Opening launcher GUI...", file=sys.stderr)
+
+    # Launch standalone GUI App
+    app = LauncherApp(initial_cfg_path=cfg_arg)
+    app.mainloop()
 
 
 if __name__ == "__main__":

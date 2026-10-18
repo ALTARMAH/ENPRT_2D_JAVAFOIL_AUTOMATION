@@ -1,0 +1,10 @@
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=Open RW Hero in Aero Auto
+Comment=Launch Aero Auto with Rear Wing Envelope Max Downforce (CL*A=1.6713) pre-loaded on Configure tab
+Exec=/usr/bin/python3 /home/user/Applications/aero_auto/open_in_aero_auto.py RW_hero
+Icon=/home/user/Applications/aero_auto/assets/icon.png
+Terminal=false
+Categories=Engineering;Science;
+StartupNotify=true

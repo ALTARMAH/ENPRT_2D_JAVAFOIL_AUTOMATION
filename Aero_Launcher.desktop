@@ -1,0 +1,11 @@
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=ENPRT Aero Launcher
+GenericName=Wing Configuration Selector
+Comment=1-Click Wing Package Launcher for Aero Auto and JavaFoil
+Exec=/usr/bin/python3 /home/user/Applications/aero_auto/open_in_aero_auto.py
+Icon=/home/user/Applications/aero_auto/assets/icon.png
+Terminal=false
+Categories=Engineering;Science;Education;
+StartupNotify=true

@@ -1,0 +1,10 @@
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=Open FWB Hero in Aero Auto
+Comment=Launch Aero Auto with Front Wing Boundary Layer Attached (CL*A=1.8283) pre-loaded on Configure tab
+Exec=/usr/bin/python3 /home/user/Applications/aero_auto/open_in_aero_auto.py FWB_hero
+Icon=/home/user/Applications/aero_auto/assets/icon.png
+Terminal=false
+Categories=Engineering;Science;
+StartupNotify=true

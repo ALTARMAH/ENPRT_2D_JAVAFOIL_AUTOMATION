@@ -2148,6 +2148,8 @@ class App(tk.Tk):
                 show_preset(ENPRT_PRESETS[sel[0]])
 
         lb.bind('<<ListboxSelect>>', on_lb_select)
+        lb.bind('<Double-Button-1>', lambda e: do_load())
+        lb.bind('<Return>', lambda e: do_load())
         lb.selection_set(0)
         show_preset(ENPRT_PRESETS[0])
 

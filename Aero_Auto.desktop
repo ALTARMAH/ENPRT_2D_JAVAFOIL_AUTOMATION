@@ -1,0 +1,11 @@
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=ENPRT Aero Auto
+GenericName=FSAE Aerodynamics Suite
+Comment=Multi-Element FSAE Aerodynamics Simulator and JavaFoil Bridge
+Exec=/usr/bin/python3 /home/user/Applications/aero_auto/aero_ui.py
+Icon=/home/user/Applications/aero_auto/assets/icon.png
+Terminal=false
+Categories=Engineering;Science;Education;
+StartupNotify=true
