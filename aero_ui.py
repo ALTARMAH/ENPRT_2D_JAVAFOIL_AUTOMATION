@@ -1164,6 +1164,8 @@ class App(tk.Tk):
         m.add_cascade(label="File", menu=fm)
 
         vm = tk.Menu(m, tearoff=0)
+        vm.add_command(label="Return to Configure", accelerator="Alt+Left", command=self.on_return_to_configure)
+        vm.add_separator()
         vm.add_command(label="Refresh results & graphs", accelerator="F5", command=self._refresh_all)
         vm.add_command(label="Reset results filter/sort", command=self._reset_results_view)
         vm.add_command(label="Clear campaign log", command=self.on_campaign_clear_log)
@@ -1210,6 +1212,8 @@ class App(tk.Tk):
         self.bind_all('<Control-O>', lambda e=None: self.on_open_config_json_file())
         self.bind_all('<Control-s>', lambda e=None: self.on_save_config_json())
         self.bind_all('<Control-S>', lambda e=None: self.on_save_config_json())
+        self.bind_all('<Alt-Left>', lambda e=None: self.on_return_to_configure())
+        self.bind_all('<Control-Left>', lambda e=None: self.on_return_to_configure())
         self.bind_all('<F5>', lambda e=None: self._refresh_all())
         self.bind_all('<Control-q>', lambda e=None: self._on_close())
         for i, tab in enumerate((self.tab_cfg, self.tab_af, self.tab_comb, self.tab_cam, self.tab_res, self.tab_gr, self.tab_opt, self.tab_set), start=1):
@@ -2274,6 +2278,14 @@ class App(tk.Tk):
             self.log(f"Transferred configuration to Optimizer as base design: {A.describe(cfg)}")
             self.set_status(f"Loaded {cfg[0]} wing into Optimizer.")
         self.notebook.select(self.tab_opt)
+
+    def on_return_to_configure(self):
+        """Switches back to Configure tab (Tab 1)."""
+        try:
+            self.notebook.select(self.tab_cfg)
+        except Exception:
+            pass
+        self.set_status("Returned to Configure view.")
 
     def on_go_to_graphs(self):
         try:
@@ -4700,6 +4712,9 @@ class App(tk.Tk):
         best = ttk.Button(btns, text='Open best sheet', command=self.on_open_best)
         best.pack(side='left', padx=4)
         add_tooltip(best, 'Open the Best/ report folder (best sheet + graphs) of the selected run.')
+        ret_res = ttk.Button(btns, text="< Return to Configure", command=self.on_return_to_configure)
+        ret_res.pack(side='right', padx=4)
+        add_tooltip(ret_res, "Return to Configure tab (Tab 1) to edit wing parameters, airfoils, or flaps.")
         self.res_runs_lbl = tk.StringVar(value='')
         ttk.Label(btns, textvariable=self.res_runs_lbl, foreground=MUTED).pack(side='right')
         
@@ -5977,6 +5992,17 @@ class App(tk.Tk):
         )
         b_fm.pack(side='left', padx=4)
 
+        def on_return_cfg():
+            dlg.destroy()
+            self.on_return_to_configure()
+
+        b_ret_cfg = tk.Button(
+            btn_frame, text="Return to Configure", font=('Segoe UI', 10),
+            bg='#334155', fg='#f1f5f9', activebackground='#475569', activeforeground='white',
+            padx=14, pady=6, relief='flat', cursor='hand2', command=on_return_cfg
+        )
+        b_ret_cfg.pack(side='left', padx=4)
+
         if already_existed:
             b_regen = tk.Button(
                 btn_frame, text="Regenerate Fresh", font=('Segoe UI', 9),
@@ -6248,6 +6274,9 @@ class App(tk.Tk):
             font=('Segoe UI', 9, 'bold')
         )
         self.gr_prog_lbl.pack(side='left', fill='x', expand=True)
+        ret_top = ttk.Button(prow, text="< Return to Configure", command=self.on_return_to_configure)
+        ret_top.pack(side='right', padx=(6, 0))
+        add_tooltip(ret_top, "Return to Configure tab (Tab 1) to edit wing parameters, airfoils, or flaps.")
 
         self.gr_prog_bar = ttk.Progressbar(self.gr_prog_frame, orient='horizontal', mode='determinate')
         self.gr_prog_bar.pack(fill='x', padx=8, pady=(0, 6))
@@ -6264,6 +6293,9 @@ class App(tk.Tk):
         op = ttk.Button(trow, text='Open in viewer', command=self.on_open_graph)
         op.pack(side='left', padx=4)
         add_tooltip(op, 'Open the selected image with the OS image viewer.')
+        ret_trow = ttk.Button(trow, text="< Return to Configure", command=self.on_return_to_configure)
+        ret_trow.pack(side='right', padx=4)
+        add_tooltip(ret_trow, "Return to Configure tab (Tab 1) to edit wing parameters, airfoils, or flaps.")
         self.gr_folder_tree = ttk.Treeview(browser, columns=('Date', 'Images'), show='tree headings', height=4)
         self.gr_folder_tree.heading('#0', text='Results file')
         self.gr_folder_tree.heading('Date', text='Modified')
@@ -6323,6 +6355,10 @@ class App(tk.Tk):
         b_reg = ttk.Button(btn_box, text='Regenerate Run Graphs', command=self.on_regenerate_current_run_graphs)
         b_reg.pack(fill='x', pady=1)
         add_tooltip(b_reg, 'Force recalculation and re-rendering of all graphs for this run.')
+
+        b_ret = ttk.Button(btn_box, text='< Return to Configure', command=self.on_return_to_configure)
+        b_ret.pack(fill='x', pady=(4, 1))
+        add_tooltip(b_ret, 'Return to Configure tab (Tab 1) to edit wing parameters, airfoils, or flaps.')
 
         # Right Panel: Large Image Canvas / Label
         self.gimg_lbl = ttk.Label(mid, text='select an image', anchor='center')
@@ -6594,6 +6630,9 @@ class App(tk.Tk):
         if 's1223' in self.names:
             self.opt_main_box.set('s1223')
         add_tooltip(self.opt_main_box, 'Main element airfoil')
+        ret_opt = ttk.Button(row, text="< Return to Configure", command=self.on_return_to_configure)
+        ret_opt.pack(side='right', padx=4)
+        add_tooltip(ret_opt, "Return to Configure tab (Tab 1) to edit wing geometry or parameters.")
         
         row = ttk.Frame(top)
         row.pack(fill='x', padx=6, pady=4)

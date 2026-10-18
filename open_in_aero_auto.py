@@ -253,11 +253,20 @@ class LauncherApp(tk.Tk):
             tag = "[FW]" if "front" in p.get("role", "").lower() else "[RW]"
             self.preset_listbox.insert(tk.END, f" {tag} {p['id']}")
 
-        btn_browse_file = tk.Button(left_col, text="Browse Custom JSON...", font=("Segoe UI", 9),
+        btn_bar = tk.Frame(left_col, bg="#1e293b")
+        btn_bar.pack(fill=tk.X, padx=8, pady=(0, 8))
+
+        btn_browse_file = tk.Button(btn_bar, text="Browse JSON...", font=("Segoe UI", 9),
                                     bg="#334155", fg="#f8fafc", activebackground="#475569",
-                                    activeforeground="#ffffff", relief=tk.FLAT, padx=8, pady=4,
+                                    activeforeground="#ffffff", relief=tk.FLAT, padx=6, pady=4,
                                     command=self.on_browse_json)
-        btn_browse_file.pack(fill=tk.X, padx=8, pady=(0, 8))
+        btn_browse_file.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(0, 2))
+
+        btn_reset_presets = tk.Button(btn_bar, text="Return to Presets", font=("Segoe UI", 9),
+                                      bg="#334155", fg="#f8fafc", activebackground="#475569",
+                                      activeforeground="#ffffff", relief=tk.FLAT, padx=6, pady=4,
+                                      command=self.on_reset_presets)
+        btn_reset_presets.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(2, 0))
 
         # Right Column: Details & JSON Panel
         right_col = tk.Frame(main_body, bg="#1e293b", bd=1, relief=tk.SOLID, padx=14, pady=12)
@@ -421,6 +430,16 @@ class LauncherApp(tk.Tk):
             self.status_lbl.config(text=f"Loaded configuration file: {os.path.basename(path)}")
         except Exception as e:
             messagebox.showerror("Error", f"Could not load configuration file:\n{e}", parent=self)
+
+    def on_reset_presets(self):
+        """Restores the preset list to the official built-in ENPRT configurations."""
+        self.presets = list(BUILTIN_PRESETS)
+        self.preset_listbox.delete(0, tk.END)
+        for p in self.presets:
+            tag = "[FW]" if "front" in p.get("role", "").lower() else "[RW]"
+            self.preset_listbox.insert(tk.END, f" {tag} {p['id']}")
+        self.select_preset_by_index(0)
+        self.status_lbl.config(text="Returned to built-in ENPRT presets.")
 
     def on_launch_aero(self):
         cfg = self.current_cfg

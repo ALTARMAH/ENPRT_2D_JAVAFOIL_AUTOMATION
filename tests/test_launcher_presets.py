@@ -106,6 +106,10 @@ class TestLauncherAndPresets(unittest.TestCase):
             self.assertEqual(l_app.current_cfg["id"], "FWA_hero")
             l_app.select_preset_by_index(4)
             self.assertEqual(l_app.current_cfg["id"], "RW_hero")
+            l_app.presets.append({"id": "custom_temp", "main": "s1223", "flaps": []})
+            self.assertEqual(len(l_app.presets), 7)
+            l_app.on_reset_presets()
+            self.assertEqual(len(l_app.presets), 6)
         finally:
             l_app.destroy()
 

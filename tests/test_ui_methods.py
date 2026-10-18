@@ -13,6 +13,10 @@ def run_tests():
     assert app.notebook.select() == str(app.tab_gr), "Failed to switch to Graphs"
     print("  -> on_go_to_graphs OK", flush=True)
 
+    app.on_return_to_configure()
+    assert app.notebook.select() == str(app.tab_cfg), "Failed to return to Configure"
+    print("  -> on_return_to_configure OK", flush=True)
+
     app.notebook.select(app.tab_cfg)
     app.on_send_configure_to_optimizer()
     assert app.notebook.select() == str(app.tab_opt), "Failed to switch to Optimizer"
