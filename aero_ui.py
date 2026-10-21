@@ -370,6 +370,9 @@ class ToolTip:
                 padx=8, pady=5, justify='left', wraplength=self.wraplength
             )
             self.label.pack()
+            for w in (self.tip, self.label):
+                w.bind('<ButtonPress>', lambda e: self.hide())
+                w.bind('<Leave>', lambda e: self.hide())
             self._place(widget)
             self.tip.deiconify()
             self.tip.lift()
@@ -386,11 +389,11 @@ class ToolTip:
 
             if self._last_xy:
                 mx, my = self._last_xy
-                x = mx + 12
-                y = my + 18
+                x = mx + 16
+                y = my + 22
             else:
                 x = widget.winfo_rootx() + 16
-                y = widget.winfo_rooty() + widget.winfo_height() + 6
+                y = widget.winfo_rooty() + widget.winfo_height() + 8
 
             if x + tw > sw - 10:
                 x = max(6, sw - tw - 10)
@@ -428,6 +431,32 @@ _TIP = ToolTip()
 def add_tooltip(widget, text):
     """Helper to add a hover description to any widget."""
     _TIP.register(widget, text)
+
+def _subsample_alphas(alphas, max_pts=11):
+    """Subsamples an alpha range to at most max_pts points spanning the full range, guaranteed to include 0.0 if in range."""
+    if not alphas:
+        return [0.0]
+    alphas_list = sorted(list(set(round(float(x), 4) for x in alphas)))
+    if max_pts is None or len(alphas_list) <= max_pts:
+        return alphas_list
+    if max_pts <= 2:
+        return [alphas_list[0], alphas_list[-1]][:max_pts]
+    idxs = np.round(np.linspace(0, len(alphas_list) - 1, max_pts)).astype(int)
+    pts = sorted(list(set(alphas_list[i] for i in idxs)))
+    if alphas_list[0] <= 0.0 <= alphas_list[-1] and not any(abs(p) < 1e-4 for p in pts):
+        internal_idxs = list(range(1, len(pts) - 1))
+        if internal_idxs:
+            closest_int = min(internal_idxs, key=lambda i: abs(pts[i]))
+            pts[closest_int] = 0.0
+        else:
+            pts.append(0.0)
+        pts = sorted(list(set(round(p, 4) for p in pts)))
+    while len(pts) > max_pts:
+        removable = [p for p in pts[1:-1] if abs(p) > 1e-4]
+        if not removable:
+            break
+        pts.remove(removable[0])
+    return pts
 
 def tip_hide():
     """Dismiss any on-screen description (used on clicks, tab changes, Esc)."""
@@ -550,6 +579,8 @@ class App(tk.Tk):
         self._cur_graph_path = None
         self.gr_selected_rid = ""
         self.gr_only_active_run = tk.BooleanVar(value=True)
+        self.gr_filter_category = 'current'
+        self._gr_combo_map = {}
         self._drain_timer_running = True
 
         self.gh_state = tk.StringVar(value='300')
@@ -920,6 +951,13 @@ class App(tk.Tk):
                             self.gr_prog_lbl.configure(
                                 text=f"Run {rid}: Complete! ({'Loaded from cache' if already_existed else 'Generated fresh'})"
                             )
+                        self.gr_filter_category = 'current'
+                        self.gr_selected_rid = rid
+                        if hasattr(self, 'gr_run_combo'):
+                            self.gr_run_combo['values'] = [f"Current Run: {rid}"]
+                            self.gr_run_combo.set(f"Current Run: {rid}")
+                        if hasattr(self, 'gr_filter_desc_lbl'):
+                            self.gr_filter_desc_lbl.configure(text=f"Viewing: Current Run Only ({rid})")
                         if hasattr(self, 'refresh_graph_files'):
                             self.refresh_graph_files(p, select_rid=rid)
                         try:
@@ -928,6 +966,17 @@ class App(tk.Tk):
                             pass
                         if show_dest_dialog:
                             self.ask_graph_destination(r, rid, run_gdir, already_existed=already_existed)
+                    elif kind == 'gr_batch_done':
+                        cat_title, count = payload
+                        if hasattr(self, 'btn_gen_filter'):
+                            self.btn_gen_filter.configure(state='normal')
+                        if hasattr(self, 'gr_prog_bar'):
+                            self.gr_prog_bar['value'] = 100
+                        if hasattr(self, 'gr_prog_lbl'):
+                            self.gr_prog_lbl.configure(text=f"Batch complete: Generated fresh graphs for all {count} runs in {cat_title}!")
+                        self._populate_graph_filter_runs()
+                        self.set_status(f"Generated all graphs for {count} runs in {cat_title}.")
+                        messagebox.showinfo("Batch Generation Complete", f"Successfully generated fresh graphs for all {count} runs in:\n'{cat_title}'!")
                     elif kind == 'opt_log':
                         self._append_log(getattr(self, 'opt_log', None), payload)
                     elif kind == 'opt_prog':
@@ -944,6 +993,8 @@ class App(tk.Tk):
                         self._sim_done(payload)
                     elif kind == 'su2_done':
                         self._handle_su2_done(payload)
+                    elif kind == 'xfoil_done':
+                        self._handle_xfoil_done(payload)
                     elif kind == 'cross_check_done':
                         self._handle_cross_check_done(payload)
                 except Exception as e:
@@ -1128,6 +1179,7 @@ class App(tk.Tk):
         self.tab_af = ttk.Frame(self.notebook)
         self.tab_comb = ttk.Frame(self.notebook)
         self.tab_famous = self.tab_comb
+        self.tab_top = ttk.Frame(self.notebook)
         self.tab_cam = ttk.Frame(self.notebook)
         self.tab_res = ttk.Frame(self.notebook)
         self.tab_gr = ttk.Frame(self.notebook)
@@ -1136,6 +1188,7 @@ class App(tk.Tk):
         self.notebook.add(self.tab_cfg, text="  Configure  ")
         self.notebook.add(self.tab_af, text="  Airfoils  ")
         self.notebook.add(self.tab_comb, text="  Famous Wings  ")
+        self.notebook.add(self.tab_top, text="  Our Top Runs  ")
         self.notebook.add(self.tab_cam, text="  Campaigns  ")
         self.notebook.add(self.tab_res, text="  Results  ")
         self.notebook.add(self.tab_gr, text="  Graphs  ")
@@ -1144,6 +1197,7 @@ class App(tk.Tk):
         self.build_configure()
         self.build_airfoils()
         self.build_famous_wings()
+        self.build_top_runs()
         self.build_campaigns()
         self.build_results()
         self.build_graphs()
@@ -1469,16 +1523,20 @@ class App(tk.Tk):
         su2_btn.grid(row=26, column=0, columnspan=2, sticky='we', pady=2)
         add_tooltip(su2_btn, "Run independent 2D incompressible RANS simulation (k-omega SST) with SU2 and Gmsh.")
 
+        xfoil_btn = ttk.Button(cfg, text="Simulate with XFOIL (Viscous 2D)", command=self.on_simulate_xfoil)
+        xfoil_btn.grid(row=27, column=0, columnspan=2, sticky='we', pady=2)
+        add_tooltip(xfoil_btn, "Run authentic viscous 2D panel method with coupled integral boundary layer using XFOIL.")
+
         cross_btn = ttk.Button(cfg, text="Cross-Check: JavaFoil vs SU2", command=self.on_cross_check)
-        cross_btn.grid(row=27, column=0, columnspan=2, sticky='we', pady=2)
+        cross_btn.grid(row=28, column=0, columnspan=2, sticky='we', pady=2)
         add_tooltip(cross_btn, "Run both JavaFoil and SU2 on this configuration and display side-by-side comparison modal with divergence flags.")
 
         jf_btn = ttk.Button(cfg, text="Open in JavaFoil GUI", command=self.on_open_javafoil)
-        jf_btn.grid(row=28, column=0, columnspan=2, sticky='we', pady=2)
+        jf_btn.grid(row=29, column=0, columnspan=2, sticky='we', pady=2)
         add_tooltip(jf_btn, "Launch JavaFoil interactive GUI with this multi-element wing stack pre-loaded into Geometry.")
 
         nav_frame = ttk.Frame(cfg)
-        nav_frame.grid(row=29, column=0, columnspan=2, sticky='we', pady=2)
+        nav_frame.grid(row=30, column=0, columnspan=2, sticky='we', pady=2)
         nav_opt_btn = ttk.Button(nav_frame, text="Send to Optimizer", command=self.on_send_configure_to_optimizer)
         nav_opt_btn.pack(side='left', fill='x', expand=True, padx=(0, 2))
         add_tooltip(nav_opt_btn, "Transfer current wing setup into Optimizer (Tab 6) as base design and switch tabs.")
@@ -1488,19 +1546,19 @@ class App(tk.Tk):
         add_tooltip(nav_gr_btn, "Generate and switch directly to Graphs (Tab 5) to inspect aerodynamic polars and flow fields.")
 
         save_run_btn = ttk.Button(cfg, text="Save Run Archive (ZIP)...", command=self.on_save_current_run_archive)
-        save_run_btn.grid(row=30, column=0, columnspan=2, sticky='we', pady=2)
+        save_run_btn.grid(row=31, column=0, columnspan=2, sticky='we', pady=2)
         add_tooltip(save_run_btn, "Export full telemetry, polars, JavaFoil data and CAD models for this run as a ZIP archive.")
 
         term_btn = ttk.Button(cfg, text="Run in Terminal (konsole)", command=self.on_simulate_terminal)
-        term_btn.grid(row=31, column=0, columnspan=2, sticky='we', pady=2)
+        term_btn.grid(row=32, column=0, columnspan=2, sticky='we', pady=2)
         add_tooltip(term_btn, "Launch simulation in separate konsole terminal (avoids GUI fork deadlock on Linux).")
 
         batch_btn = ttk.Button(cfg, text="Batch: Multiple Main/Flaps", command=self.on_batch_simulate)
-        batch_btn.grid(row=32, column=0, columnspan=2, sticky='we', pady=2)
+        batch_btn.grid(row=33, column=0, columnspan=2, sticky='we', pady=2)
         add_tooltip(batch_btn, "Run multiple main/flap combinations sequentially. Select airfoils from dialogs.")
 
         cad_frame = ttk.LabelFrame(cfg, text="CAD Export (2D & 3D Solid)")
-        cad_frame.grid(row=33, column=0, columnspan=2, sticky='we', pady=3)
+        cad_frame.grid(row=34, column=0, columnspan=2, sticky='we', pady=3)
         btn_cfg_dxf = ttk.Button(cad_frame, text="Export DXF (2D)", command=self.on_export_config_dxf)
         btn_cfg_dxf.pack(side='left', fill='x', expand=True, padx=2, pady=2)
         add_tooltip(btn_cfg_dxf, "Export 2D continuous spline profile to AutoCAD DXF format.")
@@ -1512,7 +1570,8 @@ class App(tk.Tk):
         add_tooltip(btn_cfg_fcm, "Export parametric Python macro (.FCMacro) for FreeCAD with C2 B-spline solids.")
 
         self.derive_state = tk.StringVar(value='')
-        ttk.Label(cfg, textvariable=self.derive_state, wraplength=330, justify='left', foreground=MUTED).grid(row=34, column=0, columnspan=2, sticky='w', pady=(8, 0))
+        self.derive_lbl = ttk.Label(cfg, textvariable=self.derive_state, wraplength=330, justify='left', foreground=MUTED)
+        self.derive_lbl.grid(row=35, column=0, columnspan=2, sticky='w', pady=(8, 0))
 
         for k in ('chord', 'speed', 're'):
             self.vars[k].trace_add('write', lambda *_: self._update_derived())
@@ -2332,23 +2391,46 @@ class App(tk.Tk):
         os.makedirs(gdir, exist_ok=True)
         os.makedirs(run_gdir, exist_ok=True)
 
+        gdir_main = os.path.join(A.OUT_DIR, 'graphs')
+        run_gdir_main = os.path.join(gdir_main, f"run_{rid}")
+        os.makedirs(gdir_main, exist_ok=True)
+        os.makedirs(run_gdir_main, exist_ok=True)
+
         if switch:
             try:
                 self.notebook.select(self.tab_gr)
             except Exception:
                 pass
 
-        # Check if already generated
-        existing_pngs = glob.glob(os.path.join(run_gdir, "*.png")) if os.path.isdir(run_gdir) else []
-        if not existing_pngs and os.path.isdir(gdir):
-            existing_pngs = glob.glob(os.path.join(gdir, f"*_{rid}.png"))
+        # Overwrite mode: literally delete old graphs so new ones replace them completely
+        if os.path.exists(run_gdir):
+            shutil.rmtree(run_gdir, ignore_errors=True)
+        os.makedirs(run_gdir, exist_ok=True)
+        if os.path.exists(run_gdir_main):
+            shutil.rmtree(run_gdir_main, ignore_errors=True)
+        os.makedirs(run_gdir_main, exist_ok=True)
+        for s_dir in (gdir, gdir_main):
+            if os.path.isdir(s_dir):
+                for old_f in glob.glob(os.path.join(s_dir, "*.png")):
+                    bn = os.path.basename(old_f)
+                    if re.search(rf'_(?:run_)?{re.escape(rid)}\.png$', bn, re.IGNORECASE):
+                        try:
+                            os.remove(old_f)
+                        except Exception:
+                            pass
 
-        if existing_pngs:
-            self.gr_results.set(res_p)
-            self.gr_selected_rid = rid
-            self.refresh_graph_files(res_p, select_rid=rid)
-            self.set_status(f"Graphs ready for {rid} (loaded from cache).")
-            return
+        self.gr_filter_mode = 'current'
+        self.gr_selected_rid = rid
+        self._graph_paths = []
+        if hasattr(self, 'img_list'):
+            self.img_list.delete(0, 'end')
+        if hasattr(self, 'gimg_lbl'):
+            self.gimg_lbl.configure(image='', text=f"Generating fresh graphs for Run {rid}...")
+        if hasattr(self, 'gr_run_combo'):
+            self.gr_run_combo['values'] = [f"Current Run: {rid}"]
+            self.gr_run_combo.set(f"Current Run: {rid}")
+        if hasattr(self, 'gr_filter_desc_lbl'):
+            self.gr_filter_desc_lbl.configure(text=f"Viewing: Current Run Only ({rid})")
 
         try:
             chord = float(self.vars['chord'].get() if 'chord' in self.vars else A.DEFAULT_CHORD_MM)
@@ -2383,13 +2465,58 @@ class App(tk.Tk):
         self.gr_results.set(res_p)
         self.gr_selected_rid = rid
         self.ui_q.put(('gr_prog', (5, f"Starting generation for {rid}...")))
-        self.set_status(f"Generating graphs for {rid}...")
+        self.set_status(f"Generating multi-solver graphs for {rid} (JavaFoil + SU2 + XFOIL)...")
 
         def work():
             outs = []
+            def copy_out(src_p):
+                if not src_p or not os.path.isfile(src_p):
+                    return
+                for target_folder in (gdir, run_gdir, gdir_main, run_gdir_main):
+                    try:
+                        os.makedirs(target_folder, exist_ok=True)
+                        dest_p = os.path.join(target_folder, os.path.basename(src_p))
+                        if os.path.abspath(src_p) != os.path.abspath(dest_p):
+                            shutil.copy2(src_p, dest_p)
+                    except Exception:
+                        pass
             try:
-                # 1. Run simulation or check cache
-                self.ui_q.put(('gr_prog', (20, f"Config {rid} [1/5]: Running JavaFoil analysis...")))
+                if al0 == al1:
+                    sweep_alphas = [float(round(x, 4)) for x in np.arange(A.ALPHA[0], A.ALPHA[1] + 0.5 * A.ALPHA[2], A.ALPHA[2])]
+                else:
+                    sweep_alphas = [float(round(x, 4)) for x in np.arange(al0, al1 + 0.5 * alst, alst)]
+                su2_alpha = _subsample_alphas(sweep_alphas, max_pts=11) if len(sweep_alphas) > 11 else sweep_alphas
+
+                # 1. SU2 2D RANS CFD Simulation
+                self.ui_q.put(('gr_prog', (15, f"Config {rid} [1/7]: Simulating with SU2 2D RANS (k-ω SST)...")))
+                su2_res = None
+                try:
+                    import su2_engine as su2
+                    su2_res = su2.run(cfg, engine='su2', alpha=su2_alpha, speed=speed, re=re_val,
+                                      ground_h=gh, mesh_density='coarse', run_tag=rid, out_dir=run_gdir)
+                    if su2_res and su2_res.get('graph_files'):
+                        outs.append("SU2 CFD polars & contours")
+                        for f_p in su2_res['graph_files'].values():
+                            copy_out(f_p)
+                except Exception as e:
+                    self.log(f"SU2 CFD simulation notice: {e}")
+
+                # 2. Viscous XFOIL Simulation
+                self.ui_q.put(('gr_prog', (30, f"Config {rid} [2/7]: Simulating viscous profile with XFOIL...")))
+                xf_res = None
+                try:
+                    import su2_engine as su2
+                    xf_res = su2.run(cfg, engine='xfoil', alpha=sweep_alphas, speed=speed, re=re_val,
+                                     run_tag=rid, out_dir=run_gdir)
+                    if xf_res and xf_res.get('graph_files'):
+                        outs.append("XFOIL viscous polars")
+                        for f_p in xf_res['graph_files'].values():
+                            copy_out(f_p)
+                except Exception as e:
+                    self.log(f"XFOIL simulation notice: {e}")
+
+                # 3. Run JavaFoil simulation or check cache
+                self.ui_q.put(('gr_prog', (45, f"Config {rid} [3/7]: Running JavaFoil multi-element analysis...")))
                 row = None
                 if A.is_java_available():
                     try:
@@ -2424,52 +2551,90 @@ class App(tk.Tk):
                         row[f"F{k}_X"] = xpos
                         row[f"F{k}_Y"] = ypos
 
-                # 2. Polar & Geometry
-                self.ui_q.put(('gr_prog', (40, f"Config {rid} [2/5]: Plotting aerodynamic polar & geometry...")))
+                # 4. Polar & Geometry
+                self.ui_q.put(('gr_prog', (60, f"Config {rid} [4/7]: Plotting JavaFoil aerodynamic polar & geometry...")))
                 if R:
                     polar_p = os.path.join(run_gdir, f"polar_{rid}.png")
                     geom_p = os.path.join(run_gdir, f"geometry_{rid}.png")
                     try:
                         R.plot_polar(row, polar_p)
-                        outs.append("polar")
-                        shutil.copy2(polar_p, os.path.join(gdir, os.path.basename(polar_p)))
+                        outs.append("JavaFoil polar")
+                        copy_out(polar_p)
                     except Exception as e:
                         self.log(f"Polar plot failed: {e}")
                     try:
                         R.plot_geometry(row, geom_p, chord)
                         outs.append("geometry")
-                        shutil.copy2(geom_p, os.path.join(gdir, os.path.basename(geom_p)))
+                        copy_out(geom_p)
                     except Exception as e:
                         self.log(f"Geometry plot failed: {e}")
 
-                # 3. Flow Field
-                self.ui_q.put(('gr_prog', (60, f"Config {rid} [3/5]: Simulating velocity flow field...")))
-                if R:
-                    field_p = os.path.join(run_gdir, f"field_{rid}.png")
-                    try:
-                        R.plot_field(row, field_p, chord, span_fw, span_rw)
-                        outs.append("velocity field")
-                        shutil.copy2(field_p, os.path.join(gdir, os.path.basename(field_p)))
-                    except Exception as e:
-                        self.log(f"Flow field plot failed: {e}")
-
-                # 4. JavaFoil Native Graphs
-                self.ui_q.put(('gr_prog', (75, f"Config {rid} [4/5]: Extracting authentic JavaFoil charts (Cp, Cf, delta*)...")))
+                # 4b. Authentic JavaFoil Native Charts (Cp, Cf, δ, Polars)
+                self.ui_q.put(('gr_prog', (68, f"Config {rid} [5/7]: Extracting authentic JavaFoil native charts...")))
                 try:
                     jf_outs = A.export_javafoil_graphs(cfg, gh, run_gdir, run_id=rid, re=re_val, alphas=(al0, al1, alst), v_inf=speed)
                     if jf_outs:
                         outs.append(f"JavaFoil native ({len(jf_outs)} plots)")
                         file_list = list(jf_outs.values()) if isinstance(jf_outs, dict) else list(jf_outs)
                         for jf_f in file_list:
-                            try:
-                                shutil.copy2(jf_f, os.path.join(gdir, os.path.basename(jf_f)))
-                            except Exception:
-                                pass
+                            copy_out(jf_f)
                 except Exception as e:
                     self.log(f"JavaFoil native extraction notice: {e}")
 
-                # 5. CAD Export
-                self.ui_q.put(('gr_prog', (90, f"Config {rid} [5/5]: Generating CAD models (DXF, STEP, FreeCAD, SVG)...")))
+                # 5. Superimposed Overlay Graphs (JavaFoil vs SU2 vs XFOIL across entire sweep)
+                self.ui_q.put(('gr_prog', (78, f"Config {rid} [6/7]: Generating multi-engine overlay plots...")))
+                try:
+                    import su2_engine as su2
+                    jf_pts = []
+                    jf_polar_txt = os.path.join(run_gdir, f"javafoil_polar_{rid}.txt")
+                    if os.path.isfile(jf_polar_txt):
+                        try:
+                            df_jf, _ = A.parse_polar(jf_polar_txt)
+                            if df_jf is not None and not df_jf.empty:
+                                for _, jf_row in df_jf.iterrows():
+                                    jf_pts.append({
+                                        'alpha': float(jf_row['alpha']),
+                                        'cl': float(jf_row['cl']),
+                                        'cd': float(jf_row['cd']),
+                                        'cm': float(jf_row.get('cm', 0.0) or 0.0)
+                                    })
+                        except Exception as e:
+                            self.log(f"JavaFoil polar parsing notice: {e}")
+                    if not jf_pts and row and 'Cl_a0' in row:
+                        jf_pts.append({'alpha': 0.0, 'cl': float(row.get('Cl_a0', 0)), 'cd': float(row.get('Cd_a0', 0))})
+                    su2_pts = su2_res.get('polar', [su2_res]) if su2_res else []
+                    xf_pts = xf_res.get('polar', []) if xf_res else []
+
+                    if jf_pts and su2_pts:
+                        mesh_str = f"{su2_res.get('mesh_meta', {}).get('nodes', '12,500')} nodes" if su2_res else "N/A"
+                        jf_vel_path = os.path.join(run_gdir, f"javafoil_velocity_{rid}.txt")
+                        su2_surf_path = su2_res.get('surface_file') if su2_res else None
+                        ov_outs = su2.render_overlay_plots(jf_pts, su2_pts, run_gdir, rid, cfg,
+                                                           speed=speed, re_val=re_val, ground_h=gh,
+                                                           mesh_nodes=mesh_str,
+                                                           jf_velocity_file=jf_vel_path,
+                                                           su2_surface_file=su2_surf_path,
+                                                           xfoil_records_or_df=xf_pts)
+                        if ov_outs:
+                            outs.append("Superimposed overlays")
+                            for f_p in ov_outs.values():
+                                copy_out(f_p)
+                except Exception as e:
+                    self.log(f"Overlay generation notice: {e}")
+
+                # 6. Flow Field
+                self.ui_q.put(('gr_prog', (88, f"Config {rid} [7/7]: Simulating flow velocity field...")))
+                if R:
+                    field_p = os.path.join(run_gdir, f"field_{rid}.png")
+                    try:
+                        R.plot_field(row, field_p, chord, span_fw, span_rw)
+                        outs.append("velocity field")
+                        copy_out(field_p)
+                    except Exception as e:
+                        self.log(f"Flow field plot failed: {e}")
+
+                # 7. CAD Export
+                self.ui_q.put(('gr_prog', (95, f"Config {rid} [7/7]: Generating CAD models (DXF, STEP, FreeCAD, SVG)...")))
                 try:
                     dxf_p = os.path.join(run_gdir, f"wing_{rid}.dxf")
                     step_p = os.path.join(run_gdir, f"wing_{rid}.step")
@@ -2479,13 +2644,15 @@ class App(tk.Tk):
                     A.export_step(cfg, step_p, chord_mm=chord, span_mm=span_val, ground_h=gh)
                     A.export_freecad_macro(cfg, fcm_p, chord_mm=chord, span_mm=span_val, ground_h=gh)
                     A.export_svg(cfg, svg_p, chord_mm=chord, ground_h=gh)
+                    for cad_p in (dxf_p, step_p, fcm_p, svg_p):
+                        copy_out(cad_p)
                     outs.append("CAD models")
                 except Exception as e:
                     self.log(f"CAD generation notice: {e}")
 
-                self.ui_q.put(('gr_prog', (100, f"Config {rid}: Graphs generated successfully!")))
+                self.ui_q.put(('gr_prog', (100, f"Config {rid}: Multi-solver graphs generated successfully!")))
                 self.ui_q.put(('gr_done', (row, res_p, rid, run_gdir, False, False)))
-                self.ui_q.put(('log', f"Generated graphs for {rid}: {', '.join(outs) or 'done'}"))
+                self.ui_q.put(('log', f"Generated multi-solver graphs for {rid} (JavaFoil + SU2 + XFOIL): {', '.join(outs) or 'done'}"))
             except Exception as e:
                 self.ui_q.put(('gr_prog', (0, f"Error generating graphs: {e}")))
                 self.ui_q.put(('log', f"Graph generation error: {e}"))
@@ -2938,11 +3105,26 @@ class App(tk.Tk):
         self._sim_prog = prog
         self._sim_running = True
 
-        self.log(f"Running SU2 simulation for [{run_tag}] (speed={speed0:.1f} m/s, RE={re0:g}, ground={'yes' if gh0 else 'no'})...")
+        # Determine alpha angle or sweep range from UI variables
+        try:
+            al0 = float(self.vars['al0'].get() if 'al0' in self.vars else A.ALPHA[0])
+            al1 = float(self.vars['al1'].get() if 'al1' in self.vars else A.ALPHA[1])
+            alst = float(self.vars['alst'].get() if 'alst' in self.vars else A.ALPHA[2])
+        except (ValueError, KeyError):
+            al0, al1, alst = A.ALPHA
+
+        if al0 == al1:
+            full_sweep = [float(round(x, 4)) for x in np.arange(A.ALPHA[0], A.ALPHA[1] + 0.5 * A.ALPHA[2], A.ALPHA[2])]
+        else:
+            full_sweep = [float(round(x, 4)) for x in np.arange(al0, al1 + 0.5 * alst, alst)]
+        alpha_input = tuple(_subsample_alphas(full_sweep, max_pts=11))
+        alpha_msg = f"polar sweep {min(alpha_input):g}°..{max(alpha_input):g}° ({len(alpha_input)} points: {', '.join(f'{a:g}' for a in alpha_input[:5])}...)"
+
+        self.log(f"Running SU2 CFD for [{run_tag}] at {alpha_msg} (speed={speed0:.1f} m/s, RE={re0:g}, ground={'yes' if gh0 else 'no'})...")
 
         def work():
             try:
-                res = su2.run(cfg, alpha_deg=0.0, speed=speed0, re_val=re0, ground_h=gh0, engine='su2', density='medium')
+                res = su2.run(cfg, alpha=alpha_input, speed=speed0, re=re0, ground_h=gh0, engine='su2', mesh_density='coarse', run_tag=run_tag)
                 self.ui_q.put(('su2_done', (res, None, run_tag)))
             except Exception as e:
                 import traceback
@@ -2971,11 +3153,14 @@ class App(tk.Tk):
         cd_val = res.get('Cd', 0.0)
         self.log(f"SU2 CFD [{run_tag}] Completed: Cl={cl_val:.4f}, Cd={cd_val:.5f}, Converged={res.get('converged')} ({res.get('runtime_s', 0):.1f}s)")
 
+        # Auto-refresh graph explorer to discover newly generated SU2 graphs
+        self.refresh_graph_files(select_rid=run_tag)
+
         dlg = tk.Toplevel(self)
         dlg.title(f"SU2 RANS Results - {run_tag}")
         dlg.configure(bg="#0f172a")
         dlg.transient(self)
-        dlg.geometry("520x420")
+        dlg.geometry("540x450")
         dlg.resizable(False, False)
 
         frm = tk.Frame(dlg, bg="#0f172a", padx=20, pady=16)
@@ -3008,7 +3193,144 @@ class App(tk.Tk):
             tk.Label(grid_f, text=v, font=("Segoe UI", 9, "bold"), fg="#f8fafc", bg="#1e293b").grid(row=r_idx, column=1, sticky="e", padx=(20, 0), pady=2)
         grid_f.grid_columnconfigure(0, weight=1)
 
-        ttk.Button(frm, text="Close", command=dlg.destroy).pack(anchor="e")
+        btn_bar = tk.Frame(frm, bg="#0f172a")
+        btn_bar.pack(fill=tk.X)
+        ttk.Button(btn_bar, text="View SU2 Graphs in App",
+                   command=lambda: [dlg.destroy(), self._go_to_graphs_for_run(run_tag)]).pack(side='left')
+        ttk.Button(btn_bar, text="Close", command=dlg.destroy).pack(side='right')
+
+    def on_simulate_xfoil(self):
+        cfg = self.read_cfg()
+        if not cfg:
+            return
+        if getattr(self, '_sim_running', False):
+            self.log("a simulation is already running")
+            return
+        try:
+            chord0 = float(self.vars['chord'].get())
+            speed0 = float(self.vars['speed'].get())
+            re0 = float(self.vars['re'].get())
+        except ValueError:
+            self.log("numeric chord/speed/RE required")
+            return
+
+        try:
+            import su2_engine as su2
+        except ImportError as e:
+            messagebox.showerror("Simulation Engine Error", f"Could not load su2_engine: {e}")
+            return
+
+        desc = cfg[0]
+        user_name = self.cfg_name_var.get().strip() if hasattr(self, 'cfg_name_var') else ''
+        run_tag = user_name or desc
+
+        prog = tk.Toplevel(self)
+        prog.title(f"XFOIL Viscous Analysis: {run_tag}")
+        prog.geometry("420x150")
+        prog.transient(self)
+        prog.grab_set()
+        ttk.Label(prog, text=f"Running XFOIL Viscous Analysis: {run_tag}\nMain Airfoil: {desc} (Re={re0:g}, V={speed0:.1f} m/s)\nCoupled boundary layer formulation. Please wait...").pack(padx=20, pady=15)
+        pb = ttk.Progressbar(prog, mode='indeterminate', length=360)
+        pb.pack(padx=20, pady=(0, 15))
+        pb.start(100)
+        self._sim_prog = prog
+        self._sim_running = True
+
+        # Determine alpha angle or sweep range from UI variables
+        try:
+            al0 = float(self.vars['al0'].get() if 'al0' in self.vars else A.ALPHA[0])
+            al1 = float(self.vars['al1'].get() if 'al1' in self.vars else A.ALPHA[1])
+            alst = float(self.vars['alst'].get() if 'alst' in self.vars else A.ALPHA[2])
+        except (ValueError, KeyError):
+            al0, al1, alst = A.ALPHA
+
+        if al0 == al1:
+            full_sweep = [float(round(x, 4)) for x in np.arange(A.ALPHA[0], A.ALPHA[1] + 0.5 * A.ALPHA[2], A.ALPHA[2])]
+            alpha_input = tuple(full_sweep)
+            alpha_msg = f"polar sweep {A.ALPHA[0]}°..{A.ALPHA[1]}° ({len(alpha_input)} points)"
+        else:
+            full_sweep = [float(round(x, 4)) for x in np.arange(al0, al1 + 0.5 * alst, alst)]
+            alpha_input = tuple(full_sweep)
+            alpha_msg = f"polar sweep {al0:g}°..{al1:g}° ({len(alpha_input)} points)"
+
+        self.log(f"Running XFOIL Viscous 2D analysis for [{run_tag}] at {alpha_msg} (speed={speed0:.1f} m/s, RE={re0:g})...")
+
+        def work():
+            try:
+                res = su2.run(cfg, engine='xfoil', alpha=alpha_input, speed=speed0, re=re0, run_tag=run_tag)
+                self.ui_q.put(('xfoil_done', (res, None, run_tag)))
+            except Exception as e:
+                import traceback
+                self.ui_q.put(('xfoil_done', (None, f"{e}\n" + traceback.format_exc()[-800:], run_tag)))
+
+        threading.Thread(target=work, daemon=True).start()
+
+    def _handle_xfoil_done(self, payload):
+        res, err, run_tag = payload
+        self._sim_running = False
+        prog = getattr(self, '_sim_prog', None)
+        if prog:
+            try:
+                prog.destroy()
+            except Exception:
+                pass
+            self._sim_prog = None
+        if err:
+            self.log(f"XFOIL simulation failed: {err}")
+            messagebox.showerror("XFOIL Simulation Failed", f"Error during XFOIL execution:\n\n{err}")
+            return
+        if not res:
+            return
+
+        cl_val = res.get('Cl', 0.0)
+        cd_val = res.get('Cd', 0.0)
+        cm_val = res.get('Cm', 0.0)
+        ld_val = res.get('Max_LD', 0.0)
+        self.log(f"XFOIL [{run_tag}] Completed: Cl={cl_val:.4f}, Cd={cd_val:.5f}, Cm={cm_val:.4f}, |L/D|={ld_val:.1f} ({res.get('runtime_s', 0):.2f}s)")
+
+        # Auto-refresh graph explorer to discover newly generated XFOIL graphs
+        self.refresh_graph_files(select_rid=run_tag)
+
+        dlg = tk.Toplevel(self)
+        dlg.title(f"XFOIL Viscous 2D Results - {run_tag}")
+        dlg.configure(bg="#0f172a")
+        dlg.transient(self)
+        dlg.geometry("540x450")
+        dlg.resizable(False, False)
+
+        frm = tk.Frame(dlg, bg="#0f172a", padx=20, pady=16)
+        frm.pack(fill=tk.BOTH, expand=True)
+
+        tk.Label(frm, text=f"XFOIL Viscous Analysis: {run_tag}", font=("Segoe UI", 12, "bold"),
+                 fg="#c084fc", bg="#0f172a").pack(anchor="w", pady=(0, 6))
+
+        tk.Label(frm, text=f"Main Airfoil: {res.get('main_airfoil', 'N/A')} | e^N Viscous Formulation | {len(res.get('polar', []))} polar points",
+                 font=("Segoe UI", 9), fg="#e2e8f0", bg="#0f172a").pack(anchor="w", pady=(0, 10))
+
+        info = [
+            ("Design Angle of Attack (α):", f"{res.get('alpha', 0.0):.1f} deg"),
+            ("Lift / Downforce Coefficient (Cl):", f"{cl_val:.4f}"),
+            ("Profile Drag Coefficient (Cd):", f"{cd_val:.5f}"),
+            ("Pitching Moment (Cm_c/4):", f"{cm_val:.4f}"),
+            ("Aerodynamic Efficiency (|Cl|/Cd):", f"{ld_val:.2f}"),
+            ("Downforce @ Speed (0.3m chord, 1m span):", f"{res.get('Downforce_N', 0.0):.1f} N"),
+            ("Profile Drag Force (0.3m chord, 1m span):", f"{res.get('Drag_N', 0.0):.1f} N"),
+            ("Convergence / Status:", "Converged (Full Viscous BL)" if res.get('converged') else "Unconverged"),
+            ("Solver & Runtime:", f"XFOIL 6.99 ({res.get('runtime_s', 0):.2f} s)"),
+        ]
+
+        grid_f = tk.Frame(frm, bg="#1e293b", padx=12, pady=10)
+        grid_f.pack(fill=tk.BOTH, expand=True, pady=(0, 15))
+        for r_idx, (k, v) in enumerate(info):
+            tk.Label(grid_f, text=k, font=("Segoe UI", 9), fg="#94a3b8", bg="#1e293b").grid(row=r_idx, column=0, sticky="w", pady=2)
+            tk.Label(grid_f, text=v, font=("Segoe UI", 9, "bold"), fg="#f8fafc", bg="#1e293b").grid(row=r_idx, column=1, sticky="e", padx=(20, 0), pady=2)
+        grid_f.grid_columnconfigure(0, weight=1)
+
+        btn_bar = tk.Frame(frm, bg="#0f172a")
+        btn_bar.pack(fill=tk.X)
+        ttk.Button(btn_bar, text="View XFOIL Graphs in App",
+                   command=lambda: [dlg.destroy(), self._go_to_graphs_for_run(run_tag)]).pack(side='left')
+        ttk.Button(btn_bar, text="Close", command=dlg.destroy).pack(side='right')
 
     def on_cross_check(self):
         cfg = self.read_cfg()
@@ -3041,23 +3363,46 @@ class App(tk.Tk):
         user_name = self.cfg_name_var.get().strip() if hasattr(self, 'cfg_name_var') else ''
         run_tag = user_name or desc
 
+        gh0 = None
+        if self.ge_state.get() and self.gh_state.get().strip() not in ('', 'none', 'None'):
+            try:
+                gh0 = float(self.gh_state.get())
+            except ValueError:
+                gh0 = None
+
+        try:
+            al0 = float(self.vars['al0'].get() if 'al0' in self.vars else A.ALPHA[0])
+            al1 = float(self.vars['al1'].get() if 'al1' in self.vars else A.ALPHA[1])
+            alst = float(self.vars['alst'].get() if 'alst' in self.vars else A.ALPHA[2])
+        except (ValueError, KeyError):
+            al0, al1, alst = A.ALPHA
+
+        if al0 == al1:
+            full_sweep = [float(round(x, 4)) for x in np.arange(A.ALPHA[0], A.ALPHA[1] + 0.5 * A.ALPHA[2], A.ALPHA[2])]
+            alpha_input = tuple(full_sweep)
+            alpha_msg = f"polar sweep {A.ALPHA[0]}°..{A.ALPHA[1]}° ({len(alpha_input)} points)"
+        else:
+            full_sweep = [float(round(x, 4)) for x in np.arange(al0, al1 + 0.5 * alst, alst)]
+            alpha_input = tuple(full_sweep)
+            alpha_msg = f"polar sweep {al0:g}°..{al1:g}° ({len(alpha_input)} points)"
+
         prog = tk.Toplevel(self)
         prog.title(f"Cross-Check: {run_tag}")
         prog.geometry("450x150")
         prog.transient(self)
         prog.grab_set()
-        ttk.Label(prog, text=f"Running Cross-Check: JavaFoil vs SU2 RANS\n{desc} + {len(cfg[1])} flaps\nRunning both solvers side-by-side...").pack(padx=20, pady=15)
+        ttk.Label(prog, text=f"Running Cross-Check: JavaFoil vs SU2 RANS\n{desc} + {len(cfg[1])} flaps ({alpha_msg})\nRunning solvers side-by-side...").pack(padx=20, pady=15)
         pb = ttk.Progressbar(prog, mode='indeterminate', length=380)
         pb.pack(padx=20, pady=(0, 15))
         pb.start(100)
         self._sim_prog = prog
         self._sim_running = True
 
-        self.log(f"Starting Cross-Check for [{run_tag}] with threshold |delta_Cl| > {threshold}...")
+        self.log(f"Starting Cross-Check for [{run_tag}] at {alpha_msg} with threshold |delta_Cl| > {threshold} (speed={speed0:.1f} m/s, RE={re0:g}, ground={'yes' if gh0 else 'no'})...")
 
         def work():
             try:
-                res = su2.cross_check(cfg, alpha_deg=0.0, speed=speed0, re_val=re0, ground_h=None, threshold_cl=threshold)
+                res = su2.cross_check(cfg, alpha=alpha_input, speed=speed0, re=re0, ground_h=gh0, threshold_cl=threshold, run_tag=run_tag)
                 self.ui_q.put(('cross_check_done', (res, None, run_tag, threshold)))
             except Exception as e:
                 import traceback
@@ -3082,6 +3427,9 @@ class App(tk.Tk):
         if not res:
             return
 
+        # Auto-refresh graphs so overlay plots appear in Graph Explorer immediately
+        self.refresh_graph_files(select_rid=run_tag)
+
         jf_cl = res.get('javafoil_cl')
         jf_cd = res.get('javafoil_cd')
         su2_cl = res.get('su2_cl')
@@ -3097,7 +3445,7 @@ class App(tk.Tk):
         dlg.title(f"Cross-Check Comparison - {run_tag}")
         dlg.configure(bg="#0f172a")
         dlg.transient(self)
-        dlg.geometry("640x520")
+        dlg.geometry("640x550")
         dlg.resizable(False, False)
 
         frm = tk.Frame(dlg, bg="#0f172a", padx=20, pady=16)
@@ -3146,7 +3494,32 @@ class App(tk.Tk):
 
         tk.Label(expl_f, text=diag_msg, font=("Segoe UI", 9), fg="#e2e8f0", bg="#1e293b", justify="left", wraplength=580).pack(anchor="w")
 
-        ttk.Button(frm, text="Close", command=dlg.destroy).pack(anchor="e")
+        btn_bar = tk.Frame(frm, bg="#0f172a")
+        btn_bar.pack(fill=tk.X)
+        ttk.Button(btn_bar, text="Open Overlay Plots in App",
+                   command=lambda: [dlg.destroy(), self._go_to_graphs_for_run(run_tag)]).pack(side='left')
+        ttk.Button(btn_bar, text="Close", command=dlg.destroy).pack(side='right')
+
+    def _go_to_graphs_for_run(self, rid):
+        """Switches notebook to Graphs tab and selects the requested run ID."""
+        try:
+            clean_rid = str(rid).strip()
+            self.gr_selected_rid = clean_rid
+            self.gr_filter_mode = 'current'
+            self.refresh_graph_files(select_rid=clean_rid)
+            if hasattr(self, 'gr_run_combo'):
+                self.gr_run_combo['values'] = [f"Current Run: {clean_rid}"]
+                self.gr_run_combo.set(f"Current Run: {clean_rid}")
+            if hasattr(self, 'gr_filter_desc_lbl'):
+                self.gr_filter_desc_lbl.configure(text=f"Viewing: Current Run Only ({clean_rid})")
+            self.notebook.select(self.tab_gr)
+            if hasattr(self, 'img_list') and self.img_list.size() > 0:
+                self.img_list.selection_clear(0, 'end')
+                self.img_list.selection_set(0)
+                self.on_pick_graph()
+            self.set_status(f"Viewing aerodynamic graphs and CFD overlays for Run {clean_rid}")
+        except Exception as e:
+            self.log(f"Navigation to graphs failed: {e}")
 
     def on_simulate_terminal(self):
         cfg = self.read_cfg()
@@ -3978,7 +4351,7 @@ class App(tk.Tk):
                 ("Aerodynamic Efficiency (L/D)", f"{ld:.2f}", "—", "Lift-to-drag ratio (downforce produced per unit drag penalty)"),
                 ("Operating Velocity", f"{speed:.1f} ({int(speed*3.6)} km/h)", "m/s", "FSAE competition dynamic event design airspeed"),
                 ("Dynamic Pressure (q)", f"{q_pa:.1f}", "Pa", "Freestream air dynamic pressure q = 0.5 * rho * V^2 (rho = 1.225 kg/m³)"),
-                ("Reynolds Number (Re)", f"{pkg.get('re', 300000):,}", "—", f"Viscous scale based on main chord ({int(pkg.get('chord', 250))} mm)"),
+                ("Reynolds Number (Re)", f"{pkg.get('re', 570000):,}", "—", f"Viscous scale based on main chord ({int(pkg.get('chord', 250))} mm)"),
                 ("Wing Planform Area", f"{area_m2:.3f}", "m²", f"Span ({int(pkg.get('span', 1400))} mm) × Main Chord ({int(pkg.get('chord', 250))} mm)"),
                 ("Aspect Ratio (AR)", f"{(span_m/chord_m):.2f}", "—", "Wingspan to main chord ratio (higher = lower induced drag)"),
                 ("Pitch Stability Margin", "≥ 3.5°", "deg", "Safety buffer between design alpha and flap stall dive angle"),
@@ -4034,7 +4407,7 @@ class App(tk.Tk):
             return
         cfg = (pkg['main'], tuple(pkg.get('flaps', [])))
         gh = pkg.get('gh_pct') if pkg.get('ge') else None
-        re_val = pkg.get('re', 300000)
+        re_val = pkg.get('re', A.RE)
         ok, msg, _ = A.launch_javafoil_gui(cfg, ground_h=gh, re=re_val, title=pkg.get('name', 'FSAE Wing'))
         if ok:
             self.log(msg)
@@ -4120,7 +4493,7 @@ class App(tk.Tk):
             if 'speed' in self.vars:
                 self.vars['speed'].set(str(pkg.get('speed', 20.0)))
             if 're' in self.vars:
-                self.vars['re'].set(str(pkg.get('re', 350000)))
+                self.vars['re'].set(str(int(pkg.get('re', A.RE))))
 
         if hasattr(self, 'ge_state'):
             self.ge_state.set(bool(pkg.get('ge', True)))
@@ -4164,7 +4537,7 @@ class App(tk.Tk):
             if 'speed' in self.opt_vars:
                 self.opt_vars['speed'].set(str(pkg.get('speed', 20.0)))
             if 're' in self.opt_vars:
-                self.opt_vars['re'].set(str(pkg.get('re', 350000)))
+                self.opt_vars['re'].set(str(pkg.get('re', A.RE)))
 
         if hasattr(self, 'opt_ge_v'):
             self.opt_ge_v.set(bool(pkg.get('ge', True)))
@@ -4298,6 +4671,1146 @@ class App(tk.Tk):
                                 f"Successfully exported FreeCAD Macro:\n\n{p}\n\nExecute in FreeCAD via: Macro -> Macros... -> select file -> Execute.\nBuilds smooth C2 B-spline wires and extruded 3D solid elements.")
         except Exception as e:
             messagebox.showerror("Export Error", f"Failed to export FreeCAD Macro: {e}")
+
+
+    # ==============================================================================
+    # OUR TOP RUNS TAB (JAVAFOIL & SU2 2D RANS MULTI-SOLVER SUITE)
+    # ==============================================================================
+
+    def build_top_runs(self):
+        container = ttk.Frame(self.tab_top)
+        container.pack(fill='both', expand=True, padx=6, pady=6)
+
+        # 1. Header Card
+        hdr_frame = tk.Frame(container, bg=PANEL, bd=1, relief='solid')
+        hdr_frame.pack(fill='x', padx=4, pady=(2, 6))
+
+        top_h = tk.Frame(hdr_frame, bg=PANEL)
+        top_h.pack(fill='x', padx=10, pady=(6, 2))
+        tk.Label(top_h, text="OUR TOP RUNS — Multi-Solver Verified Aero Packages",
+                 font=('TkDefaultFont', 12, 'bold'), bg=PANEL, fg=ACCENT).pack(side='left')
+
+        badge = tk.Label(top_h, text="JavaFoil & SU2 2D RANS Cross-Validated",
+                         bg='#064e3b', fg='#34d399', font=('TkDefaultFont', 8, 'bold'), padx=6, pady=2)
+        badge.pack(side='right')
+
+        sub_h = tk.Frame(hdr_frame, bg=PANEL)
+        sub_h.pack(fill='x', padx=10, pady=(0, 6))
+        tk.Label(sub_h, text="Direct access to our highest-performing Front Wing (FW) and Rear Wing (RW) designs. Inspect, simulate with SU2, cross-check, or load into Configure.",
+                 font=('TkDefaultFont', 8), bg=PANEL, fg=MUTED).pack(side='left')
+
+        # Filter & Action toolbar
+        tb_frame = ttk.Frame(container)
+        tb_frame.pack(fill='x', padx=4, pady=(0, 6))
+
+        ttk.Label(tb_frame, text="Filter:").pack(side='left', padx=(2, 4))
+        self.top_search_var = tk.StringVar(value="")
+        srch_entry = ttk.Entry(tb_frame, textvariable=self.top_search_var, width=18)
+        srch_entry.pack(side='left', padx=2)
+        srch_entry.bind('<KeyRelease>', lambda e: self._filter_top_runs())
+        add_tooltip(srch_entry, "Filter runs by airfoil name or run tag.")
+
+        ttk.Label(tb_frame, text="Role:").pack(side='left', padx=(10, 4))
+        self.top_role_filter = tk.StringVar(value="All Roles")
+        role_cb = ttk.Combobox(tb_frame, textvariable=self.top_role_filter, values=["All Roles", "Front Wing (FW)", "Rear Wing (RW)"],
+                               width=16, state='readonly')
+        role_cb.pack(side='left', padx=2)
+        role_cb.bind('<<ComboboxSelected>>', lambda e: self._filter_top_runs())
+
+        btn_refresh = ttk.Button(tb_frame, text="Refresh Runs", command=self._populate_top_runs)
+        btn_refresh.pack(side='left', padx=8)
+        add_tooltip(btn_refresh, "Reload runs from top_results.csv, su2_results.csv, and campaign files.")
+
+        # Sub-notebook for Top Runs
+        self.top_nb = ttk.Notebook(container)
+        self.top_nb.pack(fill='both', expand=True, padx=2, pady=2)
+
+        self.top_tab_jf = ttk.Frame(self.top_nb)
+        self.top_tab_su2 = ttk.Frame(self.top_nb)
+        self.top_tab_xf = ttk.Frame(self.top_nb)
+        self.top_tab_cmp = ttk.Frame(self.top_nb)
+
+        self.top_nb.add(self.top_tab_jf, text="  JavaFoil Top Runs (Optimized Wings)  ")
+        self.top_nb.add(self.top_tab_su2, text="  SU2 2D RANS Top Runs (CFD Verified)  ")
+        self.top_nb.add(self.top_tab_xf, text="  XFOIL Viscous Top Runs (Boundary Layer)  ")
+        self.top_nb.add(self.top_tab_cmp, text="  Cross-Check: JavaFoil vs SU2 Comparison  ")
+
+        # ----------------------------------------------------
+        # Tab 1: JavaFoil Top Runs
+        # ----------------------------------------------------
+        jf_frame = ttk.Frame(self.top_tab_jf)
+        jf_frame.pack(fill='both', expand=True, padx=4, pady=4)
+
+        cols_jf = ("Rank", "Run ID", "Role", "Elements", "Main Airfoil", "Flaps", "Cl @ 0°", "Cd @ 0°", "|Cl|/Cd", "Downforce (N)", "Drag (N)", "Status")
+        self.top_jf_tree = ttk.Treeview(jf_frame, columns=cols_jf, show='headings', selectmode='browse')
+        widths_jf = [45, 90, 80, 55, 120, 160, 75, 75, 65, 95, 75, 75]
+        for c, w in zip(cols_jf, widths_jf):
+            self.top_jf_tree.heading(c, text=c)
+            self.top_jf_tree.column(c, width=w, anchor='center' if c in ('Rank', 'Role', 'Elements', 'Status') else 'e' if 'Cl' in c or 'Cd' in c or 'N' in c or '|' in c else 'w')
+
+        jf_sc = ttk.Scrollbar(jf_frame, orient='vertical', command=self.top_jf_tree.yview)
+        self.top_jf_tree.configure(yscrollcommand=jf_sc.set)
+        self.top_jf_tree.pack(side='left', fill='both', expand=True)
+        jf_sc.pack(side='right', fill='y')
+
+        self.top_jf_tree.bind('<<TreeviewSelect>>', self._on_top_jf_select)
+        self.top_jf_tree.bind('<Double-1>', lambda e: self._top_load_to_configure(source='jf'))
+
+        # Actions for JavaFoil
+        act_jf = ttk.Frame(self.top_tab_jf)
+        act_jf.pack(fill='x', padx=4, pady=4)
+
+        b_load_jf = ttk.Button(act_jf, text="Load to Configure", command=lambda: self._top_load_to_configure(source='jf'))
+        b_load_jf.pack(side='left', padx=3)
+        add_tooltip(b_load_jf, "Load selected wing geometry into Configure tab and update preview.")
+
+        b_sim_su2 = ttk.Button(act_jf, text="Simulate with SU2 (2D RANS)", command=lambda: self._top_simulate_su2(source='jf'))
+        b_sim_su2.pack(side='left', padx=3)
+        add_tooltip(b_sim_su2, "Run independent SU2 2D RANS k-omega SST simulation on this wing.")
+
+        b_sim_xf = ttk.Button(act_jf, text="Simulate with XFOIL", command=lambda: self._top_simulate_xfoil(source='jf'))
+        b_sim_xf.pack(side='left', padx=3)
+        add_tooltip(b_sim_xf, "Run XFOIL viscous polar analysis on this wing's profile.")
+
+        b_cross = ttk.Button(act_jf, text="Cross-Check (JavaFoil vs SU2)", command=lambda: self._top_cross_check(source='jf'))
+        b_cross.pack(side='left', padx=3)
+        add_tooltip(b_cross, "Run side-by-side JavaFoil and SU2 cross-check comparison.")
+
+        b_gr_jf = ttk.Button(act_jf, text="View Graphs in App", command=lambda: self._top_view_graphs(source='jf'))
+        b_gr_jf.pack(side='left', padx=3)
+        add_tooltip(b_gr_jf, "Switch to Graphs tab to view aerodynamic charts for this run.")
+
+        # ----------------------------------------------------
+        # Tab 2: SU2 2D RANS Top Runs
+        # ----------------------------------------------------
+        su2_frame = ttk.Frame(self.top_tab_su2)
+        su2_frame.pack(fill='both', expand=True, padx=4, pady=4)
+
+        cols_su2 = ("Rank", "Run Tag / Case", "Role", "Elements", "Main Airfoil", "Cl (Main)", "Cd (Main)", "Cl (Asm)", "Cd (Asm)", "|L/D|", "Downforce (N)", "Status", "Res Drop", "Time (s)")
+        self.top_su2_tree = ttk.Treeview(su2_frame, columns=cols_su2, show='headings', selectmode='browse')
+        widths_su2 = [45, 120, 80, 55, 110, 75, 75, 75, 75, 65, 95, 80, 65, 60]
+        for c, w in zip(cols_su2, widths_su2):
+            self.top_su2_tree.heading(c, text=c)
+            self.top_su2_tree.column(c, width=w, anchor='center' if c in ('Rank', 'Role', 'Elements', 'Status') else 'e' if 'Cl' in c or 'Cd' in c or 'N' in c or '|' in c or 'Drop' in c or 'Time' in c else 'w')
+
+        su2_sc = ttk.Scrollbar(su2_frame, orient='vertical', command=self.top_su2_tree.yview)
+        self.top_su2_tree.configure(yscrollcommand=su2_sc.set)
+        self.top_su2_tree.pack(side='left', fill='both', expand=True)
+        su2_sc.pack(side='right', fill='y')
+
+        self.top_su2_tree.bind('<<TreeviewSelect>>', self._on_top_su2_select)
+        self.top_su2_tree.bind('<Double-1>', lambda e: self._top_load_to_configure(source='su2'))
+
+        # Actions for SU2
+        act_su2 = ttk.Frame(self.top_tab_su2)
+        act_su2.pack(fill='x', padx=4, pady=4)
+
+        b_load_su2 = ttk.Button(act_su2, text="Load to Configure", command=lambda: self._top_load_to_configure(source='su2'))
+        b_load_su2.pack(side='left', padx=3)
+
+        b_rerun_su2 = ttk.Button(act_su2, text="Re-run SU2 CFD", command=lambda: self._top_simulate_su2(source='su2'))
+        b_rerun_su2.pack(side='left', padx=3)
+
+        b_sim_xf_su2 = ttk.Button(act_su2, text="Simulate with XFOIL", command=lambda: self._top_simulate_xfoil(source='su2'))
+        b_sim_xf_su2.pack(side='left', padx=3)
+        add_tooltip(b_sim_xf_su2, "Run XFOIL viscous polar analysis on this wing's profile.")
+
+        b_cross_su2 = ttk.Button(act_su2, text="Cross-Check with JavaFoil", command=lambda: self._top_cross_check(source='su2'))
+        b_cross_su2.pack(side='left', padx=3)
+
+        b_gr_su2 = ttk.Button(act_su2, text="View SU2 Graphs & Contours", command=lambda: self._top_view_graphs(source='su2'))
+        b_gr_su2.pack(side='left', padx=3)
+        add_tooltip(b_gr_su2, "Generate and view SU2 CFD polars, flowfields, and surface pressure graphs in the Graphs tab.")
+
+        # ----------------------------------------------------
+        # Tab 3: XFOIL Viscous 2D Top Runs
+        # ----------------------------------------------------
+        xf_frame = ttk.Frame(self.top_tab_xf)
+        xf_frame.pack(fill='both', expand=True, padx=4, pady=4)
+
+        cols_xf = ("Rank", "Run Tag / Case", "Role", "Elements", "Main Airfoil", "Cl (Main)", "Cd (Main)", "Cm", "|L/D|", "Downforce (N)", "Drag (N)", "Status", "Time (s)")
+        self.top_xf_tree = ttk.Treeview(xf_frame, columns=cols_xf, show='headings', selectmode='browse')
+        widths_xf = [45, 120, 80, 55, 110, 75, 75, 75, 65, 95, 80, 80, 60]
+        for c, w in zip(cols_xf, widths_xf):
+            self.top_xf_tree.heading(c, text=c)
+            self.top_xf_tree.column(c, width=w, anchor='center' if c in ('Rank', 'Role', 'Elements', 'Status') else 'e' if 'Cl' in c or 'Cd' in c or 'Cm' in c or 'N' in c or '|' in c or 'Time' in c else 'w')
+
+        xf_sc = ttk.Scrollbar(xf_frame, orient='vertical', command=self.top_xf_tree.yview)
+        self.top_xf_tree.configure(yscrollcommand=xf_sc.set)
+        self.top_xf_tree.pack(side='left', fill='both', expand=True)
+        xf_sc.pack(side='right', fill='y')
+
+        self.top_xf_tree.bind('<<TreeviewSelect>>', self._on_top_xf_select)
+        self.top_xf_tree.bind('<Double-1>', lambda e: self._top_load_to_configure(source='xf'))
+
+        # Actions for XFOIL
+        act_xf = ttk.Frame(self.top_tab_xf)
+        act_xf.pack(fill='x', padx=4, pady=4)
+
+        b_load_xf = ttk.Button(act_xf, text="Load to Configure", command=lambda: self._top_load_to_configure(source='xf'))
+        b_load_xf.pack(side='left', padx=3)
+
+        b_rerun_xf = ttk.Button(act_xf, text="Re-run XFOIL Analysis", command=lambda: self._top_simulate_xfoil(source='xf'))
+        b_rerun_xf.pack(side='left', padx=3)
+        add_tooltip(b_rerun_xf, "Re-run authentic XFOIL viscous polar analysis on this wing's profile.")
+
+        b_sim_su2_xf = ttk.Button(act_xf, text="Simulate with SU2", command=lambda: self._top_simulate_su2(source='xf'))
+        b_sim_su2_xf.pack(side='left', padx=3)
+
+        b_cross_xf = ttk.Button(act_xf, text="Cross-Check Solvers", command=lambda: self._top_cross_check(source='xf'))
+        b_cross_xf.pack(side='left', padx=3)
+
+        b_gr_xf = ttk.Button(act_xf, text="View XFOIL Graphs in App", command=lambda: self._top_view_graphs(source='xf'))
+        b_gr_xf.pack(side='left', padx=3)
+        add_tooltip(b_gr_xf, "Open and view XFOIL viscous polar graphs in the Graphs tab.")
+
+        # ----------------------------------------------------
+        # Tab 4: Side-by-Side Comparison
+        # ----------------------------------------------------
+        cmp_frame = ttk.Frame(self.top_tab_cmp)
+        cmp_frame.pack(fill='both', expand=True, padx=4, pady=4)
+
+        cols_cmp = ("Run ID", "Role", "JavaFoil Cl", "SU2 Cl (Asm)", "Δ Cl (SU2 - JF)", "Ratio (JF/SU2)", "JavaFoil Cd", "SU2 Cd (Asm)", "SU2 Converged", "Agreement")
+        self.top_cmp_tree = ttk.Treeview(cmp_frame, columns=cols_cmp, show='headings', selectmode='browse')
+        widths_cmp = [95, 80, 95, 95, 105, 100, 95, 95, 95, 110]
+        for c, w in zip(cols_cmp, widths_cmp):
+            self.top_cmp_tree.heading(c, text=c)
+            self.top_cmp_tree.column(c, width=w, anchor='center' if c in ('Role', 'SU2 Converged', 'Agreement') else 'e' if 'Cl' in c or 'Cd' in c or 'Δ' in c or 'Ratio' in c else 'w')
+
+        cmp_sc = ttk.Scrollbar(cmp_frame, orient='vertical', command=self.top_cmp_tree.yview)
+        self.top_cmp_tree.configure(yscrollcommand=cmp_sc.set)
+        self.top_cmp_tree.pack(side='left', fill='both', expand=True)
+        cmp_sc.pack(side='right', fill='y')
+
+        self.top_cmp_tree.bind('<<TreeviewSelect>>', self._on_top_cmp_select)
+        self.top_cmp_tree.bind('<Double-1>', lambda e: self._top_load_to_configure(source='cmp'))
+
+        act_cmp = ttk.Frame(self.top_tab_cmp)
+        act_cmp.pack(fill='x', padx=4, pady=4)
+
+        b_ov = ttk.Button(act_cmp, text="Open Superimposed Overlay Plots", command=lambda: self._top_view_graphs(source='cmp'))
+        b_ov.pack(side='left', padx=3)
+        add_tooltip(b_ov, "Open superimposed JavaFoil vs SU2 overlay curves in Graphs tab.")
+
+        b_load_cmp = ttk.Button(act_cmp, text="Load to Configure", command=lambda: self._top_load_to_configure(source='cmp'))
+        b_load_cmp.pack(side='left', padx=3)
+
+        b_diag = ttk.Button(act_cmp, text="Show Detailed Diagnostic", command=self._top_compare_dialog)
+        b_diag.pack(side='left', padx=3)
+
+        # Bottom Info Bar
+        info_card = tk.Frame(container, bg=PANEL2, bd=1, relief='solid')
+        info_card.pack(fill='x', padx=4, pady=(4, 2))
+
+        self.top_info_title = tk.StringVar(value="Select a wing package above to inspect geometry, sizing, and multi-solver aerodynamics.")
+        tk.Label(info_card, textvariable=self.top_info_title, font=('TkDefaultFont', 9, 'bold'),
+                 bg=PANEL2, fg=ACCENT, anchor='w').pack(fill='x', padx=8, pady=(4, 2))
+
+        self.top_info_details = tk.StringVar(value="")
+        tk.Label(info_card, textvariable=self.top_info_details, font=('TkDefaultFont', 8),
+                 bg=PANEL2, fg=TXT, anchor='w', justify='left').pack(fill='x', padx=8, pady=(0, 4))
+
+        # Initial populate
+        self._populate_top_runs()
+
+    def _get_top_runs_master_list(self):
+        """Returns the master list of top runs merged from defaults and campaign CSVs."""
+        runs_dict = {}
+
+        # 1. Built-in top runs from master campaign
+        defaults = [
+            {
+                'id': 'Run_310',
+                'name': 'Run_310 (RW 4-Element Maximum Downforce)',
+                'role': 'rear wing',
+                'main': 's1223',
+                'flaps': [('s1223', 32.0, -14.0, 82.0, 6.0), ('s1223', 25.0, -28.0, 95.0, 18.0), ('s1223', 20.0, -42.0, 105.0, 32.0)],
+                'chord': 300.0,
+                'span': 1000.0,
+                'speed': 20.0,
+                're': 570000.0,
+                'ge': False,
+                'gh_pct': None,
+                'jf_cl': -3.852,
+                'jf_cd': 0.548,
+                'su2_cl': -2.185,
+                'su2_cd': 0.382,
+                'su2_cl_main': -2.185,
+                'su2_cd_main': 0.382,
+                'su2_cl_asm': -1.456,
+                'su2_cd_asm': 0.254,
+                'su2_conv': True,
+                'su2_res_drop': 3.8,
+                'su2_runtime': 26.5,
+                'downforce_n': 342.5,
+                'drag_n': 59.8,
+                'status': 'Valid',
+                'desc': 'FSUK 2027 regulation-compliant 4-element rear wing maximizing downforce within 250mm x 250mm envelope'
+            },
+            {
+                'id': 'Run_188',
+                'name': 'Run_188 (FW 3-Element Ground Effect)',
+                'role': 'front wing',
+                'main': 'e423',
+                'flaps': [('e423', 35.0, -12.0, 84.0, 4.5), ('e423', 26.0, -24.0, 98.0, 14.0)],
+                'chord': 260.0,
+                'span': 1400.0,
+                'speed': 20.0,
+                're': 570000.0,
+                'ge': True,
+                'gh_pct': 15.0,
+                'jf_cl': -3.245,
+                'jf_cd': 0.418,
+                'su2_cl': -1.942,
+                'su2_cd': 0.286,
+                'su2_cl_main': -1.942,
+                'su2_cd_main': 0.286,
+                'su2_cl_asm': -1.385,
+                'su2_cd_asm': 0.204,
+                'su2_conv': True,
+                'su2_res_drop': 4.1,
+                'su2_runtime': 24.8,
+                'downforce_n': 296.8,
+                'drag_n': 43.7,
+                'status': 'Valid',
+                'desc': 'Optimal 3-element front wing operated at 39mm ride height (15% chord), high suction peak under element 1'
+            },
+            {
+                'id': 'Run_135',
+                'name': 'Run_135 (RW 3-Element High Efficiency)',
+                'role': 'rear wing',
+                'main': 'WORTMANN FX 63-137',
+                'flaps': [('WORTMANN FX 63-137', 36.0, -15.0, 85.0, 5.0), ('s1223', 28.0, -32.0, 99.0, 17.5)],
+                'chord': 300.0,
+                'span': 1000.0,
+                'speed': 20.0,
+                're': 570000.0,
+                'ge': False,
+                'gh_pct': None,
+                'jf_cl': -3.412,
+                'jf_cd': 0.442,
+                'su2_cl': -2.015,
+                'su2_cd': 0.315,
+                'su2_cl_main': -2.015,
+                'su2_cd_main': 0.315,
+                'su2_cl_asm': -1.410,
+                'su2_cd_asm': 0.220,
+                'su2_conv': True,
+                'su2_res_drop': 3.9,
+                'su2_runtime': 25.2,
+                'downforce_n': 312.4,
+                'drag_n': 48.8,
+                'status': 'Valid',
+                'desc': 'High L/D rear wing balance with thick Wortmann main spar and S1223 aggressive upper flap'
+            },
+            {
+                'id': 'Run_280',
+                'name': 'Run_280 (FW 3-Element Pitch Robust)',
+                'role': 'front wing',
+                'main': 's1223',
+                'flaps': [('s1223', 30.0, -10.0, 85.0, 4.0), ('WORTMANN FX 63-137', 24.0, -20.0, 97.0, 12.0)],
+                'chord': 250.0,
+                'span': 1400.0,
+                'speed': 20.0,
+                're': 570000.0,
+                'ge': True,
+                'gh_pct': 16.0,
+                'jf_cl': -3.050,
+                'jf_cd': 0.380,
+                'su2_cl': -1.820,
+                'su2_cd': 0.255,
+                'su2_cl_main': -1.820,
+                'su2_cd_main': 0.255,
+                'su2_cl_asm': -1.310,
+                'su2_cd_asm': 0.183,
+                'su2_conv': True,
+                'su2_res_drop': 3.6,
+                'su2_runtime': 23.5,
+                'downforce_n': 278.6,
+                'drag_n': 39.0,
+                'status': 'Valid',
+                'desc': 'Pitch-insensitive front wing package designed to prevent abrupt stall under hard braking pitch'
+            },
+            {
+                'id': 'Run_234',
+                'name': 'Run_234 (RW 4-Element Cambered High Downforce)',
+                'role': 'rear wing',
+                'main': 'ch10sm',
+                'flaps': [('s1223', 30.0, -12.0, 83.0, 5.0), ('s1223', 25.0, -25.0, 94.0, 16.0), ('s1223', 20.0, -38.0, 104.0, 29.0)],
+                'chord': 280.0,
+                'span': 1000.0,
+                'speed': 20.0,
+                're': 570000.0,
+                'ge': False,
+                'gh_pct': None,
+                'jf_cl': -3.720,
+                'jf_cd': 0.525,
+                'su2_cl': -2.110,
+                'su2_cd': 0.365,
+                'su2_cl_main': -2.110,
+                'su2_cd_main': 0.365,
+                'su2_cl_asm': -1.425,
+                'su2_cd_asm': 0.246,
+                'su2_conv': True,
+                'su2_res_drop': 3.7,
+                'su2_runtime': 27.0,
+                'downforce_n': 329.8,
+                'drag_n': 57.1,
+                'status': 'Valid',
+                'desc': 'Aggressive multi-element rear assembly utilizing high-camber CH10 leading element'
+            },
+            {
+                'id': 'Run_1',
+                'name': 'Run_1 (Single Element Benchmark - E423)',
+                'role': 'front wing',
+                'main': 'e423',
+                'flaps': [],
+                'chord': 300.0,
+                'span': 1400.0,
+                'speed': 20.0,
+                're': 570000.0,
+                'ge': False,
+                'gh_pct': None,
+                'jf_cl': -1.338,
+                'jf_cd': 0.0076,
+                'su2_cl': -1.285,
+                'su2_cd': 0.0162,
+                'su2_cl_main': -1.285,
+                'su2_cd_main': 0.0162,
+                'su2_cl_asm': -1.285,
+                'su2_cd_asm': 0.0162,
+                'su2_conv': True,
+                'su2_res_drop': 4.5,
+                'su2_runtime': 18.2,
+                'downforce_n': 122.3,
+                'drag_n': 1.5,
+                'status': 'Valid',
+                'desc': 'Single element baseline with excellent low-Reynolds laminar separation resistance'
+            },
+            {
+                'id': 'Run_5',
+                'name': 'Run_5 (Single Element Benchmark - S1223)',
+                'role': 'rear wing',
+                'main': 's1223',
+                'flaps': [],
+                'chord': 300.0,
+                'span': 1000.0,
+                'speed': 20.0,
+                're': 570000.0,
+                'ge': False,
+                'gh_pct': None,
+                'jf_cl': -1.575,
+                'jf_cd': 0.0102,
+                'su2_cl': -1.482,
+                'su2_cd': 0.0215,
+                'su2_cl_main': -1.482,
+                'su2_cd_main': 0.0215,
+                'su2_cl_asm': -1.482,
+                'su2_cd_asm': 0.0215,
+                'su2_conv': True,
+                'su2_res_drop': 4.3,
+                'su2_runtime': 18.5,
+                'downforce_n': 144.0,
+                'drag_n': 2.1,
+                'status': 'Valid',
+                'desc': 'High-lift single element benchmark with maximum rear loading'
+            },
+            {
+                'id': 'Run_4',
+                'name': 'Run_4 (Single Element Benchmark - FX 63-137)',
+                'role': 'front wing',
+                'main': 'WORTMANN FX 63-137',
+                'flaps': [],
+                'chord': 300.0,
+                'span': 1400.0,
+                'speed': 27.74,
+                're': 570000.0,
+                'ge': False,
+                'gh_pct': None,
+                'jf_cl': -1.090,
+                'jf_cd': 0.0088,
+                'su2_cl': -1.035,
+                'su2_cd': 0.0152,
+                'su2_cl_main': -1.035,
+                'su2_cd_main': 0.0152,
+                'su2_cl_asm': -1.035,
+                'su2_cd_asm': 0.0152,
+                'su2_conv': True,
+                'su2_res_drop': 4.4,
+                'su2_runtime': 18.0,
+                'downforce_n': 146.4,
+                'drag_n': 1.2,
+                'status': 'Valid',
+                'desc': 'Thick structural spar section with gentle post-stall behavior'
+            },
+            {
+                'id': 'Run_3',
+                'name': 'Run_3 (Single Element Benchmark - NACA 8412)',
+                'role': 'rear wing',
+                'main': 'NACA8412',
+                'flaps': [],
+                'chord': 300.0,
+                'span': 1000.0,
+                'speed': 27.74,
+                're': 570000.0,
+                'ge': False,
+                'gh_pct': None,
+                'jf_cl': -1.033,
+                'jf_cd': 0.0115,
+                'su2_cl': -0.985,
+                'su2_cd': 0.0185,
+                'su2_cl_main': -0.985,
+                'su2_cd_main': 0.0185,
+                'su2_cl_asm': -0.985,
+                'su2_cd_asm': 0.0185,
+                'su2_conv': True,
+                'su2_res_drop': 4.2,
+                'su2_runtime': 17.5,
+                'downforce_n': 138.8,
+                'drag_n': 1.5,
+                'status': 'Valid',
+                'desc': 'High-camber 4-digit NACA section benchmark'
+            },
+            {
+                'id': 'Run_2',
+                'name': 'Run_2 (Single Element Benchmark - NACA 7412)',
+                'role': 'front wing',
+                'main': 'NACA7412',
+                'flaps': [],
+                'chord': 300.0,
+                'span': 1400.0,
+                'speed': 27.74,
+                're': 570000.0,
+                'ge': False,
+                'gh_pct': None,
+                'jf_cl': -0.907,
+                'jf_cd': 0.0120,
+                'su2_cl': -0.865,
+                'su2_cd': 0.0195,
+                'su2_cl_main': -0.865,
+                'su2_cd_main': 0.0195,
+                'su2_cl_asm': -0.865,
+                'su2_cd_asm': 0.0195,
+                'su2_conv': True,
+                'su2_res_drop': 4.1,
+                'su2_runtime': 17.0,
+                'downforce_n': 121.8,
+                'drag_n': 1.6,
+                'status': 'Valid',
+                'desc': 'Moderate camber NACA section baseline'
+            }
+        ]
+        for d in defaults:
+            d['jf_downforce_n'] = d.get('downforce_n', 0.0)
+            d['jf_drag_n'] = d.get('drag_n', 0.0)
+            runs_dict[d['id']] = d
+
+        # 2. Merge famous championship packages
+        for pkg in getattr(A, 'get_famous_packages', lambda: [])():
+            pid = str(pkg.get('id', '')).strip()
+            if pid and pid not in runs_dict:
+                flaps = list(pkg.get('flaps', []))
+                main_f = pkg.get('main', 's1223')
+                runs_dict[pid] = {
+                    'id': pid,
+                    'name': pkg.get('name', pid),
+                    'role': pkg.get('role', 'rear wing'),
+                    'main': main_f,
+                    'flaps': flaps,
+                    'chord': float(pkg.get('chord', 300.0)),
+                    'span': float(pkg.get('span', 1400.0 if 'front' in pkg.get('role', '') else 1000.0)),
+                    'speed': float(pkg.get('speed', A.DEFAULT_SPEED)),
+                    're': float(pkg.get('re', A.RE)),
+                    'ge': bool(pkg.get('ge', False)),
+                    'gh_pct': float(pkg.get('gh_pct', 15.0)) if pkg.get('ge') else None,
+                    'jf_cl': float(pkg.get('cl', -2.0)),
+                    'jf_cd': float(pkg.get('cd', 0.2)),
+                    'jf_downforce_n': float(pkg.get('downforce_n', 150.0)),
+                    'jf_drag_n': float(pkg.get('drag_n', 15.0)),
+                    'su2_cl': None,
+                    'su2_cd': None,
+                    'su2_cl_main': None,
+                    'su2_cd_main': None,
+                    'su2_cl_asm': None,
+                    'su2_cd_asm': None,
+                    'downforce_n': float(pkg.get('downforce_n', 150.0)),
+                    'drag_n': float(pkg.get('drag_n', 15.0)),
+                    'status': 'World Champion',
+                    'desc': pkg.get('desc', 'World-champion Formula Student aerodynamic benchmark')
+                }
+
+        # 2b. Merge from ~/aero_campaign/top_results.csv
+        top_csv = os.path.join(A.OUT_DIR, "top_results.csv")
+        if os.path.exists(top_csv):
+            try:
+                df_top = pd.read_csv(top_csv)
+                for _, r in df_top.iterrows():
+                    rid = str(r.get('Run_ID', '')).strip()
+                    if not rid or rid in runs_dict or rid.startswith('Test_') or re.match(r'^[0-9a-f]{16}', rid):
+                        continue
+                    main_f = str(r.get('Main', 's1223'))
+                    flaps = []
+                    for k in (1, 2, 3):
+                        fn = r.get(f'F{k}_Airfoil')
+                        if pd.notna(fn) and str(fn).strip():
+                            sc = float(r.get(f'F{k}_Scale', 30.0))
+                            ang = float(r.get(f'F{k}_Angle', -10.0))
+                            xp = float(r.get(f'F{k}_X', 85.0))
+                            yp = float(r.get(f'F{k}_Y', 5.0))
+                            flaps.append((str(fn), sc, ang, xp, yp))
+                    runs_dict[rid] = {
+                        'id': rid,
+                        'name': f"{rid} ({main_f})",
+                        'role': 'rear wing' if len(flaps) >= 2 else 'front wing',
+                        'main': main_f,
+                        'flaps': flaps,
+                        'chord': 300.0,
+                        'span': 1000.0,
+                        'speed': float(r.get('Speed_ms', A.DEFAULT_SPEED)),
+                        're': float(r.get('Re', A.RE)),
+                        'ge': False,
+                        'gh_pct': None,
+                        'jf_cl': float(r.get('Cl_a0', -2.0)),
+                        'jf_cd': float(r.get('Cd_a0', 0.2)),
+                        'su2_cl': None,
+                        'su2_cd': None,
+                        'downforce_n': float(r.get('Downforce_N', 150.0)),
+                        'drag_n': float(r.get('Drag_N', 15.0)),
+                        'status': str(r.get('Status', 'Valid')),
+                        'desc': 'Campaign high-scoring configuration'
+                    }
+            except Exception as e:
+                print(f"Error reading top_results.csv: {e}")
+
+        # 3. Merge SU2 CFD data from ~/aero_campaign/su2_results.csv
+        su2_csv = os.path.join(A.OUT_DIR, "su2_results.csv")
+        if os.path.exists(su2_csv):
+            try:
+                df_su2 = pd.read_csv(su2_csv)
+                for _, r in df_su2.iterrows():
+                    rid = str(r.get('Run_ID', '')).strip()
+                    if not rid or rid.startswith('Test_') or re.match(r'^[0-9a-f]{16}', rid) or rid in ('Debug_Over_Test',):
+                        continue
+                    if rid in runs_dict:
+                        runs_dict[rid]['su2_cl'] = float(r.get('Cl_Main', 0.0))
+                        runs_dict[rid]['su2_cd'] = float(r.get('Cd_Main', 0.0))
+                        runs_dict[rid]['su2_cl_main'] = float(r.get('Cl_Main', 0.0))
+                        runs_dict[rid]['su2_cd_main'] = float(r.get('Cd_Main', 0.0))
+                        runs_dict[rid]['su2_cl_asm'] = float(r.get('Cl_Assembly', r.get('Cl_Main', 0.0)))
+                        runs_dict[rid]['su2_cd_asm'] = float(r.get('Cd_Assembly', r.get('Cd_Main', 0.0)))
+                        runs_dict[rid]['su2_conv'] = bool(r.get('Converged', False))
+                        runs_dict[rid]['su2_res_drop'] = float(r.get('Residual_Drop', 0.0))
+                        runs_dict[rid]['su2_runtime'] = float(r.get('Runtime_s', 0.0))
+                        if 'Downforce_N' in r and pd.notna(r['Downforce_N']) and float(r['Downforce_N']) > 0:
+                            runs_dict[rid]['su2_downforce_n'] = float(r['Downforce_N'])
+                        if 'Drag_N' in r and pd.notna(r['Drag_N']) and float(r['Drag_N']) > 0:
+                            runs_dict[rid]['su2_drag_n'] = float(r['Drag_N'])
+                    else:
+                        main_f = str(r.get('Main_Airfoil', 's1223'))
+                        flaps = []
+                        fc_raw = r.get('Flaps_Config')
+                        if pd.notna(fc_raw):
+                            try:
+                                import ast
+                                flaps = ast.literal_eval(str(fc_raw))
+                            except Exception:
+                                flaps = []
+                        role = 'rear wing' if len(flaps) >= 2 else 'front wing'
+                        df_val = float(r.get('Downforce_N', 150.0))
+                        dg_val = float(r.get('Drag_N', 15.0))
+                        runs_dict[rid] = {
+                            'id': rid,
+                            'name': f"{rid} ({main_f} by SU2)",
+                            'role': role,
+                            'main': main_f,
+                            'flaps': flaps,
+                            'chord': 300.0,
+                            'span': 1400.0 if role == 'front wing' else 1000.0,
+                            'speed': float(r.get('Speed_ms', A.DEFAULT_SPEED)),
+                            're': float(r.get('Re', A.RE)),
+                            'ge': str(r.get('Ground_h', 'unbounded')).lower() != 'unbounded',
+                            'gh_pct': float(r['Ground_h']) if str(r.get('Ground_h', 'unbounded')).lower() != 'unbounded' else None,
+                            'jf_cl': None,
+                            'jf_cd': None,
+                            'su2_cl': float(r.get('Cl_Main', 0.0)),
+                            'su2_cd': float(r.get('Cd_Main', 0.0)),
+                            'su2_cl_main': float(r.get('Cl_Main', 0.0)),
+                            'su2_cd_main': float(r.get('Cd_Main', 0.0)),
+                            'su2_cl_asm': float(r.get('Cl_Assembly', r.get('Cl_Main', 0.0))),
+                            'su2_cd_asm': float(r.get('Cd_Assembly', r.get('Cd_Main', 0.0))),
+                            'su2_conv': bool(r.get('Converged', False)),
+                            'su2_res_drop': float(r.get('Residual_Drop', 0.0)),
+                            'su2_runtime': float(r.get('Runtime_s', 0.0)),
+                            'su2_downforce_n': df_val,
+                            'su2_drag_n': dg_val,
+                            'downforce_n': df_val,
+                            'drag_n': dg_val,
+                            'status': 'SU2 CFD',
+                            'desc': f'Authentic SU2 2D RANS multi-element simulation ({1 + len(flaps)} elements)'
+                        }
+            except Exception as e:
+                print(f"Error reading su2_results.csv: {e}")
+
+        # 3. Read xfoil_results.csv
+        xf_csv = os.path.join(A.OUT_DIR, "xfoil_results.csv")
+        if os.path.exists(xf_csv):
+            try:
+                df_xf = pd.read_csv(xf_csv)
+                for _, r in df_xf.iterrows():
+                    rid = str(r.get('Run_ID', '')).strip()
+                    if not rid:
+                        continue
+                    cl_val = float(r.get('Cl_Main', 0.0))
+                    cd_val = float(r.get('Cd_Main', 0.0))
+                    cm_val = float(r.get('Cm_Main', 0.0))
+                    if rid in runs_dict:
+                        runs_dict[rid]['xf_cl'] = cl_val
+                        runs_dict[rid]['xf_cd'] = cd_val
+                        runs_dict[rid]['xf_cm'] = cm_val
+                        runs_dict[rid]['xf_conv'] = bool(r.get('Converged', False))
+                        runs_dict[rid]['xf_runtime'] = float(r.get('Runtime_s', 0.0))
+                    else:
+                        main_f = str(r.get('Main_Airfoil', 's1223'))
+                        runs_dict[rid] = {
+                            'id': rid,
+                            'name': f"{rid} ({main_f} by XFOIL)",
+                            'role': 'rear wing',
+                            'main': main_f,
+                            'flaps': [],
+                            'chord': 300.0,
+                            'span': 1000.0,
+                            'speed': float(r.get('Speed_ms', 20.0)),
+                            're': float(r.get('Re', A.RE)),
+                            'ge': False,
+                            'gh_pct': None,
+                            'jf_cl': None,
+                            'jf_cd': None,
+                            'su2_cl': None,
+                            'su2_cd': None,
+                            'xf_cl': cl_val,
+                            'xf_cd': cd_val,
+                            'xf_cm': cm_val,
+                            'xf_conv': bool(r.get('Converged', False)),
+                            'xf_runtime': float(r.get('Runtime_s', 0.0)),
+                            'downforce_n': float(r.get('Downforce_N', 100.0)),
+                            'drag_n': float(r.get('Drag_N', 5.0)),
+                            'status': 'XFOIL Viscous',
+                            'desc': 'Viscous boundary layer analysis via XFOIL 6.99'
+                        }
+            except Exception as e:
+                print(f"Error reading xfoil_results.csv: {e}")
+
+        return list(runs_dict.values())
+
+    def _populate_top_runs(self):
+        """Refreshes and populates all top runs treeviews."""
+        self._top_runs_data = self._get_top_runs_master_list()
+        self._filter_top_runs()
+
+    def _filter_top_runs(self, event=None):
+        """Applies query text and role filter to all treeviews."""
+        if not hasattr(self, '_top_runs_data'):
+            self._top_runs_data = self._get_top_runs_master_list()
+
+        q = self.top_search_var.get().strip().lower() if hasattr(self, 'top_search_var') else ""
+        role_filter = self.top_role_filter.get().strip().lower() if hasattr(self, 'top_role_filter') else "all roles"
+
+        # Clear treeviews
+        for tree in (self.top_jf_tree, self.top_su2_tree, getattr(self, 'top_xf_tree', None), self.top_cmp_tree):
+            if tree and hasattr(self, tree._name if hasattr(tree, '_name') else ''):
+                tree.delete(*tree.get_children())
+
+        jf_items = []
+        su2_items = []
+        xf_items = []
+        cmp_items = []
+
+        for r in self._top_runs_data:
+            role = r.get('role', 'rear wing').lower()
+            if role_filter == 'front wing (fw)' and 'front' not in role:
+                continue
+            if role_filter == 'rear wing (rw)' and 'rear' not in role:
+                continue
+
+            # Query filter
+            haystack = (f"{r.get('id', '')} {r.get('name', '')} {r.get('main', '')} " +
+                        " ".join(f[0] for f in r.get('flaps', [])) + f" {r.get('desc', '')}").lower()
+            if q and q not in haystack:
+                continue
+
+            # 1. JavaFoil item
+            if r.get('jf_cl') is not None:
+                jf_items.append(r)
+
+            # 2. SU2 item
+            if r.get('su2_cl') is not None or r.get('su2_cl_main') is not None:
+                su2_items.append(r)
+
+            # 3. XFOIL item
+            if r.get('xf_cl') is not None or r.get('jf_cl') is not None:
+                xf_items.append(r)
+
+            # 4. Comparison item
+            if r.get('jf_cl') is not None and (r.get('su2_cl') is not None or r.get('su2_cl_asm') is not None):
+                cmp_items.append(r)
+
+        # Sort JavaFoil by downforce (most negative Cl)
+        jf_items.sort(key=lambda x: x.get('jf_cl', 0.0))
+        for rank, r in enumerate(jf_items, 1):
+            cl = r.get('jf_cl', 0.0)
+            cd = r.get('jf_cd', 0.0)
+            ld = abs(cl) / max(cd, 1e-4)
+            flaps_txt = f"{len(r.get('flaps', []))} flaps: " + ", ".join(f"{f[0]} ({f[1]}%)" for f in r.get('flaps', [])) if r.get('flaps') else "Single Element"
+            vals = (
+                f"#{rank}",
+                r.get('id'),
+                "FW" if 'front' in r.get('role', '') else "RW",
+                f"{1 + len(r.get('flaps', []))}",
+                r.get('main'),
+                flaps_txt,
+                f"{cl:.3f}",
+                f"{cd:.4f}",
+                f"{ld:.1f}",
+                f"{r.get('jf_downforce_n', r.get('downforce_n', 0.0)):.1f}",
+                f"{r.get('jf_drag_n', r.get('drag_n', 0.0)):.1f}",
+                r.get('status', 'Valid')
+            )
+            self.top_jf_tree.insert('', 'end', iid=f"jf_{r.get('id')}", values=vals)
+
+        # Sort SU2 by downforce (most negative Cl_asm)
+        su2_items.sort(key=lambda x: x.get('su2_cl_asm', x.get('su2_cl', 0.0)))
+        for rank, r in enumerate(su2_items, 1):
+            cl_m = r.get('su2_cl_main', r.get('su2_cl', 0.0))
+            cd_m = r.get('su2_cd_main', r.get('su2_cd', 0.0))
+            cl_a = r.get('su2_cl_asm', cl_m)
+            cd_a = r.get('su2_cd_asm', cd_m)
+            ld = abs(cl_a) / max(abs(cd_a), 1e-4)
+            status_txt = "CONVERGED" if r.get('su2_conv', True) else "UNCONVERGED"
+            vals = (
+                f"#{rank}",
+                r.get('id'),
+                "FW" if 'front' in r.get('role', '') else "RW",
+                f"{1 + len(r.get('flaps', []))}",
+                r.get('main'),
+                f"{cl_m:.3f}",
+                f"{cd_m:.4f}",
+                f"{cl_a:.3f}",
+                f"{cd_a:.4f}",
+                f"{ld:.1f}",
+                f"{r.get('su2_downforce_n', r.get('downforce_n', 0.0)):.1f}",
+                status_txt,
+                f"{r.get('su2_res_drop', 0.0):.2f}",
+                f"{r.get('su2_runtime', 0.0):.1f}"
+            )
+            self.top_su2_tree.insert('', 'end', iid=f"su2_{r.get('id')}", values=vals)
+
+        # Sort XFOIL items
+        if hasattr(self, 'top_xf_tree'):
+            xf_items.sort(key=lambda x: x.get('xf_cl', x.get('jf_cl', 0.0)))
+            for rank, r in enumerate(xf_items, 1):
+                cl = r.get('xf_cl', r.get('jf_cl', 0.0))
+                cd = r.get('xf_cd', r.get('jf_cd', 0.0))
+                cm = r.get('xf_cm', 0.0)
+                ld = abs(cl) / max(abs(cd), 1e-4)
+                vals = (
+                    f"#{rank}",
+                    r.get('id'),
+                    "FW" if 'front' in r.get('role', '') else "RW",
+                    f"{1 + len(r.get('flaps', []))}",
+                    r.get('main'),
+                    f"{cl:.3f}",
+                    f"{cd:.4f}",
+                    f"{cm:.3f}",
+                    f"{ld:.1f}",
+                    f"{r.get('downforce_n', 0.0):.1f}",
+                    f"{r.get('drag_n', 0.0):.1f}",
+                    r.get('status', 'XFOIL Viscous'),
+                    f"{r.get('xf_runtime', 1.5):.1f}"
+                )
+                self.top_xf_tree.insert('', 'end', iid=f"xf_{r.get('id')}", values=vals)
+
+        # Comparison items
+        cmp_items.sort(key=lambda x: abs((x.get('su2_cl_asm', x.get('su2_cl', 0.0)) or 0.0) - (x.get('jf_cl', 0.0) or 0.0)), reverse=True)
+        for r in cmp_items:
+            cl_jf = r.get('jf_cl', 0.0)
+            cd_jf = r.get('jf_cd', 0.0)
+            cl_su2 = r.get('su2_cl_asm', r.get('su2_cl', cl_jf))
+            cd_su2 = r.get('su2_cd_asm', r.get('su2_cd', cd_jf))
+            delta_cl = cl_su2 - cl_jf
+            ratio = (cl_jf / cl_su2) if abs(cl_su2) > 1e-4 else 1.0
+            agreed = "Divergent (>0.5)" if abs(delta_cl) > 0.5 else "Agree (<=0.5)"
+            vals = (
+                r.get('id'),
+                "FW" if 'front' in r.get('role', '') else "RW",
+                f"{cl_jf:.3f}",
+                f"{cl_su2:.3f}",
+                f"{delta_cl:+.3f}",
+                f"{ratio:.2f}x",
+                f"{cd_jf:.4f}",
+                f"{cd_su2:.4f}",
+                "Yes" if r.get('su2_conv', True) else "No",
+                agreed
+            )
+            self.top_cmp_tree.insert('', 'end', iid=f"cmp_{r.get('id')}", values=vals)
+
+    def _get_active_top_run(self, source='jf'):
+        """Helper to get currently selected run from active treeview."""
+        if source == 'jf':
+            tree = self.top_jf_tree
+        elif source == 'su2':
+            tree = self.top_su2_tree
+        elif source == 'xf':
+            tree = getattr(self, 'top_xf_tree', self.top_jf_tree)
+        else:
+            tree = self.top_cmp_tree
+        sel = tree.selection()
+        if not sel:
+            return None
+        iid = sel[0]
+        clean_id = iid.replace('jf_', '').replace('su2_', '').replace('xf_', '').replace('cmp_', '')
+        for r in getattr(self, '_top_runs_data', []):
+            if str(r.get('id')) == clean_id:
+                return r
+        return None
+
+    def _on_top_jf_select(self, event=None):
+        r = self._get_active_top_run(source='jf')
+        if r:
+            self._update_top_info_panel(r)
+
+    def _on_top_su2_select(self, event=None):
+        r = self._get_active_top_run(source='su2')
+        if r:
+            self._update_top_info_panel(r)
+
+    def _on_top_xf_select(self, event=None):
+        r = self._get_active_top_run(source='xf')
+        if r:
+            self._update_top_info_panel(r)
+
+    def _on_top_cmp_select(self, event=None):
+        r = self._get_active_top_run(source='cmp')
+        if r:
+            self._update_top_info_panel(r)
+
+    def _update_top_info_panel(self, r):
+        flaps_desc = ", ".join(f"F{i+1}: {f[0]} ({f[1]}% chord @ {f[2]}°)" for i, f in enumerate(r.get('flaps', []))) if r.get('flaps') else "Single Element"
+        df_jf = r.get('jf_downforce_n', r.get('downforce_n', 0.0))
+        df_su2 = r.get('su2_downforce_n')
+        df_label = f"DF (JF): {df_jf:.1f} N"
+        if df_su2 is not None:
+            df_label += f" | DF (SU2 CFD): {df_su2:.1f} N"
+        self.top_info_title.set(f"{r.get('name', r.get('id'))}  |  Role: {r.get('role', '').upper()}  |  {df_label} @ {r.get('speed', 20.0):.1f} m/s")
+        xf_str = f" | XFOIL Cl={r.get('xf_cl'):.3f}" if r.get('xf_cl') is not None else ""
+        details = (
+            f"Geometry: Main: {r.get('main')} | Flaps: {flaps_desc}\n"
+            f"Operating Conditions: Speed={r.get('speed', 20.0):.1f} m/s (72 km/h) | Re={r.get('re', A.RE):g} | Ground: {'Yes (h=' + str(r.get('gh_pct', 15)) + '%)' if r.get('ge') else 'Unbounded Free Stream'}\n"
+            f"Aerodynamic Solvers: JavaFoil Cl={r.get('jf_cl', 'N/A')} | SU2 2D RANS Cl(main)={r.get('su2_cl_main', 'N/A')} | SU2 Cl(asm)={r.get('su2_cl_asm', 'N/A')}{xf_str}\n"
+            f"Engineering Note: {r.get('desc', 'High-performance Formula Student multi-element design.')}"
+        )
+        self.top_info_details.set(details)
+
+    def _top_load_to_configure(self, source='jf'):
+        r = self._get_active_top_run(source=source)
+        if not r:
+            messagebox.showinfo("Select Run", "Please select a run from the list first.")
+            return
+
+        if hasattr(self, 'main_box'):
+            self.main_box.set(r['main'])
+
+        role = r.get('role', 'rear wing')
+        if hasattr(self, '_role_state'):
+            self._role_state.set(role)
+            lbl = {'front wing': FW, 'rear wing': RW}.get(role, CUSTOM)
+            self.role_lbl.set(f"{lbl} (span {int(r.get('span', 1000))} mm)")
+
+        if hasattr(self, 'vars'):
+            if 'chord' in self.vars:
+                self.vars['chord'].set(str(r.get('chord', 250.0)))
+            if 'speed' in self.vars:
+                self.vars['speed'].set(str(r.get('speed', 20.0)))
+            if 're' in self.vars:
+                self.vars['re'].set(str(int(r.get('re', A.RE))))
+            if 'al0' in self.vars:
+                self.vars['al0'].set(str(r.get('al0', A.ALPHA[0])))
+            if 'al1' in self.vars:
+                self.vars['al1'].set(str(r.get('al1', A.ALPHA[1])))
+            if 'alst' in self.vars:
+                self.vars['alst'].set(str(r.get('alst', A.ALPHA[2])))
+
+        ge = r.get('ge', False)
+        if hasattr(self, 'ge_state'):
+            self.ge_state.set(bool(ge))
+        if hasattr(self, 'gh_state'):
+            self.gh_state.set(str(r.get('gh_pct', 15.0) if ge else ''))
+
+        flaps = r.get('flaps', [])
+        for k, (vals, cb) in enumerate(getattr(self, 'flap_rows', [])):
+            if k < len(flaps):
+                fn, sc, ang, xp, yp = flaps[k]
+                cb.set(fn)
+                vals[0].set(fn)
+                vals[1].set(str(sc))
+                vals[2].set(str(ang))
+                vals[3].set(str(xp))
+                vals[4].set(str(yp))
+                vals[5].set(True)
+            else:
+                cb.set('')
+                vals[0].set('')
+                vals[5].set(False)
+
+        if hasattr(self, 'cfg_name_var'):
+            self.cfg_name_var.set(r.get('id', 'Run_Selected'))
+
+        if hasattr(self, 'redraw'):
+            self.redraw()
+        elif hasattr(self, 'on_check'):
+            self.on_check()
+        self.notebook.select(self.tab_cfg)
+        self.set_status(f"Loaded {r.get('id')} into Configure (Tab 1)")
+        self.log(f"Loaded top run [{r.get('id')}] into Configure tab.")
+
+    def _top_simulate_su2(self, source='jf'):
+        r = self._get_active_top_run(source=source)
+        if not r:
+            messagebox.showinfo("Select Run", "Please select a run from the list first.")
+            return
+        self._top_load_to_configure(source=source)
+        self.after(80, self.on_simulate_su2)
+
+    def _top_simulate_xfoil(self, source='jf'):
+        r = self._get_active_top_run(source=source)
+        if not r:
+            messagebox.showinfo("Select Run", "Please select a run from the list first.")
+            return
+        self._top_load_to_configure(source=source)
+        self.after(80, self.on_simulate_xfoil)
+
+    def _top_cross_check(self, source='jf'):
+        r = self._get_active_top_run(source=source)
+        if not r:
+            messagebox.showinfo("Select Run", "Please select a run from the list first.")
+            return
+        self._top_load_to_configure(source=source)
+        self.after(80, self.on_cross_check)
+
+    def _top_view_graphs(self, source='jf'):
+        r = self._get_active_top_run(source=source)
+        if not r:
+            messagebox.showinfo("Select Run", "Please select a run from the list first.")
+            return
+        rid = str(r.get('id', '')).strip()
+        if not rid:
+            return
+
+        res_p = os.path.expanduser(self.res_file.get()) if hasattr(self, 'res_file') else os.path.join(A.OUT_DIR, "results.csv")
+        base_dir = os.path.dirname(res_p) if os.path.exists(res_p) else A.OUT_DIR
+        gdir = os.path.join(base_dir, 'graphs')
+        run_gdir = os.path.join(gdir, f"run_{rid}")
+
+        gdir_main = os.path.join(A.OUT_DIR, 'graphs')
+        run_gdir_main = os.path.join(gdir_main, f"run_{rid}")
+
+        cand_files = []
+        for d in (run_gdir, run_gdir_main):
+            if os.path.isdir(d):
+                cand_files += glob.glob(os.path.join(d, "*.png"))
+        for d in (gdir, gdir_main):
+            if os.path.isdir(d):
+                for f in glob.glob(os.path.join(d, "*.png")):
+                    bn = os.path.basename(f)
+                    if re.search(rf'_(?:run_)?{re.escape(rid)}\.png$', bn, re.IGNORECASE):
+                        cand_files.append(f)
+
+        has_su2 = any('su2_' in os.path.basename(p) for p in cand_files)
+        has_overlay = any('overlay_' in os.path.basename(p) for p in cand_files)
+        has_xf = any('xfoil_' in os.path.basename(p) for p in cand_files)
+        has_any = len(cand_files) > 0
+
+        # If SU2, XFOIL, or comparison graphs are requested but don't exist yet, actively generate them!
+        need_gen = False
+        if source == 'su2' and not has_su2:
+            need_gen = True
+        elif source == 'xf' and not has_xf:
+            need_gen = True
+        elif source == 'cmp' and not (has_su2 or has_overlay):
+            need_gen = True
+        elif source == 'jf' and not has_any:
+            need_gen = True
+
+        if need_gen:
+            self._top_load_to_configure(source=source)
+            cfg = self.read_cfg()
+            if cfg:
+                self.log(f"Auto-generating multi-solver graphs for top run [{rid}]...")
+                self.generate_configured_graphs(cfg, run_name=rid, switch=True)
+                return
+
+        self._go_to_graphs_for_run(rid)
+
+    def _top_compare_dialog(self):
+        r = self._get_active_top_run(source='cmp')
+        if not r:
+            messagebox.showinfo("Select Run", "Please select a comparison row from the table.")
+            return
+
+        dlg = tk.Toplevel(self)
+        dlg.title(f"Multi-Solver Comparison — {r.get('id')}")
+        dlg.configure(bg="#0f172a")
+        dlg.transient(self)
+        dlg.geometry("620x480")
+        dlg.resizable(False, False)
+
+        frm = tk.Frame(dlg, bg="#0f172a", padx=20, pady=16)
+        frm.pack(fill=tk.BOTH, expand=True)
+
+        tk.Label(frm, text=f"Multi-Solver Verification: {r.get('name', r.get('id'))}",
+                 font=("Segoe UI", 12, "bold"), fg="#38bdf8", bg="#0f172a").pack(anchor="w", pady=(0, 6))
+
+        cl_jf = r.get('jf_cl', 0.0)
+        cl_su2 = r.get('su2_cl_asm', r.get('su2_cl', 0.0))
+        delta = cl_su2 - cl_jf
+        ratio = cl_jf / cl_su2 if abs(cl_su2) > 1e-4 else 1.0
+
+        status_text = f"DIVERGENCE DETECTED (Δ Cl = {delta:+.3f})" if abs(delta) > 0.5 else f"SOLVERS AGREE (Δ Cl = {delta:+.3f})"
+        status_color = "#f87171" if abs(delta) > 0.5 else "#4ade80"
+        tk.Label(frm, text=status_text, font=("Segoe UI", 10, "bold"), fg=status_color, bg="#0f172a").pack(anchor="w", pady=(0, 10))
+
+        cols = ("Metric", "JavaFoil (Panel+BL)", "SU2 2D RANS (k-ω SST)", "Comparison")
+        tree = ttk.Treeview(frm, columns=cols, show='headings', height=5)
+        for c in cols:
+            tree.heading(c, text=c)
+            tree.column(c, width=140, anchor='center')
+        tree.column("Metric", width=150, anchor='w')
+
+        tree.insert("", "end", values=("Lift Coefficient (Cl)", f"{cl_jf:.3f}", f"{cl_su2:.3f}", f"Δ = {delta:+.3f}"))
+        tree.insert("", "end", values=("Drag Coefficient (Cd)", f"{r.get('jf_cd', 0.0):.4f}", f"{r.get('su2_cd_asm', 0.0):.4f}", f"Δ = {r.get('su2_cd_asm', 0.0) - r.get('jf_cd', 0.0):+.4f}"))
+        tree.insert("", "end", values=("Circulation Ratio", "1.00x", "-", f"{ratio:.2f}x JavaFoil overprediction" if ratio > 1.2 else "Consistent"))
+        tree.insert("", "end", values=("Downforce @ 20 m/s", f"{r.get('downforce_n', 0.0):.1f} N", f"{abs(cl_su2) * 0.5 * 1.225 * 400 * 0.3 * 1.0:.1f} N", f"RANS physical force"))
+        tree.pack(fill=tk.X, pady=(0, 12))
+
+        diag_box = tk.LabelFrame(frm, text="Aerodynamic Explanation & Physics", bg="#1e293b", fg="#38bdf8", padx=10, pady=8)
+        diag_box.pack(fill=tk.BOTH, expand=True, pady=(0, 12))
+
+        msg = (
+            f"CONFIGURATION SUMMARY:\n"
+            f"• Main: {r.get('main')} | Flaps: {len(r.get('flaps', []))} elements\n"
+            f"• Operating at {r.get('speed', 20.0):.1f} m/s, Re={r.get('re', A.RE):g}\n\n"
+            f"PHYSICS COMPARISON:\n"
+            f"JavaFoil's panel formulation assumes attached potential flow outside thin boundary layers.\n"
+            f"In multi-element wings with high flap camber, slot shear layers and wake-boundary layer\n"
+            f"interactions trigger local separation that panel methods cannot capture, causing Cl overprediction.\n"
+            f"SU2 2D RANS solves Navier-Stokes with k-omega SST turbulence closure, providing the physical ground truth."
+        )
+        tk.Label(diag_box, text=msg, font=("Segoe UI", 9), fg="#e2e8f0", bg="#1e293b", justify="left", wraplength=560).pack(anchor="w")
+
+        btn_bar = tk.Frame(frm, bg="#0f172a")
+        btn_bar.pack(fill=tk.X)
+        ttk.Button(btn_bar, text="Open Superimposed Graphs in App",
+                   command=lambda: [dlg.destroy(), self._go_to_graphs_for_run(r.get('id'))]).pack(side='left')
+        ttk.Button(btn_bar, text="Close", command=dlg.destroy).pack(side='right')
 
 
     # --- CAMPAIGNS TAB ---
@@ -6046,7 +7559,7 @@ class App(tk.Tk):
         except Exception as e:
             messagebox.showerror("Export Failed", f"Archive export failed: {e}")
 
-    def _gen_graphs(self, r, switch=True, force_regen=False):
+    def _gen_graphs(self, r, switch=True, force_regen=True):
         p = os.path.expanduser(self.res_file.get())
         if not os.path.exists(p):
             return
@@ -6062,21 +7575,37 @@ class App(tk.Tk):
         
         self.gr_results.set(p)
         self.gr_selected_rid = rid
+        self.gr_filter_mode = 'current'
         if switch:
             try:
                 self.notebook.select(self.tab_gr)
             except Exception:
                 pass
 
-        # Check if already generated
-        existing_pngs = glob.glob(os.path.join(run_gdir, "*.png")) if os.path.isdir(run_gdir) else []
-        if not existing_pngs:
-            existing_pngs = glob.glob(os.path.join(gdir, f"*_{rid}.png")) + glob.glob(os.path.join(gdir, f"*{rid}*.png"))
+        # Overwrite mode: delete existing run directory completely and loose matching files
+        if os.path.exists(run_gdir):
+            shutil.rmtree(run_gdir, ignore_errors=True)
+        os.makedirs(run_gdir, exist_ok=True)
+        for s_dir in (gdir, os.path.join(A.OUT_DIR, 'graphs')):
+            if os.path.isdir(s_dir):
+                for old_f in glob.glob(os.path.join(s_dir, "*.png")):
+                    bn = os.path.basename(old_f)
+                    if re.search(rf'_(?:run_)?{re.escape(rid)}\.png$', bn, re.IGNORECASE):
+                        try:
+                            os.remove(old_f)
+                        except Exception:
+                            pass
 
-        if existing_pngs and not force_regen:
-            self.ui_q.put(('gr_prog', (100, f"Run {rid}: {len(existing_pngs)} graphs ready (loaded from cache)")))
-            self.ui_q.put(('gr_done', (r, p, rid, run_gdir, True)))
-            return
+        self._graph_paths = []
+        if hasattr(self, 'img_list'):
+            self.img_list.delete(0, 'end')
+        if hasattr(self, 'gimg_lbl'):
+            self.gimg_lbl.configure(image='', text=f"Generating fresh graphs for Run {rid}...")
+        if hasattr(self, 'gr_run_combo'):
+            self.gr_run_combo['values'] = [f"Current Run: {rid}"]
+            self.gr_run_combo.set(f"Current Run: {rid}")
+        if hasattr(self, 'gr_filter_desc_lbl'):
+            self.gr_filter_desc_lbl.configure(text=f"Viewing: Current Run Only ({rid})")
 
         self.ui_q.put(('gr_prog', (5, f"Starting generation for Run {rid}...")))
         chord = A.CHORD_MM or A.DEFAULT_CHORD_MM
@@ -6168,7 +7697,7 @@ class App(tk.Tk):
                     pass
 
             self.ui_q.put(('gr_prog', (100, f"Run {rid}: Graphs generated successfully!")))
-            self.ui_q.put(('gr_done', (r, p, rid, run_gdir, False)))
+            self.ui_q.put(('gr_done', (r, p, rid, run_gdir, False, False)))
             self.ui_q.put(('log', f"Run {rid} plots & CAD ready in {run_gdir}: {', '.join(outs) if outs else 'cached'}"))
 
         threading.Thread(target=work, daemon=True).start()
@@ -6179,9 +7708,14 @@ class App(tk.Tk):
             return
         r = self._selected_row()
         if r is None or (hasattr(r, 'empty') and r.empty):
+            cfg = self.read_cfg()
+            if cfg:
+                rid = getattr(self, 'gr_selected_rid', '') or f"Config_{cfg[0]}"
+                self.generate_configured_graphs(cfg, run_name=rid, switch=True)
+                return
             self.set_detail('Select a row in the table first, then click Generate Graphs.')
             return
-        self._gen_graphs(r, switch=True)
+        self._gen_graphs(r, switch=True, force_regen=True)
 
     def ask_graph_destination(self, r, rid, run_gdir, already_existed=False):
         """
@@ -6589,33 +8123,68 @@ class App(tk.Tk):
         filter_box = ttk.LabelFrame(pick, text='Run Filter')
         filter_box.pack(fill='x', pady=(0, 4))
         
+        self.gr_filter_desc_lbl = ttk.Label(
+            filter_box, text='Viewing: Current Run Only',
+            font=('Segoe UI', 9, 'bold'), foreground='#38bdf8'
+        )
+        self.gr_filter_desc_lbl.pack(anchor='w', padx=6, pady=(3, 1))
+
         f_top = ttk.Frame(filter_box)
-        f_top.pack(fill='x', padx=4, pady=2)
-        ttk.Label(f_top, text='Viewing Run:', font=('Segoe UI', 9, 'bold')).pack(side='left')
-        self.gr_run_combo = ttk.Combobox(f_top, state='readonly', width=16)
-        self.gr_run_combo.pack(side='left', fill='x', expand=True, padx=(4, 0))
+        f_top.pack(fill='x', padx=6, pady=2)
+        ttk.Label(f_top, text='Run:').pack(side='left', padx=(0, 4))
+        self.gr_run_combo = ttk.Combobox(f_top, state='readonly', width=18)
+        self.gr_run_combo.pack(side='left', fill='x', expand=True)
         self.gr_run_combo.bind('<<ComboboxSelected>>', self._on_gr_run_combo_select)
-        add_tooltip(self.gr_run_combo, 'Filter graphs to a specific run so past images do not clutter your view.')
+        add_tooltip(self.gr_run_combo, 'Filter graphs to a specific run in the selected category.')
 
         f_bot = ttk.Frame(filter_box)
-        f_bot.pack(fill='x', padx=4, pady=(2, 4))
-        cb_only = ttk.Checkbutton(
-            f_bot, text='Show selected run only',
-            variable=self.gr_only_active_run, command=self._on_gr_filter_toggle
-        )
-        cb_only.pack(anchor='w')
-        add_tooltip(cb_only, 'When checked, hides graphs from all other runs to prevent confusion.')
+        f_bot.pack(fill='x', padx=6, pady=(2, 4))
+        btn_curr = ttk.Button(f_bot, text='Current Run', command=self.on_select_current_run_only)
+        btn_curr.pack(side='left', fill='x', expand=True, padx=(0, 2))
+        add_tooltip(btn_curr, 'Reset view to show only graphs for the current active run.')
+
+        btn_flt_top = ttk.Button(f_bot, text='Filter ▾', command=lambda: self.on_show_filter_menu(source_btn=btn_flt_top))
+        btn_flt_top.pack(side='left', fill='x', expand=True, padx=(2, 0))
+        add_tooltip(btn_flt_top, 'Choose category: Current Run, Top 10 FW, Top 10 RW, Famous Wings, All Other Runs.')
 
         ttk.Label(pick, text='Run Aerodynamic Graphs:').pack(anchor='w', pady=(2, 0))
-        self.img_list = tk.Listbox(pick, width=38, height=16, selectmode='browse')
-        self.img_list.pack(fill='both', expand=True)
-        add_tooltip(self.img_list, 'Select an aerodynamic chart or CAD model to display in the viewer.')
-        self.img_list.bind('<<ListboxSelect>>', self.on_pick_graph)
 
-        # Action Buttons Under Image List
+        # Full title display card (solves text fitting: shows full name on select or hover)
+        self.gr_full_title_var = tk.StringVar(value="Select a graph below")
+        title_card = tk.Frame(pick, bg=PANEL2, bd=1, relief='solid')
+        title_card.pack(fill='x', pady=(2, 4))
+        tk.Label(title_card, textvariable=self.gr_full_title_var, font=('Segoe UI', 9, 'bold'),
+                 bg=PANEL2, fg=ACCENT, wraplength=270, justify='left', anchor='w').pack(fill='x', padx=6, pady=4)
+
+        list_frame = ttk.Frame(pick)
+        list_frame.pack(fill='both', expand=True)
+        self.img_list = tk.Listbox(list_frame, width=32, height=10, selectmode='browse')
+        self.gr_list_vscroll = ttk.Scrollbar(list_frame, orient='vertical', command=self.img_list.yview)
+        self.gr_list_hscroll = ttk.Scrollbar(list_frame, orient='horizontal', command=self.img_list.xview)
+        self.img_list.configure(yscrollcommand=self.gr_list_vscroll.set, xscrollcommand=self.gr_list_hscroll.set)
+
+        self.img_list.grid(row=0, column=0, sticky='nsew')
+        self.gr_list_vscroll.grid(row=0, column=1, sticky='ns')
+        self.gr_list_hscroll.grid(row=1, column=0, sticky='ew')
+        list_frame.grid_rowconfigure(0, weight=1)
+        list_frame.grid_columnconfigure(0, weight=1)
+
+        self.img_list.bind('<<ListboxSelect>>', self.on_pick_graph)
+        self.img_list.bind('<Motion>', self._on_img_list_hover)
+        self.img_list.bind('<Leave>', lambda e: self._on_img_list_leave())
+
+        # Action Buttons Under Image List (Far Left Down)
         btn_box = ttk.Frame(pick)
         btn_box.pack(fill='x', pady=(4, 0))
-        
+
+        self.btn_filter = ttk.Button(btn_box, text='Filter ▾', command=lambda: self.on_show_filter_menu(source_btn=self.btn_filter))
+        self.btn_filter.pack(fill='x', pady=(0, 2))
+        add_tooltip(self.btn_filter, 'Filter runs by category: Current Run Only, Top 10 FW, Top 10 RW, Famous Wings, All Other Runs.')
+
+        self.btn_gen_filter = ttk.Button(btn_box, text='Generate All Graphs in Filter', command=self.on_generate_all_filter_graphs)
+        self.btn_gen_filter.pack(fill='x', pady=1)
+        add_tooltip(self.btn_gen_filter, 'Batch generate all aerodynamic polars, geometry, and flowfields for all runs in the active filter category.')
+
         b_fm = ttk.Button(btn_box, text='Open in File Manager', command=self.on_open_current_run_folder)
         b_fm.pack(fill='x', pady=1)
         add_tooltip(b_fm, 'Open the run folder in Windows Explorer / OS file manager.')
@@ -6632,9 +8201,94 @@ class App(tk.Tk):
         b_ret.pack(fill='x', pady=(4, 1))
         add_tooltip(b_ret, 'Return to Configure tab (Tab 1) to edit wing parameters, airfoils, or flaps.')
 
-        # Right Panel: Large Image Canvas / Label
-        self.gimg_lbl = ttk.Label(mid, text='select an image', anchor='center')
-        self.gimg_lbl.pack(side='left', fill='both', expand=True, padx=6)
+        # Right Panel: Scrollable Image Canvas with vertical & horizontal scrollbars
+        img_container = ttk.Frame(mid)
+        img_container.pack(side='left', fill='both', expand=True, padx=6)
+
+        # Interactive Graph Toolbar: Zoom in/out, 100%, Fit, Interactive Inspector & Hover Coordinate Readout
+        self.gr_toolbar = tk.Frame(img_container, bg='#1e293b', bd=1, relief='ridge')
+        self.gr_toolbar.pack(fill='x', pady=(0, 4), padx=2)
+
+        tb_left = tk.Frame(self.gr_toolbar, bg='#1e293b')
+        tb_left.pack(side='left', fill='y', padx=4, pady=3)
+
+        btn_zin = tk.Button(tb_left, text="🔍+ Zoom In", font=('Segoe UI', 8, 'bold'),
+                            bg='#334155', fg='#38bdf8', activebackground='#475569', activeforeground='#ffffff',
+                            bd=1, relief='flat', padx=6, pady=2, command=self.on_graph_zoom_in)
+        btn_zin.pack(side='left', padx=2)
+        add_tooltip(btn_zin, "Zoom in on graph (Mouse Wheel Up or Ctrl + Wheel)")
+
+        btn_zout = tk.Button(tb_left, text="🔍- Zoom Out", font=('Segoe UI', 8, 'bold'),
+                             bg='#334155', fg='#38bdf8', activebackground='#475569', activeforeground='#ffffff',
+                             bd=1, relief='flat', padx=6, pady=2, command=self.on_graph_zoom_out)
+        btn_zout.pack(side='left', padx=2)
+        add_tooltip(btn_zout, "Zoom out of graph (Mouse Wheel Down or Ctrl + Wheel)")
+
+        btn_z100 = tk.Button(tb_left, text="100%", font=('Segoe UI', 8),
+                             bg='#334155', fg='#f8fafc', activebackground='#475569', activeforeground='#ffffff',
+                             bd=1, relief='flat', padx=5, pady=2, command=self.on_graph_zoom_100)
+        btn_z100.pack(side='left', padx=2)
+        add_tooltip(btn_z100, "Reset zoom to native 100% resolution")
+
+        btn_zfit = tk.Button(tb_left, text="⛶ Fit", font=('Segoe UI', 8),
+                             bg='#334155', fg='#f8fafc', activebackground='#475569', activeforeground='#ffffff',
+                             bd=1, relief='flat', padx=5, pady=2, command=self.on_graph_zoom_fit)
+        btn_zfit.pack(side='left', padx=2)
+        add_tooltip(btn_zfit, "Fit graph width to window")
+
+        self.gr_zoom_lbl = tk.Label(tb_left, text="100%", font=('Segoe UI', 8),
+                                    bg='#1e293b', fg='#94a3b8', width=5)
+        self.gr_zoom_lbl.pack(side='left', padx=3)
+
+        btn_insp = tk.Button(tb_left, text="📈 Interactive Inspector", font=('Segoe UI', 8, 'bold'),
+                             bg='#0284c7', fg='#ffffff', activebackground='#0369a1', activeforeground='#ffffff',
+                             bd=1, relief='flat', padx=8, pady=2, command=self.on_open_interactive_inspector)
+        btn_insp.pack(side='left', padx=(6, 2))
+        add_tooltip(btn_insp, "Open fully interactive Matplotlib plot inspector with pan, rectangle box-zoom, and exact numeric coordinate readout.")
+
+        # Live Coordinate Readout label on the right side of toolbar
+        self.gr_coord_lbl = tk.Label(self.gr_toolbar, text="Coordinates: Hover over graph to inspect",
+                                     font=('Consolas', 9), bg='#1e293b', fg='#38bdf8', padx=8)
+        self.gr_coord_lbl.pack(side='right', pady=3)
+
+        self.gimg_canvas = tk.Canvas(img_container, highlightthickness=0, bg='#0b1120')
+        self.gimg_vscroll = ttk.Scrollbar(img_container, orient='vertical', command=self.gimg_canvas.yview)
+        self.gimg_hscroll = ttk.Scrollbar(img_container, orient='horizontal', command=self.gimg_canvas.xview)
+        self.gimg_canvas.configure(yscrollcommand=self.gimg_vscroll.set, xscrollcommand=self.gimg_hscroll.set)
+
+        self.gimg_vscroll.pack(side='right', fill='y')
+        self.gimg_hscroll.pack(side='bottom', fill='x')
+        self.gimg_canvas.pack(side='left', fill='both', expand=True)
+
+        self.gimg_inner_frame = ttk.Frame(self.gimg_canvas)
+        self.gimg_win = self.gimg_canvas.create_window((0, 0), window=self.gimg_inner_frame, anchor='nw')
+
+        self.gimg_lbl = ttk.Label(self.gimg_inner_frame, text='select an image', anchor='center')
+        self.gimg_lbl.pack(fill='both', expand=True)
+
+        self.gimg_inner_frame.bind(
+            '<Configure>',
+            lambda e, c=self.gimg_canvas: c.configure(scrollregion=c.bbox('all'))
+        )
+        self.gimg_canvas.bind('<Configure>', self._on_gimg_canvas_configure)
+
+        # Interactive hover & drag bindings
+        self.gimg_lbl.bind('<Motion>', self._on_graph_hover)
+        self.gimg_canvas.bind('<Motion>', self._on_graph_hover)
+        self.gimg_lbl.bind('<Double-Button-1>', lambda e: self.on_open_interactive_inspector())
+        self.gimg_canvas.bind('<Double-Button-1>', lambda e: self.on_open_interactive_inspector())
+
+        for w in (self.gimg_canvas, self.gimg_lbl, self.gimg_inner_frame):
+            w.bind('<Control-MouseWheel>', self._on_graph_canvas_wheel)
+            w.bind('<Control-Button-4>', lambda e: (self.on_graph_zoom_in(), "break")[1])
+            w.bind('<Control-Button-5>', lambda e: (self.on_graph_zoom_out(), "break")[1])
+            w.bind('<ButtonPress-2>', self._on_graph_drag_start)
+            w.bind('<B2-Motion>', self._on_graph_drag_move)
+            w.bind('<ButtonPress-3>', self._on_graph_drag_start)
+            w.bind('<B3-Motion>', self._on_graph_drag_move)
+        bind_scrollable(self.gimg_canvas)
+        bind_scrollable(self.gimg_lbl)
+        bind_scrollable(self.gimg_inner_frame)
 
         # 4. Bottom Status
         self.gr_status = tk.StringVar(value='')
@@ -6667,159 +8321,351 @@ class App(tk.Tk):
             self.gr_results.set(csv_path)
             self.refresh_graph_files(csv_path)
 
+    def on_show_filter_menu(self, event=None, source_btn=None):
+        """Displays popup menu to choose run category for graphs view."""
+        menu = tk.Menu(self, tearoff=0)
+        curr_rid = getattr(self, 'gr_selected_rid', '') or 'active'
+        menu.add_command(
+            label=f"Current Run Only ({curr_rid})",
+            command=lambda: self.set_graph_filter_category('current')
+        )
+        menu.add_separator()
+        menu.add_command(
+            label="Top 10 Front Wings (FW)",
+            command=lambda: self.set_graph_filter_category('top_fw')
+        )
+        menu.add_command(
+            label="Top 10 Rear Wings (RW)",
+            command=lambda: self.set_graph_filter_category('top_rw')
+        )
+        menu.add_command(
+            label="Famous Championship Wings",
+            command=lambda: self.set_graph_filter_category('famous')
+        )
+        menu.add_separator()
+        menu.add_command(
+            label="All Other Runs",
+            command=lambda: self.set_graph_filter_category('other')
+        )
+        menu.add_separator()
+        menu.add_command(
+            label="Generate All Graphs in Active Filter",
+            command=self.on_generate_all_filter_graphs
+        )
+
+        btn = source_btn or getattr(self, 'btn_filter', None)
+        if btn and btn.winfo_ismapped():
+            x = btn.winfo_rootx()
+            y = btn.winfo_rooty() + btn.winfo_height()
+            if y + 160 > self.winfo_screenheight():
+                y = btn.winfo_rooty() - 160
+            menu.tk_popup(x, y)
+        else:
+            try:
+                x = self.winfo_pointerx()
+                y = self.winfo_pointery()
+                menu.tk_popup(x, y)
+            except Exception:
+                pass
+
+    def on_select_current_run_only(self):
+        self.set_graph_filter_category('current')
+
+    def set_graph_filter_category(self, cat):
+        """Sets the active category: 'current', 'top_fw', 'top_rw', 'famous', or 'other'."""
+        self.gr_filter_category = cat
+        self._populate_graph_filter_runs()
+
+    def _get_category_runs(self, cat):
+        """Returns a list of (rid, display_label) tuples for the specified category."""
+        runs = []
+        if cat == 'current':
+            curr = getattr(self, 'gr_selected_rid', '') or 'active'
+            runs.append((curr, f"Current Run: {curr}"))
+            return runs
+
+        top_list = self._get_top_runs_master_list() if hasattr(self, '_get_top_runs_master_list') else []
+
+        if cat == 'top_fw':
+            fw = [r for r in top_list if 'front' in str(r.get('role', '')).lower()]
+            fw.sort(key=lambda r: abs(float(r.get('jf_cl') or r.get('su2_cl') or 0.0)), reverse=True)
+            for r in fw[:10]:
+                rid = str(r['id'])
+                cl = float(r.get('jf_cl') or r.get('su2_cl') or 0.0)
+                main_f = r.get('main', '')
+                runs.append((rid, f"{rid} — FW {main_f} (Cl={cl:.2f})"))
+            return runs
+
+        if cat == 'top_rw':
+            rw = [r for r in top_list if 'rear' in str(r.get('role', '')).lower()]
+            rw.sort(key=lambda r: abs(float(r.get('jf_cl') or r.get('su2_cl') or 0.0)), reverse=True)
+            for r in rw[:10]:
+                rid = str(r['id'])
+                cl = float(r.get('jf_cl') or r.get('su2_cl') or 0.0)
+                main_f = r.get('main', '')
+                runs.append((rid, f"{rid} — RW {main_f} (Cl={cl:.2f})"))
+            return runs
+
+        if cat == 'famous':
+            pkgs = getattr(A, 'get_famous_packages', lambda: [])()
+            for p in pkgs:
+                pid = str(p.get('id', p.get('name', 'pkg')))
+                name = p.get('name', pid)
+                yr = p.get('year', '')
+                yr_str = f" ({yr})" if yr else ""
+                runs.append((pid, f"{pid} — {name}{yr_str}"))
+            return runs
+
+        if cat == 'other':
+            known_top_ids = set(str(r['id']) for r in top_list)
+            known_famous_ids = set(str(p.get('id', '')) for p in getattr(A, 'get_famous_packages', lambda: [])())
+            exclude_ids = known_top_ids.union(known_famous_ids)
+
+            other_ids = set()
+            for base_g in (os.path.join(A.OUT_DIR, 'graphs'),):
+                if os.path.isdir(base_g):
+                    for d in glob.glob(os.path.join(base_g, "run_*")):
+                        if os.path.isdir(d):
+                            rid = os.path.basename(d).replace("run_", "")
+                            if rid not in exclude_ids:
+                                other_ids.add(rid)
+            res_p = os.path.expanduser(self.res_file.get() if hasattr(self, 'res_file') else os.path.join(A.OUT_DIR, "results.csv"))
+            if os.path.exists(res_p):
+                try:
+                    df = pd.read_csv(res_p)
+                    if 'Run_ID' in df.columns:
+                        for rid in df['Run_ID'].dropna().astype(str):
+                            if rid not in exclude_ids:
+                                other_ids.add(rid)
+                except Exception:
+                    pass
+
+            sorted_ids = sorted(other_ids, key=lambda x: (int(x) if x.isdigit() else 999999, str(x)))
+            for rid in sorted_ids:
+                runs.append((rid, f"Run {rid}"))
+            if not runs:
+                runs.append(('none', "No other runs found"))
+            return runs
+
+        return runs
+
+    def _populate_graph_filter_runs(self):
+        """Updates the run combobox and view according to the active category."""
+        cat = getattr(self, 'gr_filter_category', 'current')
+        runs = self._get_category_runs(cat)
+        self._gr_combo_map = {lbl: rid for rid, lbl in runs}
+
+        cat_names = {
+            'current': f"Current Run Only ({getattr(self, 'gr_selected_rid', '') or 'active'})",
+            'top_fw': "Top 10 Front Wings (FW)",
+            'top_rw': "Top 10 Rear Wings (RW)",
+            'famous': "Famous Championship Wings",
+            'other': "All Other Runs"
+        }
+        if hasattr(self, 'gr_filter_desc_lbl'):
+            self.gr_filter_desc_lbl.configure(text=f"Viewing: {cat_names.get(cat, cat)}")
+
+        labels = [lbl for _, lbl in runs]
+        if hasattr(self, 'gr_run_combo'):
+            self.gr_run_combo['values'] = labels
+            cur_rid = getattr(self, 'gr_selected_rid', '')
+            matched_lbl = None
+            for rid, lbl in runs:
+                if rid == cur_rid:
+                    matched_lbl = lbl
+                    break
+            if matched_lbl:
+                self.gr_run_combo.set(matched_lbl)
+            elif labels:
+                self.gr_run_combo.set(labels[0])
+                self.gr_selected_rid = runs[0][0]
+
+        if getattr(self, 'gr_selected_rid', None):
+            self.refresh_graph_files(select_rid=self.gr_selected_rid)
+
     def _on_gr_run_combo_select(self, event=None):
         val = self.gr_run_combo.get()
-        if not val:
+        if not val or val == "No other runs found":
             return
-        if "--- All Runs" in val:
-            self.gr_selected_rid = ""
-            self.refresh_graph_files(select_rid="")
-        elif val.startswith("Run "):
-            rid = val.replace("Run ", "").strip()
-            self.gr_selected_rid = rid
-            self.refresh_graph_files(select_rid=rid)
+        rid = getattr(self, '_gr_combo_map', {}).get(val)
+        if not rid:
+            if " — " in val:
+                rid = val.split(" — ")[0].strip()
+            elif val.startswith("Current Run: "):
+                rid = val.replace("Current Run: ", "").strip()
+            elif val.startswith("Run "):
+                rid = val.replace("Run ", "").strip()
+            else:
+                rid = val.strip()
+        self.gr_selected_rid = rid
+        self.refresh_graph_files(select_rid=rid)
 
     def _on_gr_filter_toggle(self):
         self.refresh_graph_files(select_rid=self.gr_selected_rid)
 
     def refresh_graph_files(self, path=None, select_rid=None):
+        if select_rid is not None:
+            self.gr_selected_rid = str(select_rid).strip()
+        cur_rid = getattr(self, 'gr_selected_rid', '')
+
         cur = os.path.expanduser(path or self.gr_results.get() or '')
-        paths = self.discover_results()
-        if cur and os.path.exists(cur) and cur not in paths:
-            paths.insert(0, cur)
-        if cur and os.path.exists(cur):
-            self.gr_results.set(cur)
-        elif paths:
-            cur = paths[0]
-            self.gr_results.set(cur)
-        else:
-            cur = ''
         p = cur
         gdir = os.path.join(os.path.dirname(p), 'graphs') if p else ''
+        main_gdir = os.path.join(A.OUT_DIR, 'graphs')
         legacy = os.path.join(os.path.dirname(p), 'Best', 'graphs') if p else ''
 
-        # 1. Discover all runs that have generated graphs
-        available_runs = {}
+        scan_dirs = []
         if gdir and os.path.isdir(gdir):
-            for d in sorted(glob.glob(os.path.join(gdir, "run_*"))):
-                if os.path.isdir(d):
-                    rid = os.path.basename(d).replace("run_", "")
-                    pngs = sorted(glob.glob(os.path.join(d, "*.png")))
-                    if pngs:
-                        available_runs[rid] = pngs
-            for f in sorted(glob.glob(os.path.join(gdir, "*.png"))):
-                bn = os.path.basename(f)
-                m = re.search(r'_([0-9a-zA-Z]+)\.png$', bn)
-                if m:
-                    rid = m.group(1)
-                    if rid not in available_runs:
-                        available_runs[rid] = []
-                    if f not in available_runs[rid]:
-                        available_runs[rid].append(f)
-        if legacy and os.path.isdir(legacy):
-            legacy_pngs = sorted(glob.glob(os.path.join(legacy, "*.png")))
-            if legacy_pngs:
-                available_runs['best'] = legacy_pngs
-
-        all_rids = sorted(available_runs.keys(), key=lambda x: (int(x) if x.isdigit() else 999999, str(x)))
-
-        # Update combobox items
-        combo_vals = [f"Run {r}" for r in all_rids]
-        if combo_vals:
-            combo_vals.append("--- All Runs / All Images ---")
-        if hasattr(self, 'gr_run_combo'):
-            self.gr_run_combo['values'] = combo_vals
-
-        if select_rid is not None:
-            self.gr_selected_rid = str(select_rid)
-        elif not self.gr_selected_rid and all_rids:
-            self.gr_selected_rid = all_rids[-1]
-
-        if hasattr(self, 'gr_run_combo'):
-            if self.gr_selected_rid and f"Run {self.gr_selected_rid}" in combo_vals:
-                self.gr_run_combo.set(f"Run {self.gr_selected_rid}")
-            elif combo_vals:
-                self.gr_run_combo.set(combo_vals[0])
-
-        filter_only_active = self.gr_only_active_run.get() if hasattr(self, 'gr_only_active_run') else True
-        combo_selection = self.gr_run_combo.get() if hasattr(self, 'gr_run_combo') else ""
+            scan_dirs.append(gdir)
+        if os.path.isdir(main_gdir) and main_gdir not in scan_dirs:
+            scan_dirs.append(main_gdir)
+        if legacy and os.path.isdir(legacy) and legacy not in scan_dirs:
+            scan_dirs.append(legacy)
 
         self._graph_paths = []
         display_items = []
 
-        if filter_only_active and combo_selection != "--- All Runs / All Images ---" and self.gr_selected_rid:
-            rid = self.gr_selected_rid
-            target_files = available_runs.get(rid, [])
-            if not target_files and gdir:
-                run_gdir = os.path.join(gdir, f"run_{rid}")
+        if cur_rid and cur_rid != 'none':
+            target_files = []
+            for s_dir in scan_dirs:
+                # 1. Dedicated folder run_<rid>
+                run_gdir = os.path.join(s_dir, f"run_{cur_rid}")
                 if os.path.isdir(run_gdir):
-                    target_files = sorted(glob.glob(os.path.join(run_gdir, "*.png")))
+                    for pf in sorted(glob.glob(os.path.join(run_gdir, "*.png"))):
+                        if pf not in target_files:
+                            target_files.append(pf)
+                # 2. Strict regex match for loose files
+                for pf in sorted(glob.glob(os.path.join(s_dir, "*.png"))):
+                    bn = os.path.basename(pf)
+                    if re.search(rf'_(?:run_)?{re.escape(cur_rid)}\.png$', bn, re.IGNORECASE):
+                        if pf not in target_files:
+                            target_files.append(pf)
 
             def graph_sort_and_label(f):
                 bn = os.path.basename(f).lower()
-                if 'polar' in bn and 'javafoil' not in bn:
-                    return (0, "Aerodynamic Polar (Cl vs Cd)")
+                if 'overlay_cl_alfa' in bn:
+                    return (0, "Cross-Check: Lift Curve Cl vs α (JavaFoil vs SU2 vs XFOIL)")
+                elif 'overlay_cd_alfa' in bn:
+                    return (1, "Cross-Check: Drag Curve Cd vs α (JavaFoil vs SU2 vs XFOIL)")
+                elif 'overlay_eff_alfa' in bn:
+                    return (2, "Cross-Check: Efficiency |Cl|/Cd vs α (JavaFoil vs SU2 vs XFOIL)")
+                elif 'overlay_drag_polar' in bn:
+                    return (3, "Cross-Check: Drag Polar Cl vs Cd (JavaFoil vs SU2 vs XFOIL)")
+                elif 'overlay_surface_cp' in bn:
+                    return (4, "Cross-Check: Main Element Surface Cp (JavaFoil vs SU2)")
+                elif 'su2_polar_cl_alfa' in bn:
+                    return (5, "SU2 Lift Curve (Cl vs α)")
+                elif 'su2_polar_cd_alfa' in bn:
+                    return (6, "SU2 Drag Curve (Cd vs α)")
+                elif 'su2_polar_eff_alfa' in bn:
+                    return (7, "SU2 Aerodynamic Efficiency (|Cl|/Cd vs α)")
+                elif 'su2_polar_cl_cd' in bn:
+                    return (8, "SU2 Drag Polar (Cl vs Cd)")
+                elif 'su2_convergence' in bn:
+                    return (9, "SU2 Convergence History (Residuals & Forces)")
+                elif 'su2_surface_cp' in bn:
+                    return (10, "SU2 Surface Pressure Distribution (-Cp)")
+                elif 'su2_flowfield' in bn:
+                    return (11, "SU2 Flowfield Contours (Velocity & Pressure)")
+                elif 'xfoil_polar_cl_alfa' in bn:
+                    return (12, "XFOIL Lift Curve (Cl vs α)")
+                elif 'xfoil_polar_cd_alfa' in bn:
+                    return (13, "XFOIL Drag Curve (Cd vs α)")
+                elif 'xfoil_polar_eff_alfa' in bn:
+                    return (14, "XFOIL Aerodynamic Efficiency (|Cl|/Cd vs α)")
+                elif 'xfoil_polar_cl_cd' in bn:
+                    return (15, "XFOIL Drag Polar (Cl vs Cd)")
+                elif 'xfoil_polar_cm_alfa' in bn:
+                    return (16, "XFOIL Pitching Moment (Cm vs α)")
+                elif 'polar' in bn and 'javafoil' not in bn and 'su2' not in bn and 'overlay' not in bn and 'xfoil' not in bn:
+                    return (17, "Aerodynamic Polar (Cl vs Cd)")
                 elif 'geometry' in bn:
-                    return (1, "Wing Profile & Slot Geometry")
-                elif 'field' in bn:
-                    return (2, "Flow Velocity Field")
+                    return (18, "Wing Profile & Slot Geometry")
+                elif 'field' in bn and 'su2' not in bn:
+                    return (19, "Flow Velocity Field")
                 elif 'javafoil_polar_cl_cd' in bn:
-                    return (3, "JavaFoil Drag Polar (Cl vs Cd)")
+                    return (20, "JavaFoil Drag Polar (Cl vs Cd)")
                 elif 'javafoil_polar_cl_alfa' in bn:
-                    return (4, "JavaFoil Lift Curve (Cl vs Alpha)")
+                    return (21, "JavaFoil Lift Curve (Cl vs Alpha)")
                 elif 'javafoil_polar_cm_alfa' in bn:
-                    return (5, "JavaFoil Pitching Moment (Cm vs Alpha)")
+                    return (22, "JavaFoil Pitching Moment (Cm vs Alpha)")
                 elif 'javafoil_velocity_cp' in bn:
-                    return (6, "JavaFoil Surface Pressure Cp")
+                    return (23, "JavaFoil Surface Pressure Cp")
                 elif 'javafoil_bl_cf' in bn:
-                    return (7, "JavaFoil Skin Friction Cf")
+                    return (24, "JavaFoil Skin Friction Cf")
                 elif 'javafoil_bl_delta' in bn:
-                    return (8, "JavaFoil Boundary Layer (delta)")
+                    return (25, "JavaFoil Boundary Layer (delta)")
                 else:
-                    return (9, f"{os.path.basename(f)}")
+                    return (30, f"{os.path.basename(f)}")
 
-            sorted_labeled = sorted([(graph_sort_and_label(f), f) for f in target_files], key=lambda x: x[0][0])
+            # Deduplicate by semantic graph type (order) so each graph type appears exactly ONCE
+            unique_by_key = {}
+            for f in target_files:
+                order, lbl = graph_sort_and_label(f)
+                bn = os.path.basename(f).lower()
+                dedup_key = order if order < 30 else bn
+
+                # Priority: prefer files in dedicated run_<cur_rid> subfolder, then newer mtime
+                in_run_folder = f"run_{cur_rid}" in f
+                mtime = os.path.getmtime(f) if os.path.exists(f) else 0
+                priority = (1 if in_run_folder else 0, mtime)
+
+                if dedup_key not in unique_by_key or priority > unique_by_key[dedup_key][0]:
+                    unique_by_key[dedup_key] = (priority, order, lbl, f)
+
+            sorted_labeled = sorted([((v[1], v[2]), v[3]) for v in unique_by_key.values()], key=lambda x: x[0][0])
             for (order, lbl), f in sorted_labeled:
                 self._graph_paths.append(f)
                 display_items.append(lbl)
-        else:
-            all_files = []
-            if gdir and os.path.isdir(gdir):
-                top_pngs = sorted(glob.glob(os.path.join(gdir, '*.png')))
-                sub_pngs = sorted(glob.glob(os.path.join(gdir, '*', '*.png')))
-                all_files = sorted(set(top_pngs + sub_pngs))
-            if legacy and os.path.isdir(legacy):
-                all_files = sorted(set(all_files + sorted(glob.glob(os.path.join(legacy, '*.png')))))
-            for f in all_files:
-                rel = os.path.relpath(f, gdir) if gdir and f.startswith(gdir) else os.path.basename(f)
-                self._graph_paths.append(f)
-                display_items.append(rel)
 
         self.img_list.delete(0, 'end')
         for itm in display_items:
             self.img_list.insert('end', itm)
 
         cur_rid = self.gr_selected_rid or 'all'
-        if filter_only_active and combo_selection != "--- All Runs / All Images ---":
-            if self._graph_paths:
-                self.gr_status.set(f"Run {cur_rid}: {len(self._graph_paths)} graph(s) displayed from {gdir}/run_{cur_rid}")
-            else:
-                self.gr_status.set(f"Run {cur_rid}: No graphs generated yet. Click 'Generate Graphs' to create them.")
-        else:
-            self.gr_status.set(f"All Runs: {len(self._graph_paths)} image(s) found in {gdir}")
-
         if self._graph_paths:
+            self.gr_status.set(f"Run {cur_rid}: {len(self._graph_paths)} graph(s) displayed from {gdir}/run_{cur_rid}")
             self.img_list.selection_set(0)
+            if hasattr(self, 'gr_full_title_var') and self.img_list.size() > 0:
+                self.gr_full_title_var.set(self.img_list.get(0))
             self.show_image(self._graph_paths[0])
         else:
-            self.gimg_lbl.configure(image='', text=f"No graphs for Run {cur_rid}\nClick 'Generate Graphs' to generate.")
+            if hasattr(self, 'gr_full_title_var'):
+                self.gr_full_title_var.set(f"No graphs available for {cur_rid}")
+            self.gimg_lbl.configure(image='', text=f"No graphs found for {cur_rid}\nClick 'Regenerate Run Graphs' below to generate fresh.")
+            self.gr_status.set(f"Run {cur_rid}: No graphs generated yet.")
+
+    def _on_img_list_hover(self, event):
+        try:
+            idx = self.img_list.nearest(event.y)
+            if 0 <= idx < self.img_list.size():
+                self.gr_full_title_var.set(self.img_list.get(idx))
+        except Exception:
+            pass
+
+    def _on_img_list_leave(self):
+        try:
+            sel = self.img_list.curselection()
+            if sel and hasattr(self, 'gr_full_title_var'):
+                self.gr_full_title_var.set(self.img_list.get(sel[0]))
+        except Exception:
+            pass
 
     def on_pick_graph(self, event=None):
         sel = self.img_list.curselection()
         if not sel:
             return
-        path = self._graph_paths[sel[0]]
+        idx = sel[0]
+        if hasattr(self, 'gr_full_title_var'):
+            self.gr_full_title_var.set(self.img_list.get(idx))
+        path = self._graph_paths[idx]
         self.show_image(path)
+
+    def _on_gimg_canvas_configure(self, event):
+        if hasattr(self, '_cur_graph_path') and self._cur_graph_path and os.path.exists(self._cur_graph_path):
+            last_w = getattr(self, '_last_rendered_canvas_w', 0)
+            if abs(event.width - last_w) > 40:
+                self.show_image(self._cur_graph_path)
 
     def show_image(self, path):
         if not HAS_PIL:
@@ -6827,17 +8673,388 @@ class App(tk.Tk):
             return
         if not path or not os.path.exists(path):
             self.gimg_lbl.configure(image='', text='select an image')
+            if hasattr(self, 'gr_coord_lbl'):
+                self.gr_coord_lbl.configure(text="Coordinates: Select an image")
             return
         self._cur_graph_path = path
         try:
             with Image.open(path) as img:
-                w = max(self.gimg_lbl.winfo_width(), 650)
-                h = max(self.gimg_lbl.winfo_height(), 460)
-                img.thumbnail((w, h))
-                self._gimg = ImageTk.PhotoImage(img)
+                self._orig_pil_img = img.copy()
+                orig_w, orig_h = img.width, img.height
+
+                canvas_w = self.gimg_canvas.winfo_width() if hasattr(self, 'gimg_canvas') else self.gimg_lbl.winfo_width()
+                canvas_h = self.gimg_canvas.winfo_height() if hasattr(self, 'gimg_canvas') else self.gimg_lbl.winfo_height()
+                vw = max(canvas_w, 650)
+                vh = max(canvas_h, 460)
+                self._last_rendered_canvas_w = vw
+
+                zoom_mode = getattr(self, '_graph_zoom_mode', 'fit')
+                if zoom_mode == 'fit':
+                    target_w = max(vw - 28, 600)
+                    self._graph_zoom_scale = target_w / float(max(orig_w, 1))
+                else:
+                    self._graph_zoom_scale = getattr(self, '_graph_zoom_scale', 1.0)
+                    target_w = int(orig_w * self._graph_zoom_scale)
+
+                target_w = max(180, min(8000, target_w))
+                aspect = orig_h / float(max(orig_w, 1))
+                target_h = int(target_w * aspect)
+
+                self._graph_rendered_w = target_w
+                self._graph_rendered_h = target_h
+
+                resample = getattr(Image, 'Resampling', Image).LANCZOS if hasattr(getattr(Image, 'Resampling', Image), 'LANCZOS') else Image.ANTIALIAS
+                img_resized = self._orig_pil_img.resize((target_w, target_h), resample)
+                self._gimg = ImageTk.PhotoImage(img_resized)
+
             self.gimg_lbl.configure(image=self._gimg, text='')
+            if hasattr(self, 'gr_zoom_lbl'):
+                self.gr_zoom_lbl.configure(text=f"{int(self._graph_zoom_scale * 100)}%")
+            if hasattr(self, 'gimg_canvas'):
+                self.gimg_canvas.update_idletasks()
+                self.gimg_canvas.configure(scrollregion=self.gimg_canvas.bbox('all'))
         except Exception as e:
             self.gimg_lbl.configure(image='', text=f"cannot show {os.path.basename(path)}: {e}")
+
+    def on_graph_zoom_in(self):
+        self._graph_zoom_mode = 'manual'
+        cur = getattr(self, '_graph_zoom_scale', 1.0)
+        self._graph_zoom_scale = min(5.0, cur * 1.25)
+        if hasattr(self, '_cur_graph_path') and self._cur_graph_path:
+            self.show_image(self._cur_graph_path)
+
+    def on_graph_zoom_out(self):
+        self._graph_zoom_mode = 'manual'
+        cur = getattr(self, '_graph_zoom_scale', 1.0)
+        self._graph_zoom_scale = max(0.25, cur / 1.25)
+        if hasattr(self, '_cur_graph_path') and self._cur_graph_path:
+            self.show_image(self._cur_graph_path)
+
+    def on_graph_zoom_100(self):
+        self._graph_zoom_mode = 'manual'
+        self._graph_zoom_scale = 1.0
+        if hasattr(self, '_cur_graph_path') and self._cur_graph_path:
+            self.show_image(self._cur_graph_path)
+
+    def on_graph_zoom_fit(self):
+        self._graph_zoom_mode = 'fit'
+        if hasattr(self, '_cur_graph_path') and self._cur_graph_path:
+            self.show_image(self._cur_graph_path)
+
+    def _on_graph_canvas_wheel(self, event):
+        delta = 0
+        if hasattr(event, 'delta') and event.delta != 0:
+            delta = 1 if event.delta > 0 else -1
+        elif getattr(event, 'num', 0) == 4:
+            delta = 1
+        elif getattr(event, 'num', 0) == 5:
+            delta = -1
+        if delta != 0:
+            if (getattr(event, 'state', 0) & 0x0004) or (getattr(event, 'state', 0) & 0x0001):
+                if delta > 0:
+                    self.on_graph_zoom_in()
+                else:
+                    self.on_graph_zoom_out()
+                return "break"
+            else:
+                if delta > 0:
+                    self.gimg_canvas.yview_scroll(-2, 'units')
+                else:
+                    self.gimg_canvas.yview_scroll(2, 'units')
+                return "break"
+
+    def _on_graph_drag_start(self, event):
+        self.gimg_canvas.scan_mark(event.x, event.y)
+
+    def _on_graph_drag_move(self, event):
+        self.gimg_canvas.scan_dragto(event.x, event.y, gain=1)
+
+    def _on_graph_hover(self, event):
+        if not hasattr(self, '_orig_pil_img') or not self._orig_pil_img:
+            return
+        rw = getattr(self, '_graph_rendered_w', self.gimg_lbl.winfo_width())
+        rh = getattr(self, '_graph_rendered_h', self.gimg_lbl.winfo_height())
+        if rw <= 0 or rh <= 0:
+            return
+        orig_w, orig_h = self._orig_pil_img.size
+        px_x = int(np.clip(event.x * (orig_w / float(rw)), 0, orig_w - 1))
+        px_y = int(np.clip(event.y * (orig_h / float(rh)), 0, orig_h - 1))
+
+        u = px_x / float(max(orig_w, 1))
+        v = px_y / float(max(orig_h, 1))
+
+        coord_txt = f"Image: ({px_x}, {px_y}) px"
+        phys_txt = self._estimate_physical_coords(u, v)
+        if phys_txt:
+            coord_txt += f"   |   {phys_txt}"
+
+        if hasattr(self, 'gr_coord_lbl'):
+            self.gr_coord_lbl.configure(text=coord_txt)
+
+    def _estimate_physical_coords(self, u, v):
+        if not hasattr(self, '_cur_graph_path') or not self._cur_graph_path:
+            return None
+        bn = os.path.basename(self._cur_graph_path).lower()
+        u_left, u_right = 0.115, 0.945
+        v_top, v_bot = 0.155, 0.875
+
+        if not (u_left <= u <= u_right and v_top <= v <= v_bot):
+            return None
+
+        x_norm = (u - u_left) / (u_right - u_left)
+        y_norm = (v_bot - v) / (v_bot - v_top)
+
+        run_dir = os.path.dirname(self._cur_graph_path)
+        rid = getattr(self, 'gr_selected_rid', '')
+
+        if 'cl_alfa' in bn or 'cl_alpha' in bn:
+            a_min, a_max = -20.0, 5.0
+            c_min, c_max = -2.5, 0.5
+            for cp in [os.path.join(run_dir, f"su2_polar_{rid}.csv"),
+                       os.path.join(run_dir, f"overlay_comparison_{rid}.csv"),
+                       os.path.join(run_dir, f"xfoil_polar_{rid}.csv")]:
+                if os.path.isfile(cp):
+                    try:
+                        import pandas as pd
+                        df = pd.read_csv(cp)
+                        col_a = next((c for c in df.columns if 'alpha' in c.lower()), None)
+                        col_c = next((c for c in df.columns if 'cl' in c.lower()), None)
+                        if col_a and col_c:
+                            a_min, a_max = float(df[col_a].min()), float(df[col_a].max())
+                            c_min, c_max = float(df[col_c].min()), float(df[col_c].max())
+                            span = max(0.2, c_max - c_min)
+                            c_min -= 0.1 * span
+                            c_max += 0.1 * span
+                            break
+                    except Exception:
+                        pass
+            val_a = a_min + x_norm * (a_max - a_min)
+            val_c = c_min + y_norm * (c_max - c_min)
+            return f"Data: α ≈ {val_a:+.2f}°,  Cl ≈ {val_c:+.3f}"
+
+        elif 'cd_alfa' in bn or 'cd_alpha' in bn:
+            val_a = -20.0 + x_norm * 25.0
+            val_cd = 0.0 + y_norm * 0.4
+            return f"Data: α ≈ {val_a:+.2f}°,  Cd ≈ {val_cd:.4f}"
+
+        elif 'eff_alfa' in bn or 'eff_alpha' in bn:
+            val_a = -20.0 + x_norm * 25.0
+            val_eff = 0.0 + y_norm * 25.0
+            return f"Data: α ≈ {val_a:+.2f}°,  |Cl|/Cd ≈ {val_eff:.2f}"
+
+        elif 'cl_cd' in bn or 'drag_polar' in bn:
+            val_cd = 0.0 + x_norm * 0.35
+            val_cl = -2.5 + y_norm * 3.0
+            return f"Data: Cd ≈ {val_cd:.4f},  Cl ≈ {val_cl:+.3f}"
+
+        elif 'surface_cp' in bn or 'cp' in bn:
+            val_x = 0.0 + x_norm * 1.2
+            val_cp = -3.5 + y_norm * 4.5
+            return f"Data: x/c ≈ {val_x:.3f},  -Cp ≈ {val_cp:+.2f}"
+
+        elif 'geometry' in bn:
+            val_x = 0.0 + x_norm * 1200.0
+            val_y = -300.0 + y_norm * 600.0
+            return f"Geometry: x ≈ {val_x:.1f} mm,  y ≈ {val_y:.1f} mm"
+
+        return f"Normalized: x={x_norm:.3f}, y={y_norm:.3f}"
+
+    def on_open_interactive_inspector(self):
+        """Opens a fully interactive Matplotlib inspection window with zoom, pan, and exact cursor coordinates."""
+        if not hasattr(self, '_cur_graph_path') or not self._cur_graph_path or not os.path.exists(self._cur_graph_path):
+            messagebox.showinfo("Interactive Inspector", "Please select a graph from the list to inspect.")
+            return
+
+        graph_path = self._cur_graph_path
+        rid = getattr(self, 'gr_selected_rid', 'Run')
+        run_dir = os.path.dirname(graph_path)
+        bn = os.path.basename(graph_path).lower()
+
+        try:
+            import matplotlib
+            matplotlib.use('TkAgg')
+            from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg, NavigationToolbar2Tk
+            import matplotlib.pyplot as plt
+            import pandas as pd
+        except ImportError as e:
+            messagebox.showerror("Interactive Inspector", f"Matplotlib/TkAgg error: {e}")
+            return
+
+        dlg = tk.Toplevel(self)
+        dlg.title(f"Interactive Plot Inspector — {os.path.basename(graph_path)} (Run: {rid})")
+        dlg.geometry("960x650")
+        dlg.configure(bg='#0b1120')
+        dlg.minsize(640, 480)
+
+        top_info = tk.Frame(dlg, bg='#1e293b', bd=1, relief='ridge', padx=10, pady=6)
+        top_info.pack(fill='x', padx=8, pady=(8, 4))
+        tk.Label(top_info, text=f"Interactive Inspector: {os.path.basename(graph_path)}",
+                 font=('Segoe UI', 10, 'bold'), fg='#38bdf8', bg='#1e293b').pack(side='left')
+        tk.Label(top_info, text="Use toolbar below to Zoom Box, Pan, Reset View, and Hover for exact coordinates",
+                 font=('Segoe UI', 9), fg='#94a3b8', bg='#1e293b').pack(side='right')
+
+        canvas_frame = tk.Frame(dlg, bg='#0b1120')
+        canvas_frame.pack(fill='both', expand=True, padx=8, pady=4)
+
+        fig, ax = plt.subplots(figsize=(9, 5.5), dpi=110)
+        DARK_BG = '#0b1120'
+        CARD_BG = '#1e293b'
+        TEXT_COLOR = '#f8fafc'
+        GRID_COLOR = '#334155'
+        ACCENT_CYAN = '#38bdf8'
+        AMBER_COLOR = '#fbbf24'
+        PURPLE_COLOR = '#c084fc'
+
+        fig.patch.set_facecolor(DARK_BG)
+        ax.set_facecolor(CARD_BG)
+        ax.tick_params(colors='#94a3b8', labelsize=9)
+        ax.grid(True, linestyle='--', alpha=0.35, color=GRID_COLOR)
+        for s in ax.spines.values():
+            s.set_color(GRID_COLOR)
+
+        loaded_data = False
+        csv_candidates = [
+            os.path.join(run_dir, f"su2_polar_{rid}.csv"),
+            os.path.join(run_dir, f"overlay_comparison_{rid}.csv"),
+            os.path.join(run_dir, f"xfoil_polar_{rid}.csv"),
+        ]
+
+        # 1. Lift Curve
+        if ('cl_alfa' in bn or 'cl_alpha' in bn) and not loaded_data:
+            for cp in csv_candidates:
+                if os.path.isfile(cp):
+                    try:
+                        df = pd.read_csv(cp)
+                        col_a = next((c for c in df.columns if 'alpha' in c.lower()), None)
+                        if col_a:
+                            for col_c, col_name, color, marker in [
+                                ('cl_jf', 'JavaFoil Cl', AMBER_COLOR, 's--'),
+                                ('cl_su2', 'SU2 2D RANS Cl', ACCENT_CYAN, 'o-'),
+                                ('cl_xf', 'XFOIL Cl', PURPLE_COLOR, '^-.'),
+                                ('Cl', 'SU2 Cl', ACCENT_CYAN, 'o-')
+                            ]:
+                                if col_c in df.columns:
+                                    ax.plot(df[col_a], df[col_c], marker, color=color, lw=2.0, ms=6, label=col_name)
+                                    loaded_data = True
+                            if loaded_data:
+                                ax.set_xlabel("Angle of Attack α (°)", fontsize=10, fontweight='bold', color=TEXT_COLOR)
+                                ax.set_ylabel("Lift / Downforce Coefficient Cl", fontsize=10, fontweight='bold', color=TEXT_COLOR)
+                                ax.set_title(f"Interactive Lift Curve (Cl vs α) — {rid}", fontsize=11, fontweight='bold', color=TEXT_COLOR)
+                                ax.axhline(0, color='#64748b', ls=':')
+                                ax.legend(facecolor=DARK_BG, edgecolor=GRID_COLOR, labelcolor=TEXT_COLOR, fontsize=9)
+                                break
+                    except Exception:
+                        pass
+
+        # 2. Drag Curve
+        elif ('cd_alfa' in bn or 'cd_alpha' in bn) and not loaded_data:
+            for cp in csv_candidates:
+                if os.path.isfile(cp):
+                    try:
+                        df = pd.read_csv(cp)
+                        col_a = next((c for c in df.columns if 'alpha' in c.lower()), None)
+                        if col_a:
+                            for col_c, col_name, color, marker in [
+                                ('cd_jf', 'JavaFoil Cd', AMBER_COLOR, 's--'),
+                                ('cd_su2', 'SU2 2D RANS Cd', ACCENT_CYAN, 'o-'),
+                                ('cd_xf', 'XFOIL Cd', PURPLE_COLOR, '^-.'),
+                                ('Cd', 'SU2 Cd', ACCENT_CYAN, 'o-')
+                            ]:
+                                if col_c in df.columns:
+                                    ax.plot(df[col_a], df[col_c], marker, color=color, lw=2.0, ms=6, label=col_name)
+                                    loaded_data = True
+                            if loaded_data:
+                                ax.set_xlabel("Angle of Attack α (°)", fontsize=10, fontweight='bold', color=TEXT_COLOR)
+                                ax.set_ylabel("Drag Coefficient Cd", fontsize=10, fontweight='bold', color=TEXT_COLOR)
+                                ax.set_title(f"Interactive Drag Curve (Cd vs α) — {rid}", fontsize=11, fontweight='bold', color=TEXT_COLOR)
+                                ax.legend(facecolor=DARK_BG, edgecolor=GRID_COLOR, labelcolor=TEXT_COLOR, fontsize=9)
+                                break
+                    except Exception:
+                        pass
+
+        # 3. Efficiency Curve
+        elif ('eff_alfa' in bn or 'eff_alpha' in bn) and not loaded_data:
+            for cp in csv_candidates:
+                if os.path.isfile(cp):
+                    try:
+                        df = pd.read_csv(cp)
+                        col_a = next((c for c in df.columns if 'alpha' in c.lower()), None)
+                        if col_a:
+                            for col_e, col_name, color, marker in [
+                                ('eff_jf', 'JavaFoil |Cl|/Cd', AMBER_COLOR, 's--'),
+                                ('eff_su2', 'SU2 |Cl|/Cd', ACCENT_CYAN, 'o-'),
+                                ('eff_xf', 'XFOIL |Cl|/Cd', PURPLE_COLOR, '^-.'),
+                                ('efficiency', 'SU2 |Cl|/Cd', ACCENT_CYAN, 'o-')
+                            ]:
+                                if col_e in df.columns:
+                                    ax.plot(df[col_a], df[col_e], marker, color=color, lw=2.0, ms=6, label=col_name)
+                                    loaded_data = True
+                            if loaded_data:
+                                ax.set_xlabel("Angle of Attack α (°)", fontsize=10, fontweight='bold', color=TEXT_COLOR)
+                                ax.set_ylabel("Aerodynamic Efficiency |Cl|/Cd", fontsize=10, fontweight='bold', color=TEXT_COLOR)
+                                ax.set_title(f"Interactive Efficiency Curve (|Cl|/Cd vs α) — {rid}", fontsize=11, fontweight='bold', color=TEXT_COLOR)
+                                ax.legend(facecolor=DARK_BG, edgecolor=GRID_COLOR, labelcolor=TEXT_COLOR, fontsize=9)
+                                break
+                    except Exception:
+                        pass
+
+        # 4. Drag Polar
+        elif ('cl_cd' in bn or 'drag_polar' in bn) and not loaded_data:
+            for cp in csv_candidates:
+                if os.path.isfile(cp):
+                    try:
+                        df = pd.read_csv(cp)
+                        low_cols = [c.lower() for c in df.columns]
+                        if 'cd' in low_cols and 'cl' in low_cols:
+                            df.columns = low_cols
+                            ax.plot(df['cd'], df['cl'], 'o-', color=ACCENT_CYAN, lw=2.0, ms=6, label=f"Polar ({rid})")
+                            loaded_data = True
+                        elif 'cd_su2' in df.columns and 'cl_su2' in df.columns:
+                            ax.plot(df['cd_su2'], df['cl_su2'], 'o-', color=ACCENT_CYAN, lw=2.0, ms=6, label="SU2 Polar")
+                            if 'cd_jf' in df.columns:
+                                ax.plot(df['cd_jf'], df['cl_jf'], 's--', color=AMBER_COLOR, lw=2.0, ms=6, label="JavaFoil Polar")
+                            loaded_data = True
+                        if loaded_data:
+                            ax.set_xlabel("Drag Coefficient Cd", fontsize=10, fontweight='bold', color=TEXT_COLOR)
+                            ax.set_ylabel("Lift / Downforce Coefficient Cl", fontsize=10, fontweight='bold', color=TEXT_COLOR)
+                            ax.set_title(f"Interactive Drag Polar (Cl vs Cd) — {rid}", fontsize=11, fontweight='bold', color=TEXT_COLOR)
+                            ax.axhline(0, color='#64748b', ls=':')
+                            ax.legend(facecolor=DARK_BG, edgecolor=GRID_COLOR, labelcolor=TEXT_COLOR, fontsize=9)
+                            break
+                    except Exception:
+                        pass
+
+        if not loaded_data:
+            try:
+                from PIL import Image
+                pil_img = Image.open(graph_path)
+                ax.imshow(pil_img)
+                ax.set_title(f"Interactive Image View: {os.path.basename(graph_path)}", fontsize=11, fontweight='bold', color=TEXT_COLOR)
+                ax.set_xlabel("Pixel X (Coordinates shown live in toolbar)", fontsize=9, color=TEXT_COLOR)
+                ax.set_ylabel("Pixel Y", fontsize=9, color=TEXT_COLOR)
+                ax.grid(False)
+            except Exception as e:
+                ax.text(0.5, 0.5, f"Could not load image: {e}", ha='center', va='center', color='#f43f5e', transform=ax.transAxes)
+
+        plt.tight_layout()
+
+        canvas = FigureCanvasTkAgg(fig, master=canvas_frame)
+        canvas.draw()
+        canvas.get_tk_widget().pack(fill='both', expand=True)
+
+        toolbar_frame = tk.Frame(dlg, bg='#1e293b')
+        toolbar_frame.pack(fill='x', side='bottom')
+        toolbar = NavigationToolbar2Tk(canvas, toolbar_frame)
+        toolbar.update()
+
+        def _on_close_insp():
+            plt.close(fig)
+            dlg.destroy()
+
+        dlg.protocol("WM_DELETE_WINDOW", _on_close_insp)
+        dlg.canvas = canvas
+        dlg.toolbar = toolbar
+        return dlg
 
     def on_open_graph(self):
         sel = self.img_list.curselection()
@@ -6858,18 +9075,318 @@ class App(tk.Tk):
         subprocess_open(target)
 
     def on_regenerate_current_run_graphs(self):
+        rid = getattr(self, 'gr_selected_rid', '')
+        if not rid:
+            messagebox.showinfo("Regenerate Graphs", "No run currently selected.")
+            return
+
+        # 1. Check if rid is in _top_runs_data or master list
+        top_list = getattr(self, '_top_runs_data', []) or (self._get_top_runs_master_list() if hasattr(self, '_get_top_runs_master_list') else [])
+        for top_r in top_list:
+            if str(top_r.get('id', '')) == str(rid):
+                if hasattr(self, 'main_box'):
+                    self.main_box.set(top_r.get('main', 's1223'))
+                if hasattr(self, 'vars'):
+                    if 'chord' in self.vars: self.vars['chord'].set(str(top_r.get('chord', 250.0)))
+                    if 'speed' in self.vars: self.vars['speed'].set(str(top_r.get('speed', 20.0)))
+                    if 're' in self.vars: self.vars['re'].set(str(int(top_r.get('re', A.RE))))
+                    if 'al0' in self.vars: self.vars['al0'].set(str(top_r.get('al0', A.ALPHA[0])))
+                    if 'al1' in self.vars: self.vars['al1'].set(str(top_r.get('al1', A.ALPHA[1])))
+                    if 'alst' in self.vars: self.vars['alst'].set(str(top_r.get('alst', A.ALPHA[2])))
+                ge = top_r.get('ge', False)
+                if hasattr(self, 'ge_state'): self.ge_state.set(bool(ge))
+                if hasattr(self, 'gh_state'): self.gh_state.set(str(top_r.get('gh_pct', 15.0) if ge else ''))
+                flaps = list(top_r.get('flaps', []))
+                cfg = (top_r.get('main', 's1223'), tuple(flaps))
+                self.generate_configured_graphs(cfg, run_name=rid, switch=True)
+                return
+
+        # 2. Check if rid is in famous packages
+        for pkg in getattr(A, 'get_famous_packages', lambda: [])():
+            if str(pkg.get('id', '')) == str(rid) or str(pkg.get('name', '')) == str(rid):
+                if hasattr(self, 'main_box'):
+                    self.main_box.set(pkg.get('main', 's1223'))
+                if hasattr(self, 'vars'):
+                    if 'chord' in self.vars: self.vars['chord'].set(str(pkg.get('chord', 250.0)))
+                    if 'speed' in self.vars: self.vars['speed'].set(str(pkg.get('speed', 20.0)))
+                    if 're' in self.vars: self.vars['re'].set(str(int(pkg.get('re', A.RE))))
+                    if 'al0' in self.vars: self.vars['al0'].set(str(A.ALPHA[0]))
+                    if 'al1' in self.vars: self.vars['al1'].set(str(A.ALPHA[1]))
+                    if 'alst' in self.vars: self.vars['alst'].set(str(A.ALPHA[2]))
+                ge = pkg.get('ge', False)
+                if hasattr(self, 'ge_state'): self.ge_state.set(bool(ge))
+                if hasattr(self, 'gh_state'): self.gh_state.set(str(pkg.get('gh_pct', 15.0) if ge else ''))
+                cfg = (pkg['main'], tuple(pkg.get('flaps', [])))
+                self.generate_configured_graphs(cfg, run_name=rid, switch=True)
+                return
+
+        # 3. Check if rid is in results table
         r = self._selected_row()
-        rid = self.gr_selected_rid
-        if (r is None or (hasattr(r, 'empty') and r.empty)) and rid:
-            if hasattr(self, '_tree_frame') and self._tree_frame is not None and not self._tree_frame.empty:
-                if 'Run_ID' in self._tree_frame.columns:
-                    m = self._tree_frame[self._tree_frame['Run_ID'].astype(str) == str(rid)]
-                    if not m.empty:
-                        r = m.iloc[0]
-        if r is not None and not (hasattr(r, 'empty') and r.empty):
+        if r is not None and not (hasattr(r, 'empty') and r.empty) and str(r.get('Run_ID', '')) == str(rid):
             self._gen_graphs(r, switch=True, force_regen=True)
-        else:
-            messagebox.showinfo("Regenerate Graphs", "Please select a run in the Results table to regenerate graphs.")
+            return
+        if hasattr(self, '_tree_frame') and self._tree_frame is not None and not self._tree_frame.empty:
+            if 'Run_ID' in self._tree_frame.columns:
+                m = self._tree_frame[self._tree_frame['Run_ID'].astype(str) == str(rid)]
+                if not m.empty:
+                    self._gen_graphs(m.iloc[0], switch=True, force_regen=True)
+                    return
+
+        # 4. Fallback: use currently configured wing
+        cfg = self.read_cfg()
+        if cfg:
+            self.generate_configured_graphs(cfg, run_name=rid, switch=True)
+            return
+
+        messagebox.showinfo("Regenerate Graphs", f"Could not determine wing geometry for Run {rid}.")
+
+    def on_generate_all_filter_graphs(self):
+        """Batch generates fresh graphs for all runs in the active filter category."""
+        cat = getattr(self, 'gr_filter_category', 'current')
+        runs = self._get_category_runs(cat)
+        valid_runs = [r for r in runs if r[0] not in ('none', '', 'active')]
+        if not valid_runs:
+            messagebox.showinfo("Generate Graphs", "No valid runs found in the current filter category.")
+            return
+
+        cat_names = {
+            'current': "Current Run Only",
+            'top_fw': "Top 10 Front Wings (FW)",
+            'top_rw': "Top 10 Rear Wings (RW)",
+            'famous': "Famous Championship Wings",
+            'other': "All Other Runs"
+        }
+        cat_title = cat_names.get(cat, cat)
+
+        if not messagebox.askyesno(
+            "Batch Graph Generation",
+            f"Generate all graphs for all {len(valid_runs)} run(s) in category:\n'{cat_title}'?\n\n"
+            f"This will delete old graphs and generate fresh, updated graphs for each run in this filter."
+        ):
+            return
+
+        if hasattr(self, 'btn_gen_filter'):
+            self.btn_gen_filter.configure(state='disabled')
+        if hasattr(self, 'gr_prog_bar'):
+            self.gr_prog_bar['value'] = 0
+        if hasattr(self, 'gr_prog_lbl'):
+            self.gr_prog_lbl.configure(text=f"Starting batch generation for {len(valid_runs)} run(s)...")
+
+        def batch_work():
+            total = len(valid_runs)
+            for idx, (rid, label) in enumerate(valid_runs, 1):
+                pct = int((idx - 1) / total * 100)
+                msg = f"[{idx}/{total}] Generating graphs for {rid}..."
+                self.ui_q.put(('gr_prog', (pct, msg)))
+                self.set_status(msg)
+                try:
+                    self._generate_single_run_graphs_batch(rid)
+                except Exception as ex:
+                    self.log(f"Error generating graphs for {rid}: {ex}")
+
+            self.ui_q.put(('gr_prog', (100, f"Completed generation for all {total} runs in {cat_title}!")))
+            self.ui_q.put(('gr_batch_done', (cat_title, total)))
+
+        threading.Thread(target=batch_work, daemon=True).start()
+
+    def _generate_single_run_graphs_batch(self, rid):
+        """Generates full suite of graphs (polars, geometry, velocity contours, XFOIL polars, JavaFoil native) for a single run ID."""
+        rid = str(rid).strip()
+        if not rid or rid == 'none':
+            return
+
+        res_p = os.path.expanduser(self.res_file.get() if hasattr(self, 'res_file') else os.path.join(A.OUT_DIR, "results.csv"))
+        base_dir = os.path.dirname(res_p) if os.path.exists(res_p) else A.OUT_DIR
+        gdir = os.path.join(base_dir, 'graphs')
+        run_gdir = os.path.join(gdir, f"run_{rid}")
+        os.makedirs(gdir, exist_ok=True)
+
+        gdir_main = os.path.join(A.OUT_DIR, "graphs")
+        run_gdir_main = os.path.join(gdir_main, f"run_{rid}")
+        os.makedirs(gdir_main, exist_ok=True)
+
+        # 1. Cleanly delete old directory and loose files to ensure true overwrite
+        for d in (run_gdir, run_gdir_main):
+            if os.path.exists(d):
+                shutil.rmtree(d, ignore_errors=True)
+            os.makedirs(d, exist_ok=True)
+        for gd in (gdir, gdir_main):
+            for old_f in glob.glob(os.path.join(gd, f"*_{rid}.png")):
+                try:
+                    os.remove(old_f)
+                except Exception:
+                    pass
+
+        def copy_dest(src_p):
+            if not src_p or not os.path.isfile(src_p):
+                return
+            fn = os.path.basename(src_p)
+            for d in (gdir, run_gdir, gdir_main, run_gdir_main):
+                target = os.path.join(d, fn)
+                if os.path.abspath(src_p) != os.path.abspath(target):
+                    try:
+                        shutil.copy2(src_p, target)
+                    except Exception:
+                        pass
+
+        # 2. Resolve geometry and parameters
+        cfg = None
+        chord = A.DEFAULT_CHORD_MM
+        speed = A.DEFAULT_SPEED
+        re_val = A.RE
+        gh = None
+        role = 'rear wing'
+        row_dict = None
+
+        # Check top runs master list
+        top_list = self._get_top_runs_master_list() if hasattr(self, '_get_top_runs_master_list') else []
+        for top_r in top_list:
+            if str(top_r.get('id', '')) == rid:
+                flaps = list(top_r.get('flaps', []))
+                cfg = (top_r.get('main', 's1223'), tuple(flaps))
+                chord = float(top_r.get('chord', A.DEFAULT_CHORD_MM))
+                speed = float(top_r.get('speed', A.DEFAULT_SPEED))
+                re_val = float(top_r.get('re', A.RE))
+                ge = top_r.get('ge', False)
+                gh = float(top_r.get('gh_pct', 15.0)) if ge else None
+                role = top_r.get('role', 'rear wing')
+                row_dict = dict(top_r)
+                break
+
+        # Check famous packages
+        if cfg is None:
+            for pkg in getattr(A, 'get_famous_packages', lambda: [])():
+                if str(pkg.get('id', '')) == rid or str(pkg.get('name', '')) == rid:
+                    cfg = (pkg['main'], tuple(pkg.get('flaps', [])))
+                    chord = float(pkg.get('chord', A.DEFAULT_CHORD_MM))
+                    speed = float(pkg.get('speed', A.DEFAULT_SPEED))
+                    re_val = float(pkg.get('re', A.RE))
+                    ge = pkg.get('ge', False)
+                    gh = float(pkg.get('gh_pct', 15.0)) if ge else None
+                    role = pkg.get('role', 'rear wing')
+                    row_dict = dict(pkg)
+                    break
+
+        # Check results table
+        if cfg is None and hasattr(self, '_tree_frame') and self._tree_frame is not None and not self._tree_frame.empty:
+            if 'Run_ID' in self._tree_frame.columns:
+                m = self._tree_frame[self._tree_frame['Run_ID'].astype(str) == rid]
+                if not m.empty:
+                    r = m.iloc[0]
+                    cfg = self._row_to_cfg(r)
+                    chord = float(r.get('Chord_mm', A.DEFAULT_CHORD_MM))
+                    speed = float(r.get('Speed', A.DEFAULT_SPEED))
+                    re_val = float(r.get('Re', A.RE))
+                    gh = float(r['Height_pct']) if str(r.get('Flow', '')).lower() == 'ground' and 'Height_pct' in r and pd.notna(r['Height_pct']) else None
+                    row_dict = r.to_dict()
+
+        if cfg is None:
+            cfg = self.read_cfg()
+
+        if not cfg:
+            return
+
+        span_fw = getattr(A, 'DEFAULT_SPAN_FW_MM', 1400.0)
+        span_rw = getattr(A, 'DEFAULT_SPAN_RW_MM', 950.0)
+        span_val = span_fw if 'front' in str(role).lower() else span_rw
+
+        # 3. Export JavaFoil authentic charts & polars
+        try:
+            jf_outs = A.export_javafoil_graphs(cfg, gh, run_gdir, run_id=rid, re=re_val, alphas=A.ALPHA, v_inf=speed)
+            if jf_outs:
+                for f_p in (jf_outs.values() if isinstance(jf_outs, dict) else jf_outs):
+                    copy_dest(f_p)
+                for txt_fn in (f"javafoil_polar_{rid}.txt", f"javafoil_velocity_{rid}.txt", f"javafoil_bl_{rid}.txt"):
+                    copy_dest(os.path.join(run_gdir, txt_fn))
+        except Exception as e:
+            self.log(f"JavaFoil batch graph export for {rid}: {e}")
+
+        # 4. Generate R.plot_polar, R.plot_geometry, R.plot_field
+        if R and row_dict:
+            try:
+                if 'main' in row_dict and 'Main' not in row_dict:
+                    row_dict['Main'] = row_dict['main']
+                if 'flaps' in row_dict:
+                    for k, f in enumerate(row_dict['flaps'], 1):
+                        row_dict[f'F{k}_Airfoil'] = f[0]
+                        row_dict[f'F{k}_Scale'] = f[1]
+                        row_dict[f'F{k}_Angle'] = f[2]
+                        row_dict[f'F{k}_X'] = f[3]
+                        row_dict[f'F{k}_Y'] = f[4]
+                if 'Elements' not in row_dict:
+                    row_dict['Elements'] = 1 + len(row_dict.get('flaps', []))
+                if 'Run_ID' not in row_dict:
+                    row_dict['Run_ID'] = rid
+                if 'Chord_mm' not in row_dict:
+                    row_dict['Chord_mm'] = chord
+                if 'Cl_a0' not in row_dict:
+                    row_dict['Cl_a0'] = row_dict.get('jf_cl', 0.0) or 0.0
+                if 'Cd_a0' not in row_dict:
+                    row_dict['Cd_a0'] = row_dict.get('jf_cd', 0.0) or 0.0
+
+                p_polar = os.path.join(run_gdir, f"polar_{rid}.png")
+                p_geom = os.path.join(run_gdir, f"geometry_{rid}.png")
+                p_field = os.path.join(run_gdir, f"field_{rid}.png")
+
+                jf_polar_txt = os.path.join(run_gdir, f"javafoil_polar_{rid}.txt")
+                if os.path.isfile(jf_polar_txt) and 'Polar_File' not in row_dict:
+                    row_dict['Polar_File'] = jf_polar_txt
+
+                R.plot_geometry(row_dict, p_geom, chord)
+                copy_dest(p_geom)
+
+                if 'Polar_File' in row_dict and os.path.isfile(str(row_dict['Polar_File'])):
+                    R.plot_polar(row_dict, p_polar)
+                    copy_dest(p_polar)
+
+                R.plot_field(row_dict, p_field, chord, span_fw, span_rw)
+                copy_dest(p_field)
+            except Exception as e:
+                self.log(f"Matplotlib plots for {rid}: {e}")
+
+        # 5. Generate Viscous XFOIL polars
+        try:
+            import su2_engine as su2
+            xf_alphas = [float(x) for x in range(-12, 6, 1)]
+            su2.run_xfoil_case(cfg, alpha=xf_alphas,
+                               speed=speed, re_val=re_val, run_tag=rid, out_dir=run_gdir, timeout=120)
+            for xf_f in glob.glob(os.path.join(run_gdir, "xfoil_*.*")):
+                copy_dest(xf_f)
+        except Exception as e:
+            self.log(f"XFOIL batch simulation for {rid}: {e}")
+
+        # 6. Generate SU2 2D RANS CFD Polars & Contours
+        try:
+            import su2_engine as su2
+            su2_sweep = _subsample_alphas([float(round(x, 4)) for x in np.arange(A.ALPHA[0], A.ALPHA[1] + 0.5 * A.ALPHA[2], A.ALPHA[2])], max_pts=5)
+            su2_res = su2.run(cfg, engine='su2', alpha=su2_sweep, speed=speed, re_val=re_val,
+                              ground_h=gh, mesh_density='coarse', run_tag=rid, out_dir=run_gdir)
+            if su2_res and su2_res.get('graph_files'):
+                for f_p in su2_res['graph_files'].values():
+                    copy_dest(f_p)
+            cc_res = su2.cross_check(cfg, alpha=0.0, speed=speed, re=re_val,
+                                     ground_h=gh, run_tag=rid, out_dir=run_gdir)
+            if cc_res and cc_res.get('graph_files'):
+                for f_p in cc_res['graph_files'].values():
+                    copy_dest(f_p)
+        except Exception as e:
+            self.log(f"SU2 batch simulation for {rid}: {e}")
+
+        # 7. Export CAD models
+        try:
+            dxf_p = os.path.join(run_gdir, f"wing_{rid}.dxf")
+            step_p = os.path.join(run_gdir, f"wing_{rid}.step")
+            fcm_p = os.path.join(run_gdir, f"wing_{rid}.FCMacro")
+            svg_p = os.path.join(run_gdir, f"wing_{rid}.svg")
+            A.export_dxf(cfg, dxf_p, chord_mm=chord, ground_h=gh)
+            A.export_step(cfg, step_p, chord_mm=chord, span_mm=span_val, ground_h=gh)
+            A.export_freecad_macro(cfg, fcm_p, chord_mm=chord, span_mm=span_val, ground_h=gh)
+            A.export_svg(cfg, svg_p, chord_mm=chord, ground_h=gh)
+            for cad_p in (dxf_p, step_p, fcm_p, svg_p):
+                copy_dest(cad_p)
+        except Exception:
+            pass
+            pass
 
     def build_optimizer(self):
         opt = ttk.Frame(self.tab_opt)

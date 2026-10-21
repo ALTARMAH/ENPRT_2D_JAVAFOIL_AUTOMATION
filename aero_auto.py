@@ -373,6 +373,8 @@ def ensure_airfoils_loaded():
         for cd in cand_dirs:
             if cd and os.path.isdir(cd):
                 AIRFOILS.update(load_all(cd))
+        if 'ch10sm' in AIRFOILS and 'ch10' not in AIRFOILS:
+            AIRFOILS['ch10'] = AIRFOILS['ch10sm']
 
 def install_airfoil(src, name=None, store=None):
     """Copy a .dat/coordinate profile into the internal airfoil store under a chosen name.
@@ -462,7 +464,15 @@ def build_outlines(cfg, ground_h=UNSET):
             raise KeyError(f"unknown airfoil: {name!r}")
         outs.append(transform_coords(AIRFOILS[name], s, a, x, y))
     if h is not None:
-        outs = [o + np.array([0.0, float(h) / 100.0]) for o in outs]
+        # Physical ground clearance: ensure the lowest point of the multi-element assembly
+        # is positioned at distance h (% chord) above the ground plane (y = 0).
+        # This prevents physical penetration through the ground plane (y < 0) which causes
+        # singular panel matrices and single-point fallback in JavaFoil and SU2.
+        all_y = np.concatenate([o[:, 1] for o in outs])
+        min_y = float(np.min(all_y))
+        target_clearance = float(h) / 100.0
+        shift_y = target_clearance - min_y
+        outs = [o + np.array([0.0, shift_y]) for o in outs]
     return outs
 
 def wing_mount_chord():
@@ -667,7 +677,7 @@ FAMOUS_PACKAGES = [
         'main': 's1223',
         'chord': 250.0,
         'speed': 18.0,
-        're': 300000,
+        're': 570000,
         'ge': True,
         'gh_pct': 32.0,
         'span': 1400.0,
@@ -706,7 +716,7 @@ FAMOUS_PACKAGES = [
         'main': 's1223',
         'chord': 260.0,
         'speed': 20.0,
-        're': 355000,
+        're': 570000,
         'ge': True,
         'gh_pct': 30.0,
         'span': 1400.0,
@@ -743,7 +753,7 @@ FAMOUS_PACKAGES = [
         'main': 'e423',
         'chord': 165.0,
         'speed': 22.0,
-        're': 450000,
+        're': 570000,
         'ge': False,
         'gh_pct': 300.0,
         'span': 950.0,
@@ -780,7 +790,7 @@ FAMOUS_PACKAGES = [
         'main': 's1223',
         'chord': 150.0,
         'speed': 20.0,
-        're': 380000,
+        're': 570000,
         'ge': False,
         'gh_pct': 300.0,
         'span': 950.0,
@@ -819,7 +829,7 @@ FAMOUS_PACKAGES = [
         'main': 's1210',
         'chord': 270.0,
         'speed': 19.5,
-        're': 350000,
+        're': 570000,
         'ge': True,
         'gh_pct': 28.0,
         'span': 1400.0,
@@ -856,7 +866,7 @@ FAMOUS_PACKAGES = [
         'main': 's1223',
         'chord': 245.0,
         'speed': 19.0,
-        're': 320000,
+        're': 570000,
         'ge': True,
         'gh_pct': 31.0,
         'span': 1400.0,
@@ -892,7 +902,7 @@ FAMOUS_PACKAGES = [
         'main': 's1223',
         'chord': 230.0,
         'speed': 18.0,
-        're': 280000,
+        're': 570000,
         'ge': True,
         'gh_pct': 32.0,
         'span': 1400.0,
@@ -929,7 +939,7 @@ FAMOUS_PACKAGES = [
         'main': 'e423',
         'chord': 170.0,
         'speed': 21.0,
-        're': 420000,
+        're': 570000,
         'ge': False,
         'gh_pct': 300.0,
         'span': 950.0,
@@ -966,7 +976,7 @@ FAMOUS_PACKAGES = [
         'main': 's1210',
         'chord': 170.0,
         'speed': 28.0,
-        're': 600000,
+        're': 570000,
         'ge': False,
         'gh_pct': 300.0,
         'span': 950.0,
@@ -1003,7 +1013,7 @@ FAMOUS_PACKAGES = [
         'main': 's1223',
         'chord': 250.0,
         'speed': 25.0,
-        're': 430000,
+        're': 570000,
         'ge': True,
         'gh_pct': 30.0,
         'span': 1000.0,
@@ -1039,7 +1049,7 @@ FAMOUS_PACKAGES = [
         'main': 's1223',
         'chord': 250.0,
         'speed': 20.0,
-        're': 345000,
+        're': 570000,
         'ge': True,
         'gh_pct': 30.0,
         'span': 1400.0,
@@ -1076,7 +1086,7 @@ FAMOUS_PACKAGES = [
         'main': 'e423',
         'chord': 160.0,
         'speed': 22.0,
-        're': 240000,
+        're': 570000,
         'ge': False,
         'gh_pct': 30.0,
         'span': 1000.0,
@@ -1113,7 +1123,7 @@ FAMOUS_PACKAGES = [
         'main': 's1223',
         'chord': 250.0,
         'speed': 19.5,
-        're': 335000,
+        're': 570000,
         'ge': True,
         'gh_pct': 28.0,
         'span': 1400.0,
@@ -1150,7 +1160,7 @@ FAMOUS_PACKAGES = [
         'main': 'be50',
         'chord': 250.0,
         'speed': 20.0,
-        're': 345000,
+        're': 570000,
         'ge': True,
         'gh_pct': 32.0,
         'span': 1400.0,
@@ -1187,7 +1197,7 @@ FAMOUS_PACKAGES = [
         'main': 's1223',
         'chord': 150.0,
         'speed': 20.0,
-        're': 205000,
+        're': 570000,
         'ge': False,
         'gh_pct': 30.0,
         'span': 1000.0,
@@ -1225,7 +1235,7 @@ FAMOUS_PACKAGES = [
         'main': 'e423',
         'chord': 165.0,
         'speed': 21.0,
-        're': 235000,
+        're': 570000,
         'ge': False,
         'gh_pct': 30.0,
         'span': 1000.0,
@@ -1262,7 +1272,7 @@ FAMOUS_PACKAGES = [
         'main': 's1223',
         'chord': 250.0,
         'speed': 20.0,
-        're': 345000,
+        're': 570000,
         'ge': True,
         'gh_pct': 29.0,
         'span': 1400.0,
@@ -1299,7 +1309,7 @@ FAMOUS_PACKAGES = [
         'main': 's1223',
         'chord': 160.0,
         'speed': 21.0,
-        're': 230000,
+        're': 570000,
         'ge': False,
         'gh_pct': 30.0,
         'span': 1000.0,
@@ -1336,7 +1346,7 @@ FAMOUS_PACKAGES = [
         'main': 'e423',
         'chord': 250.0,
         'speed': 20.0,
-        're': 345000,
+        're': 570000,
         'ge': True,
         'gh_pct': 30.0,
         'span': 1400.0,
@@ -1373,7 +1383,7 @@ FAMOUS_PACKAGES = [
         'main': 's1223',
         'chord': 250.0,
         'speed': 20.0,
-        're': 345000,
+        're': 570000,
         'ge': True,
         'gh_pct': 29.5,
         'span': 1400.0,
@@ -1431,7 +1441,7 @@ FAMOUS_PACKAGES = [
         'source_title': 'GreenTeam Uni Stuttgart E0711-12 World Record & FSG Design',
         'main': 's1223',
         'name': 'FSG 2021 · GreenTeam Stuttgart (E0711-12) – Front Wing',
-        're': 345000,
+        're': 570000,
         'role': 'front wing',
         'span': 1400.0,
         'speed': 20.0,
@@ -1478,7 +1488,7 @@ FAMOUS_PACKAGES = [
         'source_title': 'WHZ Racing Team FP19 Vehicle & Aerodynamics Archive',
         'main': 's1223',
         'name': 'FSG 2019 · WHZ Racing Team (FP19) – Rear Wing',
-        're': 230000,
+        're': 570000,
         'role': 'rear wing',
         'span': 1000.0,
         'speed': 21.0,
@@ -1523,7 +1533,7 @@ FAMOUS_PACKAGES = [
         'source_title': 'FaSTTUBe TU Berlin FT22 Electric Engineering Specs',
         'main': 'e423',
         'name': 'FSG 2022 · FaSTTUBe Berlin (FT22) – Front Wing',
-        're': 345000,
+        're': 570000,
         'role': 'front wing',
         'span': 1400.0,
         'speed': 20.0,
@@ -1567,7 +1577,7 @@ FAMOUS_PACKAGES = [
         'source_title': 'StarkStrom Augsburg UASA21 Technical Documentation',
         'main': 'e420',
         'name': 'FSG 2021 · StarkStrom Augsburg (UASA21) – Rear Wing',
-        're': 235000,
+        're': 570000,
         'role': 'rear wing',
         'span': 1000.0,
         'speed': 21.0,
@@ -1614,7 +1624,7 @@ FAMOUS_PACKAGES = [
         'source_title': 'Global Formula Racing GFR19e Engineering Report',
         'main': 's1223',
         'name': 'FSAE MI 2019 · Global Formula Racing (GFR19e) – Front Wing',
-        're': 345000,
+        're': 570000,
         'role': 'front wing',
         'span': 1400.0,
         'speed': 20.0,
@@ -1658,7 +1668,7 @@ FAMOUS_PACKAGES = [
         'source_title': 'MRacing University of Michigan MR-22 Aero Documentation',
         'main': 's1223',
         'name': 'FSAE MI 2022 · Michigan MRacing (MR-22) – Rear Wing',
-        're': 230000,
+        're': 570000,
         'role': 'rear wing',
         'span': 1000.0,
         'speed': 21.0,
@@ -1702,7 +1712,7 @@ FAMOUS_PACKAGES = [
         'source_title': 'UW Formula Motorsports T-27 Aerodynamics Repository',
         'main': 's1223',
         'name': 'FSAE MI 2022 · UW Motorsports (T-27) – Front Wing',
-        're': 345000,
+        're': 570000,
         'role': 'front wing',
         'span': 1400.0,
         'speed': 20.0,
@@ -1747,7 +1757,7 @@ FAMOUS_PACKAGES = [
         'source_title': 'Cornell Racing ARG22 Formula SAE Design Archive',
         'main': 'e423',
         'name': 'FSAE MI 2022 · Cornell Racing (ARG22) – Rear Wing',
-        're': 230000,
+        're': 570000,
         'role': 'rear wing',
         'span': 1000.0,
         'speed': 21.0,
@@ -1791,7 +1801,7 @@ FAMOUS_PACKAGES = [
         'source_title': 'Illini Motorsports IM22 Vehicle Technical Portfolio',
         'main': 'be50',
         'name': 'FSAE MI 2022 · Illini Motorsports (IM22) – Front Wing',
-        're': 345000,
+        're': 570000,
         'role': 'front wing',
         'span': 1400.0,
         'speed': 20.0,
@@ -1836,7 +1846,7 @@ FAMOUS_PACKAGES = [
         'source_title': 'TU Wien Racing Team EDGE 12 Vehicle Specifications',
         'main': 's1223',
         'name': 'FSA 2021 · TU Wien Racing (Edge 12) – Front Wing',
-        're': 345000,
+        're': 570000,
         'role': 'front wing',
         'span': 1400.0,
         'speed': 20.0,
@@ -1885,7 +1895,7 @@ FAMOUS_PACKAGES = [
         'source_title': 'TU Wien Racing Team EDGE 13 Aerodynamics & Design',
         'main': 's1223',
         'name': 'FSA 2022 · TU Wien Racing (Edge 13) – Rear Wing',
-        're': 230000,
+        're': 570000,
         'role': 'rear wing',
         'span': 1000.0,
         'speed': 21.0,
@@ -1930,7 +1940,7 @@ FAMOUS_PACKAGES = [
         'source_title': 'Team Bath Racing TBR21 Technical Archive',
         'main': 'e423',
         'name': 'FSUK 2021 · Team Bath Racing (TBR21) – Front Wing',
-        're': 345000,
+        're': 570000,
         'role': 'front wing',
         'span': 1400.0,
         'speed': 20.0,
@@ -1975,7 +1985,7 @@ FAMOUS_PACKAGES = [
         'source_title': 'Sheffield Formula Racing SFR22 Vehicle Portfolio',
         'main': 'e423',
         'name': 'FSUK 2022 · Sheffield Formula Racing (SFR22) – Rear Wing',
-        're': 235000,
+        're': 570000,
         'role': 'rear wing',
         'span': 1000.0,
         'speed': 21.0,
@@ -2019,7 +2029,7 @@ FAMOUS_PACKAGES = [
         'source_title': 'Dynamis PRC Politecnico di Milano DP21 Technical Report',
         'main': 's1223',
         'name': 'FS Italy 2021 · Dynamis PRC (DP21) – Front Wing',
-        're': 345000,
+        're': 570000,
         'role': 'front wing',
         'span': 1400.0,
         'speed': 20.0,
@@ -2063,7 +2073,7 @@ FAMOUS_PACKAGES = [
         'source_title': 'Dynamis PRC Politecnico di Milano DP22 Aerodynamics',
         'main': 's1223',
         'name': 'FS Italy 2022 · Dynamis PRC (DP22) – Rear Wing',
-        're': 230000,
+        're': 570000,
         'role': 'rear wing',
         'span': 1000.0,
         'speed': 21.0,
@@ -2109,7 +2119,7 @@ FAMOUS_PACKAGES = [
         'source_title': 'Race UP Team University of Padova MG21 Technical Archive',
         'main': 'e423',
         'name': 'FS Italy 2021 · Race UP Team (MG21) – Front Wing',
-        're': 345000,
+        're': 570000,
         'role': 'front wing',
         'span': 1400.0,
         'speed': 20.0,
@@ -2154,7 +2164,7 @@ FAMOUS_PACKAGES = [
         'source_title': 'BME Formula Racing Team FREC-008 Vehicle Documentation',
         'main': 's1223',
         'name': 'FS East 2021 · BME Formula Racing (FREC-008) – Front Wing',
-        're': 345000,
+        're': 570000,
         'role': 'front wing',
         'span': 1400.0,
         'speed': 20.0,
@@ -2198,7 +2208,7 @@ FAMOUS_PACKAGES = [
         'source_title': 'CTU CarTech Prague FS.14 Aerodynamics Specification',
         'main': 'e423',
         'name': 'FS East 2022 · CTU CarTech Prague (FS.14) – Rear Wing',
-        're': 230000,
+        're': 570000,
         'role': 'rear wing',
         'span': 1000.0,
         'speed': 21.0,
@@ -2246,7 +2256,7 @@ FAMOUS_PACKAGES = [
         'source_title': 'University Racing Eindhoven URE16 Electric Single-Seater',
         'main': 'be50',
         'name': 'FS Netherlands 2022 · URE Eindhoven (URE16) – Front Wing',
-        're': 345000,
+        're': 570000,
         'role': 'front wing',
         'span': 1400.0,
         'speed': 20.0,
@@ -2293,7 +2303,7 @@ FAMOUS_PACKAGES = [
         'source_title': 'ARUS Andalucia Racing Team ART-21 Technical Portfolio',
         'main': 's1223',
         'name': 'FS Spain 2021 · ARUS Andalucía Racing (ART-21) – Rear Wing',
-        're': 230000,
+        're': 570000,
         'role': 'rear wing',
         'span': 1000.0,
         'speed': 21.0,
@@ -3301,6 +3311,19 @@ def render_javafoil_bl_plots(bl_file, out_dir, run_tag, cfg_desc="Multi-Element 
         if not bl_elements:
             return res
 
+        # Determine physical element count from cfg_desc or default to at most 4
+        import re
+        m_el = re.search(r'\+\s*(\d+)\s*flap', cfg_desc, re.IGNORECASE)
+        n_elements = (1 + int(m_el.group(1))) if m_el else 4
+
+        # Group sections strictly into n_elements to prevent spurious sub-segment flaps
+        if len(bl_elements) > n_elements:
+            grouped = [[] for _ in range(n_elements)]
+            for s_idx, sec in enumerate(bl_elements):
+                e_target = min(s_idx * n_elements // len(bl_elements), n_elements - 1)
+                grouped[e_target].extend(sec)
+            bl_elements = [g for g in grouped if g]
+
         # 1. Skin Friction (Cf) Plot
         fig, ax = plt.subplots(figsize=(10, 5.625), dpi=140)
         fig.patch.set_facecolor(DARK_BG)
@@ -3705,36 +3728,58 @@ def _try_export_step_gmsh(outlines_mm, out_path, span_mm, title):
     """Attempt STEP export via Gmsh OpenCASCADE kernel."""
     try:
         import gmsh
-        gmsh.initialize()
-        gmsh.option.setNumber("General.Verbosity", 0)
-        gmsh.model.add("wing_step")
-        for idx, o in enumerate(outlines_mm):
-            p_tags = []
-            prev = None
-            for pt in o:
-                if prev is None or ((pt[0]-prev[0])**2 + (pt[1]-prev[1])**2) > 1e-8:
-                    p_tags.append(gmsh.model.occ.addPoint(float(pt[0]), float(pt[1]), 0.0))
-                    prev = pt
-            if len(p_tags) < 3:
-                continue
-            dist_te = ((o[0][0]-o[-1][0])**2 + (o[0][1]-o[-1][1])**2)**0.5
-            if dist_te < 1e-4:
-                p_tags[-1] = p_tags[0]
-                spline = gmsh.model.occ.addBSpline(p_tags)
-                wire = gmsh.model.occ.addWire([spline])
-            else:
-                spline = gmsh.model.occ.addBSpline(p_tags)
-                line = gmsh.model.occ.addLine(p_tags[-1], p_tags[0])
-                wire = gmsh.model.occ.addWire([spline, line])
-            face = gmsh.model.occ.addPlaneSurface([wire])
-            gmsh.model.occ.extrude([(2, face)], 0, 0, float(span_mm))
-        gmsh.model.occ.synchronize()
-        gmsh.write(out_path)
-        gmsh.finalize()
-        return os.path.isfile(out_path) and os.path.getsize(out_path) > 500
+        import signal
+        if not gmsh.is_initialized():
+            try:
+                gmsh.initialize(interruptible=False)
+            except (TypeError, ValueError):
+                orig_sig = signal.signal
+                try:
+                    signal.signal = lambda *a, **k: None
+                    gmsh.initialize()
+                finally:
+                    signal.signal = orig_sig
+        try:
+            gmsh.option.setNumber("General.Verbosity", 0)
+            gmsh.model.add("wing_step")
+            for idx, o in enumerate(outlines_mm):
+                p_tags = []
+                prev = None
+                for pt in o:
+                    if prev is None or ((pt[0]-prev[0])**2 + (pt[1]-prev[1])**2) > 1e-8:
+                        p_tags.append(gmsh.model.occ.addPoint(float(pt[0]), float(pt[1]), 0.0))
+                        prev = pt
+                if len(p_tags) < 3:
+                    continue
+                dist_te = ((o[0][0]-o[-1][0])**2 + (o[0][1]-o[-1][1])**2)**0.5
+                if dist_te < 1e-4:
+                    p_tags[-1] = p_tags[0]
+                    spline = gmsh.model.occ.addBSpline(p_tags)
+                    wire = gmsh.model.occ.addWire([spline])
+                else:
+                    spline = gmsh.model.occ.addBSpline(p_tags)
+                    line = gmsh.model.occ.addLine(p_tags[-1], p_tags[0])
+                    wire = gmsh.model.occ.addWire([spline, line])
+                face = gmsh.model.occ.addPlaneSurface([wire])
+                gmsh.model.occ.extrude([(2, face)], 0, 0, float(span_mm))
+            gmsh.model.occ.synchronize()
+            gmsh.write(out_path)
+            return os.path.isfile(out_path) and os.path.getsize(out_path) > 500
+        finally:
+            try:
+                if gmsh.is_initialized():
+                    try:
+                        gmsh.finalize()
+                    except (ValueError, TypeError):
+                        orig_sig = signal.signal
+                        try:
+                            signal.signal = lambda *a, **k: None
+                            gmsh.finalize()
+                        finally:
+                            signal.signal = orig_sig
+            except Exception:
+                pass
     except Exception:
-        try: gmsh.finalize()
-        except Exception: pass
         return False
 
 

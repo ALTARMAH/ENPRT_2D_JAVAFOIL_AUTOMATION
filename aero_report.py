@@ -219,34 +219,143 @@ def plot_polar(r, out_png):
     import matplotlib
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
-    alphas = np.array([-2.0, 0.0, 2.0])
-    cls = np.array([float(r.get(c, np.nan)) for c in ("Cl_am2", "Cl_a0", "Cl_ap2")])
-    fig, ax = plt.subplots(figsize=(7.5, 5.2))
-    if not np.isnan(cls).any():
-        aa = np.linspace(-6, 6, 60)
-        p = np.polyfit(alphas, cls, 2)
-        ax.plot(aa, np.polyval(p, aa), color="#c8102e", lw=1.2, alpha=0.7, label="quadratic fit")
-        ax.plot(alphas, cls, "o", color="#0b3d91", ms=6, label="JavaFoil points")
+    import pandas as pd
+
+    rid = str(r.get('Run_ID', '')).strip()
+    out_dir = os.path.dirname(out_png)
+    base_dir = os.path.dirname(out_dir) if os.path.basename(out_dir).startswith("run_") else out_dir
+
+    alphas = []
+    cls = []
+    cds = []
+    source_name = "JavaFoil"
+
+    # 1. Search for authentic polar data in run dir or parent graphs dir
+    candidate_jf = [os.path.join(out_dir, f"javafoil_polar_{rid}.txt"),
+                    os.path.join(base_dir, f"javafoil_polar_{rid}.txt")]
+    candidate_su2 = [os.path.join(out_dir, f"su2_polar_{rid}.csv"),
+                     os.path.join(base_dir, f"su2_polar_{rid}.csv")]
+
+    for jf_txt in candidate_jf:
+        if os.path.isfile(jf_txt) and os.path.getsize(jf_txt) > 50:
+            try:
+                df_jf, _ = A.parse_polar(jf_txt)
+                if df_jf is not None and not df_jf.empty and 'alpha' in df_jf.columns and 'cl' in df_jf.columns:
+                    alphas = df_jf['alpha'].astype(float).values
+                    cls = df_jf['cl'].astype(float).values
+                    cds = df_jf['cd'].astype(float).values if 'cd' in df_jf.columns else np.zeros_like(alphas)
+                    source_name = "JavaFoil Polar"
+                    break
+            except Exception:
+                pass
+
+    if len(alphas) == 0:
+        for su2_csv in candidate_su2:
+            if os.path.isfile(su2_csv) and os.path.getsize(su2_csv) > 50:
+                try:
+                    df_su2 = pd.read_csv(su2_csv)
+                    if 'alpha' in df_su2.columns and 'Cl' in df_su2.columns:
+                        alphas = df_su2['alpha'].astype(float).values
+                        cls = df_su2['Cl'].astype(float).values
+                        cds = df_su2['Cd'].astype(float).values if 'Cd' in df_su2.columns else np.zeros_like(alphas)
+                        source_name = "SU2 2D RANS"
+                        break
+                except Exception:
+                    pass
+
+    if len(alphas) == 0:
+        # Check dictionary columns from results row
+        raw_alphas = [-2.0, 0.0, 2.0]
+        raw_cls = [r.get(c) for c in ("Cl_am2", "Cl_a0", "Cl_ap2")]
+        valid = [(a, float(c)) for a, c in zip(raw_alphas, raw_cls) if c is not None and str(c).strip() not in ('', 'nan', 'NaN')]
+        if len(valid) >= 2:
+            alphas = np.array([v[0] for v in valid])
+            cls = np.array([v[1] for v in valid])
+            cds = np.zeros_like(cls)
+            source_name = "JavaFoil Points"
+
+    if len(alphas) == 0:
+        # Check single point fallback
+        c0 = r.get("Cl_a0", r.get("su2_cl", r.get("jf_cl", r.get("Cl", None))))
+        if c0 is not None and str(c0).strip() not in ('', 'nan', 'NaN', 'None'):
+            try:
+                c0_val = float(c0)
+                alphas = np.array([0.0])
+                cls = np.array([c0_val])
+                cds = np.array([float(r.get("Cd_a0", r.get("su2_cd", r.get("Cd", 0.15))) or 0.15)])
+                source_name = "Design Point α=0°"
+            except Exception:
+                pass
+
+    fig, ax = plt.subplots(figsize=(8.5, 5.6), dpi=120)
+    DARK_BG = '#0b1120'
+    CARD_BG = '#1e293b'
+    TEXT_COLOR = '#f8fafc'
+    GRID_COLOR = '#334155'
+    ACCENT_CYAN = '#38bdf8'
+    AMBER_COLOR = '#fbbf24'
+
+    fig.patch.set_facecolor(DARK_BG)
+    ax.set_facecolor(CARD_BG)
+    ax.tick_params(colors='#94a3b8', labelsize=9)
+    ax.grid(True, linestyle='--', alpha=0.35, color=GRID_COLOR)
+    for s in ax.spines.values():
+        s.set_color(GRID_COLOR)
+
+    if len(alphas) >= 3:
+        ax.plot(alphas, cls, "o", color=ACCENT_CYAN, ms=6, mfc=ACCENT_CYAN, mec='white', label=f"{source_name} Points")
+        deg = min(2, len(alphas) - 1)
+        p = np.polyfit(alphas, cls, deg)
+        aa = np.linspace(min(alphas), max(alphas), 100)
+        ax.plot(aa, np.polyval(p, aa), color=AMBER_COLOR, lw=1.8, alpha=0.9, label=f"Polynomial Fit ({source_name})")
         for a_, c_ in zip(alphas, cls):
-            ax.annotate(f"{c_:.3f}", (a_, c_), textcoords="offset points", xytext=(0, 7), fontsize=8, ha="center")
-    pk = float(r.get("Cl_peak", np.nan))
-    st = float(r.get("Stall_Angle", np.nan))
+            ax.annotate(f"{c_:.2f}", (a_, c_), textcoords="offset points", xytext=(0, 6),
+                        fontsize=7.5, color='#cbd5e1', ha="center")
+    elif len(alphas) >= 1:
+        ax.plot(alphas, cls, "o", color=ACCENT_CYAN, ms=8, mfc=ACCENT_CYAN, mec='white', label=f"{source_name} Point")
+        for a_, c_ in zip(alphas, cls):
+            ax.axhline(c_, color=AMBER_COLOR, ls='--', lw=1.2, alpha=0.8, label=f"Cl = {c_:.3f} @ α={a_:g}°")
+            ax.annotate(f"Cl = {c_:.3f}", (a_, c_), textcoords="offset points", xytext=(0, 8),
+                        fontsize=8.5, color=TEXT_COLOR, fontweight='bold', ha="center")
+    else:
+        ax.text(0.5, 0.5, "Polar sweep not yet simulated for this configuration.\nClick 'Regenerate Run Graphs' to compute polars.",
+                ha='center', va='center', color='#94a3b8', fontsize=10, transform=ax.transAxes,
+                bbox=dict(boxstyle='round,pad=0.5', fc=DARK_BG, ec=GRID_COLOR))
+
+    pk = float(r.get("Cl_peak", np.nan)) if str(r.get("Cl_peak", "")).strip() not in ('', 'nan', 'NaN') else np.nan
+    st = float(r.get("Stall_Angle", np.nan)) if str(r.get("Stall_Angle", "")).strip() not in ('', 'nan', 'NaN') else np.nan
     if not np.isnan(pk):
-        ax.plot([st], [pk], "v", color="k", ms=8, label=f"peak {pk:.3f} @ {st:+.0f} deg")
-    ax.axhline(0, color="k", lw=0.6)
-    ax.set_xlabel("alpha (deg)")
-    ax.set_ylabel("Cl")
-    ax.grid(alpha=0.3)
-    cd = float(r.get("Cd_a0", np.nan))
-    ld = float(r.get("Max_LD", np.nan))
-    dn = float(r.get("Downforce_N", np.nan))
-    extra = " | ".join(f"{k}: {float(v):.3g}" for k, v in
-                       (("Cl@0", r.get("Cl_a0")), ("Cd@0", cd), ("|Cl|/Cd", ld)) if not np.isnan(float(v)))
-    ax.set_title(f"Polar {r['Run_ID']} - {A.describe(A.row_to_cfg(r))}\n{extra}"
-                 + (f"   Downforce {dn:.1f} N" if not np.isnan(dn) else ""))
-    ax.legend(fontsize=8, loc="best")
+        ax.plot([st], [pk], "v", color='#f43f5e', ms=9, label=f"Peak Cl {pk:.3f} @ {st:+.0f}°")
+
+    ax.axhline(0, color='#64748b', lw=0.8, linestyle=':')
+    ax.set_xlabel("Angle of Attack α (°)", fontsize=9.5, fontweight='bold', color=TEXT_COLOR)
+    ax.set_ylabel("Lift / Downforce Coefficient Cl", fontsize=9.5, fontweight='bold', color=TEXT_COLOR)
+
+    cd = float(r.get("Cd_a0", np.nan)) if str(r.get("Cd_a0", "")).strip() not in ('', 'nan', 'NaN') else np.nan
+    ld = float(r.get("Max_LD", np.nan)) if str(r.get("Max_LD", "")).strip() not in ('', 'nan', 'NaN') else np.nan
+    dn = float(r.get("Downforce_N", np.nan)) if str(r.get("Downforce_N", "")).strip() not in ('', 'nan', 'NaN') else np.nan
+
+    parts = []
+    c0_val = r.get("Cl_a0")
+    if c0_val is not None and str(c0_val).strip() not in ('', 'nan', 'NaN'):
+        try: parts.append(f"Cl@0: {float(c0_val):.3f}")
+        except Exception: pass
+    if not np.isnan(cd): parts.append(f"Cd@0: {cd:.4f}")
+    if not np.isnan(ld): parts.append(f"|Cl|/Cd: {ld:.1f}")
+    if not np.isnan(dn): parts.append(f"Downforce: {dn:.1f} N")
+    extra = " | ".join(parts)
+
+    try:
+        cfg = A.row_to_cfg(r)
+        cfg_title = A.describe(cfg)
+    except Exception:
+        cfg_title = str(r.get('Main_Airfoil', r.get('Run_ID', 'Wing')))
+
+    ax.set_title(f"Aerodynamic Polar — {r.get('Run_ID', 'Run')}: {cfg_title}\n{extra}",
+                 fontsize=10.5, fontweight='bold', color=TEXT_COLOR, pad=8)
+    ax.legend(facecolor=DARK_BG, edgecolor=GRID_COLOR, labelcolor=TEXT_COLOR, fontsize=8, loc="best")
     plt.tight_layout()
-    plt.savefig(out_png, dpi=110)
+    plt.savefig(out_png, dpi=120)
     plt.close(fig)
 
 
