@@ -84,13 +84,16 @@ def _apply_env():
 
 def launcher():
     p = argparse.ArgumentParser(prog="aero", description="aero_auto toolchain entry point")
-    p.add_argument("tool", nargs="?", default="ui", choices=["ui", "campaign", "report", "targets", "field"])
+    p.add_argument("tool", nargs="?", default="ui", choices=["ui", "campaign", "report", "targets", "field", "wings-suite", "3d"])
     p.add_argument("--version", action="version", version=f"aero_auto {A.VERSION}")
     args, rest = p.parse_known_args()
     _apply_env()
     if args.tool == "ui":
         import aero_ui
         aero_ui.main()
+    elif args.tool in ("wings-suite", "3d"):
+        import aero_auto_wings_suite
+        aero_auto_wings_suite.run_wings_suite()
     elif args.tool == "campaign":
         sys.argv = ["aero_auto.py"] + rest
         A.main()

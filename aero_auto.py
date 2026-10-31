@@ -5332,7 +5332,28 @@ def main():
     ap.add_argument("--rw-max-h-mm", type=float, default=None, help="rear wing max total height in mm (T8.2.1c, built-in 1100)")
     ap.add_argument("--rw-max-len-mm", type=float, default=None, help="rear wing max stack length in mm (T8.2.3a, built-in 250)")
     ap.add_argument("--no-reg", action="store_true", help="disable the FSUK/FSG physical size checks")
+    ap.add_argument("--solver", choices=["3d", "ansys3d", "javafoil"], default="3d", help="aerodynamic solver: 3d ground-effect (default), ansys3d, or legacy javafoil")
+    ap.add_argument("--check-3d", action="store_true", help="run full 3D ground-effect check & optimization sweep across all front wings")
+    ap.add_argument("--wings-suite", action="store_true", help="run automated authentic front wing polar sweep, 3D check, and STL suite")
+    ap.add_argument("--front-wings-suite", action="store_true", help="alias for --wings-suite")
     a = ap.parse_args()
+
+    # AUTOMATED FRONT WINGS 3D POLAR & CAD SUITE
+    if a.wings_suite or a.front_wings_suite:
+        import aero_auto_wings_suite as wings_suite
+        wings_suite.run_wings_suite()
+        return
+
+    # 3D GROUND-EFFECT & ANSYS ITERATIVE RUNNER (PRIMARY TOOL)
+    if a.solver in ("3d", "ansys3d") or a.check_3d:
+        print("=" * 70)
+        print("   AERO_AUTO 3D FINITE WING & GROUND EFFECT ITERATIVE ENGINE (PRIMARY)   ")
+        print("=" * 70)
+        import aero_3d_engine as A3D
+        import aero_auto_wings_suite as wings_suite
+        wings_suite.run_wings_suite()
+        return
+
     AIRFOIL_DIR, OUT_DIR = os.path.expanduser(a.airfoils), os.path.expanduser(a.out)
     REG_ENFORCE = not a.no_reg
     if a.seed is not None:

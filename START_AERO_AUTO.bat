@@ -4,6 +4,11 @@ REM Aero Auto Launcher - High-Downforce Multi-Element Aerodynamic Suite
 REM ==============================================================================
 cd /d "%~dp0"
 
+if exist "dist\AeroAuto_GUI\AeroAuto_GUI.exe" (
+    start "" "dist\AeroAuto_GUI\AeroAuto_GUI.exe"
+    exit /b 0
+)
+
 if exist "aero_ui_standalone.exe" (
     start "" "aero_ui_standalone.exe"
     exit /b 0

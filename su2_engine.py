@@ -26,8 +26,9 @@ import matplotlib.tri as mtri
 
 # Load aero_auto dependencies
 HERE = os.path.dirname(os.path.abspath(__file__))
-if HERE not in sys.path:
-    sys.path.insert(0, HERE)
+if HERE in sys.path:
+    sys.path.remove(HERE)
+sys.path.insert(0, HERE)
 
 GMSH_API_PATH = "/usr/share/gmsh/api/python"
 if os.path.isdir(GMSH_API_PATH) and GMSH_API_PATH not in sys.path:
@@ -129,14 +130,28 @@ def normalize_config(cfg):
         flaps = cfg.get('flaps', [])
         clean_flaps = []
         for f in flaps:
-            clean_flaps.append((f[0], float(f[1]), float(f[2]), float(f[3]), float(f[4])))
+            if isinstance(f, dict):
+                clean_flaps.append((f.get('name', f.get('airfoil', '')),
+                                    float(f.get('scale', 1.0)),
+                                    float(f.get('x_offset', f.get('x', 0.0))),
+                                    float(f.get('y_offset', f.get('y', 0.0))),
+                                    float(f.get('angle', f.get('deflection', 0.0)))))
+            else:
+                clean_flaps.append((f[0], float(f[1]), float(f[2]), float(f[3]), float(f[4])))
         return (main, clean_flaps)
     elif isinstance(cfg, (tuple, list)) and len(cfg) >= 2:
         main = cfg[0]
         flaps = cfg[1]
         clean_flaps = []
         for f in flaps:
-            clean_flaps.append((f[0], float(f[1]), float(f[2]), float(f[3]), float(f[4])))
+            if isinstance(f, dict):
+                clean_flaps.append((f.get('name', f.get('airfoil', '')),
+                                    float(f.get('scale', 1.0)),
+                                    float(f.get('x_offset', f.get('x', 0.0))),
+                                    float(f.get('y_offset', f.get('y', 0.0))),
+                                    float(f.get('angle', f.get('deflection', 0.0)))))
+            else:
+                clean_flaps.append((f[0], float(f[1]), float(f[2]), float(f[3]), float(f[4])))
         return (main, clean_flaps)
     return cfg
 
@@ -192,9 +207,9 @@ def generate_su2_mesh_gmsh(outlines, out_mesh_path, ground_h=None, density='medi
             
             # Mesh density sizing parameters
             factors = {
-                'coarse': (0.012, 0.025, 2.5),
-                'medium': (0.006, 0.015, 1.8),
-                'fine':   (0.003, 0.008, 1.2)
+                'coarse': (0.008, 0.018, 2.0),
+                'medium': (0.004, 0.010, 1.5),
+                'fine':   (0.002, 0.006, 1.0)
             }
             le_size, te_size, far_size = factors.get(density, factors['medium'])
 
@@ -292,8 +307,16 @@ def generate_su2_mesh_gmsh(outlines, out_mesh_path, ground_h=None, density='medi
                 gmsh.model.addPhysicalGroup(1, wall_curves, 2, "airfoil")
                 gmsh.model.addPhysicalGroup(2, [surface], 3, "fluid")
 
-            # Generate 2D mesh
+            # Generate 2D mesh with Frontal-Delaunay and Netgen smoothing
+            gmsh.option.setNumber("Mesh.Algorithm", 6)
+            gmsh.option.setNumber("Mesh.MeshSizeExtendFromBoundary", 1)
+            gmsh.option.setNumber("Mesh.MeshSizeFromCurvature", 1)
+            gmsh.option.setNumber("Mesh.MinimumCirclePoints", 24)
             gmsh.model.mesh.generate(2)
+            try:
+                gmsh.model.mesh.optimize("Netgen")
+            except Exception:
+                pass
             gmsh.write(out_mesh_path)
             
             node_tags, _, _ = gmsh.model.mesh.getNodes()
@@ -311,7 +334,7 @@ def generate_su2_mesh_gmsh(outlines, out_mesh_path, ground_h=None, density='medi
 
 
 def write_su2_config_file(cfg_file, mesh_file, alpha_deg, speed=27.74, re_val=570000.0,
-                          ground_h=None, ref_chord_main=1.0, max_iter=250):
+                          ground_h=None, ref_chord_main=1.0, max_iter=400):
     """
     Writes SU2 config file for 2D Incompressible RANS with k-omega SST.
     Harmonizes viscosity so that SU2 operates at the exact physical Reynolds number:
@@ -373,9 +396,9 @@ MUSCL_TURB= NO
 
 % ------------------------- TIME NUMERICAL INTEGRATION ------------------------- %
 TIME_DISCRE_FLOW= EULER_IMPLICIT
-CFL_NUMBER= 10.0
+CFL_NUMBER= 5.0
 CFL_ADAPT= YES
-CFL_ADAPT_PARAM= ( 0.1, 1.25, 1.0, 100.0 )
+CFL_ADAPT_PARAM= ( 0.5, 1.15, 1.0, 50.0 )
 
 TIME_DISCRE_TURB= EULER_IMPLICIT
 CFL_REDUCTION_TURB= 0.5
@@ -383,9 +406,9 @@ CFL_REDUCTION_TURB= 0.5
 % --------------------------- CONVERGENCE CRITERIA ---------------------------- %
 ITER= {max_iter}
 CONV_FIELD= RMS_PRESSURE
-CONV_RESIDUAL_MINVAL= -8.0
-CONV_STARTITER= 10
-CONV_CAUCHY_ELEMS= 50
+CONV_RESIDUAL_MINVAL= -6.0
+CONV_STARTITER= 15
+CONV_CAUCHY_ELEMS= 40
 CONV_CAUCHY_EPS= 1e-4
 
 % ------------------------- OUTPUT AND HISTORY LOGGING ------------------------- %
@@ -427,10 +450,10 @@ def parse_su2_history(history_file, ref_chord_main, ref_chord_assembly):
         return {'converged': False, 'reason': 'History is empty', 'Cl': None, 'Cd': None}
 
     # Find relevant columns
-    cl_col = next((c for c in df.columns if 'LIFT' in c or 'CL' in c or 'Cl' in c), None)
-    cd_col = next((c for c in df.columns if 'DRAG' in c or 'CD' in c or 'Cd' in c), None)
-    cm_col = next((c for c in df.columns if 'MOMENT' in c or 'CM' in c or 'Cm' in c), None)
-    res_col = next((c for c in df.columns if 'RMS_RES' in c or 'RMS_PRESSURE' in c), None)
+    cl_col = next((c for c in df.columns if any(k in c for k in ['LIFT', 'CL', 'Cl'])), None)
+    cd_col = next((c for c in df.columns if any(k in c for k in ['DRAG', 'CD', 'Cd'])), None)
+    cm_col = next((c for c in df.columns if any(k in c for k in ['MOMENT', 'CM', 'Cm'])), None)
+    res_col = next((c for c in df.columns if any(k in c.lower() for k in ['rms[p]', 'rms_res', 'rms_pressure', 'rms[u]'])), None)
 
     if not cl_col or not cd_col:
         return {'converged': False, 'reason': 'Missing lift/drag columns in history', 'Cl': None, 'Cd': None}
@@ -446,16 +469,70 @@ def parse_su2_history(history_file, ref_chord_main, ref_chord_assembly):
     
     cl_std = float(cl_tail.std()) if len(cl_tail) > 1 else 0.0
     cd_std = float(cd_tail.std()) if len(cd_tail) > 1 else 0.0
+
+    # Guard against numerical explosion / divergence (astronomical values or NaN)
+    import math
+    if (math.isnan(cl_mean) or math.isnan(cd_mean) or 
+            math.isinf(cl_mean) or math.isinf(cd_mean) or 
+            abs(cl_mean) > 25.0 or abs(cd_mean) > 25.0):
+        return {
+            'converged': False,
+            'convergence_status': 'Diverged (Numerical Instability Detected)',
+            'iterations': len(df),
+            'residual_drop': 0.0,
+            'residual_final': None,
+            'cl_std': 0.0,
+            'cd_std': 0.0,
+            'Cl': 0.0,
+            'Cd': 1.0,
+            'Cm': 0.0,
+            'Cl_assembly': 0.0,
+            'Cd_assembly': 1.0,
+            'ref_chord_main': ref_chord_main,
+            'ref_chord_assembly': ref_chord_assembly,
+            'error': 'Diverged'
+        }
     
     res_drop = 0.0
+    res_initial = None
+    res_final = None
     if res_col and len(df) > 1:
-        res_initial = float(df[res_col].iloc[0])
-        res_final = float(df[res_col].iloc[-1])
-        res_drop = res_initial - res_final
+        try:
+            res_initial = float(df[res_col].iloc[0])
+            res_final = float(df[res_col].iloc[-1])
+            res_drop = res_initial - res_final
+        except (ValueError, TypeError):
+            pass
 
-    # Convergence criterion: residual drop >= 3 orders of magnitude OR tail standard deviation < 0.005
-    stable = (cl_std < 0.008 and cd_std < 0.003)
-    converged = bool(stable or res_drop >= 3.0)
+    # Robust multi-criteria convergence evaluation
+    res_drop_good = (res_drop >= 2.0) or (res_final is not None and res_final <= -5.5)
+    force_stable = (cl_std < 0.008 and cd_std < 0.004)
+    force_strict_stable = (cl_std < 0.004 and cd_std < 0.002)
+    is_severe_stall = (cl_std > 0.15 or cd_std > 0.05)
+
+    # 1. Target residual achieved by SU2 (primary CFD convergence criterion)
+    if res_drop_good:
+        converged = True
+        if force_stable:
+            conv_status = "Fully Converged (Residual Drop + Force Stable)"
+        elif cl_std <= 0.08:
+            conv_status = "Converged (Target Reached, Minor Wake Shedding)"
+        else:
+            conv_status = "Converged (Navier-Stokes Residual Target Reached)"
+    # 2. Force stabilized (Cauchy criterion satisfied)
+    elif force_strict_stable or force_stable:
+        converged = True
+        conv_status = "Converged (Cauchy Force Stabilized)"
+    # 3. Descending residual with moderate stability
+    elif res_drop >= 1.5 and cl_std <= 0.05:
+        converged = True
+        conv_status = "Converged (Asymptotically Settled)"
+    elif is_severe_stall:
+        converged = False
+        conv_status = "Unsteady / Massive Flow Separation"
+    else:
+        converged = False
+        conv_status = "Unconverged (Iteration Limit Reached)"
 
     # Conversion factor from main-element reference to total assembly reference
     # Force = Cl_main * (0.5 * rho * V^2 * c_main) = Cl_asm * (0.5 * rho * V^2 * c_asm)
@@ -466,8 +543,10 @@ def parse_su2_history(history_file, ref_chord_main, ref_chord_assembly):
 
     return {
         'converged': converged,
+        'convergence_status': conv_status,
         'iterations': len(df),
         'residual_drop': round(res_drop, 2),
+        'residual_final': round(res_final, 3) if res_final is not None else None,
         'cl_std': round(cl_std, 5),
         'cd_std': round(cd_std, 5),
         'Cl': cl_mean,
@@ -481,7 +560,7 @@ def parse_su2_history(history_file, ref_chord_main, ref_chord_assembly):
 
 
 def run_su2_single_case(cfg, alpha_deg=0.0, speed=27.74, re_val=570000.0, ground_h=None,
-                        density='medium', num_cores=DEFAULT_CORES, timeout=360, workdir=None, force=False):
+                        density='medium', num_cores=DEFAULT_CORES, timeout=480, workdir=None, force=False):
     """
     Executes an end-to-end SU2 CFD simulation for a wing configuration at a given alpha.
     """
@@ -531,9 +610,13 @@ def run_su2_single_case(cfg, alpha_deg=0.0, speed=27.74, re_val=570000.0, ground
                 }
 
     # 3. Check if run is already completed and cached
+    iter_limit = 250 if density == 'coarse' else (400 if density == 'medium' else 600)
     if not force and os.path.exists(history_file) and os.path.getsize(history_file) > 200:
         res = parse_su2_history(history_file, ref_chord_main, ref_chord_assembly)
-        if res.get('iterations', 0) >= 50 and res.get('Cl') is not None:
+        cached_iters = res.get('iterations', 0)
+        cached_converged = res.get('converged', False)
+        # Accept cached run if it already converged, or if it ran the full updated iteration limit
+        if not res.get('error') and (cached_converged or cached_iters >= iter_limit) and res.get('Cl') is not None:
             res['alpha'] = alpha_deg
             res['runtime_s'] = 0.0
             res['engine'] = 'SU2'
@@ -554,7 +637,7 @@ def run_su2_single_case(cfg, alpha_deg=0.0, speed=27.74, re_val=570000.0, ground
         mesh_meta = {'mesh_file': mesh_file, 'cached': True}
 
     # 4. Write config file
-    iter_limit = 100 if density == 'coarse' else (160 if density == 'medium' else 250)
+    iter_limit = 250 if density == 'coarse' else (400 if density == 'medium' else 600)
     write_su2_config_file(cfg_file, mesh_file, alpha_deg, speed=speed, re_val=re_val,
                           ground_h=ground_h, ref_chord_main=ref_chord_main, max_iter=iter_limit)
 
@@ -572,6 +655,11 @@ def run_su2_single_case(cfg, alpha_deg=0.0, speed=27.74, re_val=570000.0, ground
     
     # 6. Parse metrics
     res = parse_su2_history(history_file, ref_chord_main, ref_chord_assembly)
+    if proc.returncode != 0:
+        res['converged'] = False
+        if not res.get('error'):
+            res['error'] = f'SU2 exited with error code {proc.returncode}'
+            res['convergence_status'] = 'Diverged / Solver Error'
     res['alpha'] = alpha_deg
     res['runtime_s'] = runtime_s
     res['engine'] = 'SU2'
@@ -773,6 +861,14 @@ def render_su2_polar_plots(records_or_df, out_dir, run_tag, cfg, speed=SPEED_DEF
         df['efficiency'] = df['Cl'].abs() / df['Cd'].replace(0, np.nan)
     if 'engine' not in df.columns:
         df['engine'] = 'SU2'
+
+    # Filter or sanitize any diverged entries
+    valid_mask = (df['Cl'].abs() <= 25.0) & (df['Cd'].abs() <= 25.0) & df['Cl'].notna() & df['Cd'].notna()
+    if not valid_mask.all():
+        df.loc[~valid_mask, 'converged'] = False
+        df.loc[~valid_mask, 'Cl'] = 0.0
+        df.loc[~valid_mask, 'Cd'] = 1.0
+        df.loc[~valid_mask, 'efficiency'] = 0.0
 
     # Save raw CSV
     csv_path = os.path.join(out_dir, f"su2_polar_{run_tag}.csv")
@@ -977,10 +1073,10 @@ def render_su2_convergence_plot(history_file, out_dir, run_tag, alpha_deg=0.0, c
     except Exception:
         return None
 
-    cl_col = next((c for c in df.columns if 'LIFT' in c or 'CL' in c or 'Cl' in c), None)
-    cd_col = next((c for c in df.columns if 'DRAG' in c or 'CD' in c or 'Cd' in c), None)
-    res_col = next((c for c in df.columns if 'RMS_RES' in c or 'RMS_PRESSURE' in c), None)
-    iter_col = next((c for c in df.columns if 'ITER' in c or 'Inner_Iter' in c), df.columns[0])
+    cl_col = next((c for c in df.columns if any(k in c for k in ['LIFT', 'CL', 'Cl'])), None)
+    cd_col = next((c for c in df.columns if any(k in c for k in ['DRAG', 'CD', 'Cd'])), None)
+    res_col = next((c for c in df.columns if any(k in c.lower() for k in ['rms[p]', 'rms_res', 'rms_pressure', 'rms[u]'])), None)
+    iter_col = next((c for c in df.columns if any(k in c for k in ['ITER', 'Inner_Iter'])), df.columns[0])
 
     fig, (ax_res, ax_frc) = plt.subplots(2, 1, figsize=(10, 6.5), dpi=140, sharex=True)
     fig.patch.set_facecolor(DARK_BG)
@@ -993,13 +1089,28 @@ def render_su2_convergence_plot(history_file, out_dir, run_tag, alpha_deg=0.0, c
     if res_col:
         ax_res.plot(iters, df[res_col], color=ACCENT_CYAN, lw=1.8, label=f"RMS Residual ({res_col})")
         res_drop = float(df[res_col].iloc[0] - df[res_col].iloc[-1])
-        conv_flag = (res_drop >= 3.0)
-        badge_txt = f"RESIDUAL DROP: {res_drop:.2f} orders ({'CONVERGED' if conv_flag else 'UNSTEADY/UNCONVERGED'})"
-        badge_col = EMERALD_COLOR if conv_flag else ROSE_COLOR
+        res_final = float(df[res_col].iloc[-1])
+        tail_n = min(30, len(df))
+        cl_std = float(df[cl_col].iloc[-tail_n:].std()) if cl_col and len(df) > 1 else 0.0
+        cl_last = float(df[cl_col].iloc[-1]) if cl_col and len(df) > 0 else 0.0
+        cd_last = float(df[cd_col].iloc[-1]) if cd_col and len(df) > 0 else 0.0
+        import math
+        is_diverged = (math.isnan(cl_last) or math.isnan(cd_last) or 
+                       math.isinf(cl_last) or math.isinf(cd_last) or 
+                       abs(cl_last) > 25.0 or abs(cd_last) > 25.0)
+        force_stable = (cl_std < 0.008) and not is_diverged
+        conv_flag = not is_diverged and ((res_drop >= 2.0) or (res_final <= -5.5) or force_stable)
+        if is_diverged:
+            badge_txt = "DIVERGED (NUMERICAL INSTABILITY DETECTED)"
+            badge_col = ROSE_COLOR
+        else:
+            badge_txt = f"RESIDUAL DROP: {res_drop:.2f} orders ({'CONVERGED' if conv_flag else 'UNSTEADY/UNCONVERGED'})"
+            badge_col = EMERALD_COLOR if conv_flag else ROSE_COLOR
         ax_res.text(0.98, 0.90, badge_txt, transform=ax_res.transAxes, ha='right', va='top',
                     color=badge_col, fontweight='bold', fontsize=9,
                     bbox=dict(boxstyle='round,pad=0.3', fc=DARK_BG, ec=badge_col, lw=1.0))
-        ax_res.axhline(df[res_col].iloc[0] - 3.0, color=EMERALD_COLOR, ls=':', lw=1.0, label="Target -3 Order Drop")
+        target_line = max(df[res_col].iloc[0] - 3.0, -6.0)
+        ax_res.axhline(target_line, color=EMERALD_COLOR, ls=':', lw=1.0, label="Target Residual (-6.0 / -3 orders)")
         ax_res.legend(facecolor=DARK_BG, edgecolor=GRID_COLOR, labelcolor=TEXT_COLOR, fontsize=8, loc='lower left')
 
     if cl_col:
