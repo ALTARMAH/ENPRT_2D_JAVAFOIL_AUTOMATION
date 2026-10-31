@@ -18,7 +18,7 @@ For Windows users who want to run Aero Auto immediately without installing Pytho
 - [**Download AeroAuto_GUI_Standalone.exe (v1.2)**](https://github.com/ALTARMAH/ENPRT_2D_JAVAFOIL_AUTOMATION/releases/download/v1.2/AeroAuto_GUI_Standalone.exe)
   *Single-file portable executable (~116 MB). No extraction needed.*
 - [**View Full v1.2 Release Notes**](https://github.com/ALTARMAH/ENPRT_2D_JAVAFOIL_AUTOMATION/releases/tag/v1.2)
-  *Release highlights: 3D race car wings engine, ANSYS Fluent automated meshing/journals, OpenFOAM/SU2 CFD cases, and verified empirical benchmarks.*
+  *Release highlights: 3D race car wings engine, universal multi-version ANSYS Fluent detection (2020 through 2026+) with in-GUI CFD path configuration, OpenFOAM/SU2 CFD cases, and verified empirical benchmarks.*
 
 *(Legacy v1.1 releases remain archived at [Releases / v1.1](https://github.com/ALTARMAH/ENPRT_2D_JAVAFOIL_AUTOMATION/releases/tag/v1.1))*
 
