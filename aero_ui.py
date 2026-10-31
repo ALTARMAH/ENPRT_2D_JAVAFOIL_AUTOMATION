@@ -516,6 +516,7 @@ class App(tk.Tk):
             'tips': bool(s.get('tips', True)),
             'tip_delay': int(float(s.get('tip_delay', 450) or 0)),
             'tip_wrap': int(float(s.get('tip_wrap', 420) or 420)),
+            'fluent_path': str(s.get('fluent_path', '') or ''),
         }
         if self._settings['theme'] not in THEMES:
             self._settings['theme'] = DEFAULT_THEME
@@ -1100,6 +1101,8 @@ class App(tk.Tk):
             self._settings['tips'] = bool(self.tips_var.get())
             self._settings['tip_delay'] = int(float(self.tip_delay_var.get() or 0))
             self._settings['tip_wrap'] = int(float(self.tip_wrap_var.get() or 420))
+            if hasattr(self, 'fluent_path_var'):
+                self._settings['fluent_path'] = self.fluent_path_var.get().strip()
         except Exception:
             pass
         _TIP.set_options(
@@ -1109,6 +1112,48 @@ class App(tk.Tk):
         )
         if save:
             self._schedule_state_save()
+
+    def get_tests_dir(self) -> Path:
+        try:
+            from ansys_engine import get_tests_dir
+            return get_tests_dir()
+        except Exception:
+            d = Path.home() / "Desktop" / "tests"
+            if d.exists():
+                return d
+            c_user = Path(r"C:\Users\USER\Desktop\tests")
+            return c_user if c_user.exists() else d
+
+    def get_fluent_exe(self) -> Optional[str]:
+        # 1. Custom user setting
+        p = self._settings.get('fluent_path', '').strip()
+        if p and os.path.exists(p):
+            return p
+        # 2. Dynamic multi-version detection
+        try:
+            from ansys_engine import detect_fluent_executable
+            return detect_fluent_executable(p if p else None)
+        except Exception:
+            return None
+
+    def _prompt_locate_fluent(self) -> Optional[str]:
+        ans = messagebox.askyesno(
+            "ANSYS Fluent Executable Not Found",
+            "ANSYS Fluent was not found in standard directories or system environment variables.\n\n"
+            "Would you like to manually locate your fluent.exe now?"
+        )
+        if ans:
+            chosen = filedialog.askopenfilename(
+                title="Locate ANSYS fluent.exe",
+                filetypes=[("Fluent Executable", "fluent.exe"), ("Executable Files", "*.exe"), ("All Files", "*.*")]
+            )
+            if chosen and os.path.exists(chosen):
+                self._settings['fluent_path'] = chosen
+                if hasattr(self, 'fluent_path_var'):
+                    self.fluent_path_var.set(chosen)
+                self._schedule_state_save()
+                return chosen
+        return None
 
     def _preview_tip(self):
         _TIP.schedule(self.tab_set, "This is a hover description. It now uses high-contrast colours, waits for the delay, and disappears as soon as you click or leave.")
@@ -10740,6 +10785,83 @@ class App(tk.Tk):
             bg=BG, fg=MUTED, wraplength=320, justify='left'
         ).pack(anchor='w', padx=10, pady=(6, 8))
 
+        ansys_box = tk.LabelFrame(
+            right, text=' ANSYS Fluent Integration & CFD Path ', bg=BG, fg=ACCENT, bd=1, relief='groove',
+            labelanchor='nw', font=('TkDefaultFont', 10, 'bold')
+        )
+        ansys_box.pack(fill='x', pady=(10, 0))
+
+        tk.Label(
+            ansys_box,
+            text='Auto-detects ANY version of ANSYS Fluent (2020 through 2026+) and ANY drive (C:, D:, E:). If in a custom folder, configure below:',
+            bg=BG, fg=MUTED, wraplength=340, justify='left'
+        ).pack(anchor='w', padx=10, pady=(6, 4))
+
+        cur_fluent = self.get_fluent_exe() or ''
+        self.fluent_path_var = tk.StringVar(value=self._settings.get('fluent_path') or cur_fluent)
+
+        p_row = tk.Frame(ansys_box, bg=BG)
+        p_row.pack(fill='x', padx=10, pady=3)
+        tk.Entry(p_row, textvariable=self.fluent_path_var, bg=PANEL, fg=TXT, insertbackground=ACCENT, bd=1, relief='solid', width=28).pack(side='left', fill='x', expand=True, padx=(0, 4))
+
+        tk.Button(
+            p_row, text='Browse...', command=self._on_browse_fluent, bg=PANEL, fg=TXT,
+            activebackground=ACCENT, activeforeground=SEL_BG, relief='flat', padx=8, pady=2
+        ).pack(side='left', padx=2)
+
+        tk.Button(
+            p_row, text='Auto-Detect', command=self._on_autodetect_fluent, bg=PANEL, fg=SKY,
+            activebackground=ACCENT, activeforeground=SEL_BG, relief='flat', padx=8, pady=2
+        ).pack(side='left', padx=2)
+
+        self.fluent_status_lbl = tk.Label(ansys_box, text='', bg=BG, font=('TkDefaultFont', 9))
+        self.fluent_status_lbl.pack(anchor='w', padx=10, pady=(4, 8))
+        self._update_fluent_status_label()
+
+    def _update_fluent_status_label(self):
+        if not hasattr(self, 'fluent_status_lbl'):
+            return
+        p = self.fluent_path_var.get().strip() if hasattr(self, 'fluent_path_var') else ''
+        if not p:
+            p = self.get_fluent_exe() or ''
+        if p and os.path.exists(p):
+            try:
+                from ansys_engine import get_ansys_version_info
+                info = get_ansys_version_info(p)
+                vname = info.get('version_name', 'ANSYS Fluent')
+            except Exception:
+                vname = "ANSYS Fluent"
+            self.fluent_status_lbl.config(text=f"✔ Ready: {vname} detected\nPath: {p}", fg='#34d399', justify='left')
+        else:
+            self.fluent_status_lbl.config(text="⚠ Not found. Please browse to fluent.exe or check installation.", fg='#f59e0b', justify='left')
+
+    def _on_browse_fluent(self):
+        chosen = filedialog.askopenfilename(
+            title="Locate ANSYS fluent.exe",
+            filetypes=[("Fluent Executable", "fluent.exe"), ("Executable Files", "*.exe"), ("All Files", "*.*")]
+        )
+        if chosen:
+            self.fluent_path_var.set(chosen)
+            self._settings['fluent_path'] = chosen
+            self._apply_settings(save=True)
+            self._update_fluent_status_label()
+
+    def _on_autodetect_fluent(self):
+        try:
+            from ansys_engine import detect_fluent_executable
+            detected = detect_fluent_executable()
+            if detected:
+                self.fluent_path_var.set(detected)
+                self._settings['fluent_path'] = detected
+                self._apply_settings(save=True)
+                self._update_fluent_status_label()
+                messagebox.showinfo("ANSYS Fluent Detected", f"Successfully detected ANSYS Fluent:\n{detected}")
+            else:
+                self._update_fluent_status_label()
+                messagebox.showwarning("Not Found", "Could not automatically locate fluent.exe. Please click 'Browse...' to select it.")
+        except Exception as e:
+            messagebox.showerror("Detection Error", f"Error during auto-detection: {e}")
+
     # =========================================================================
     # 3D FRONT WINGS & POLARS SUITE TAB IMPLEMENTATION
     # =========================================================================
@@ -10773,7 +10895,7 @@ class App(tk.Tk):
 
         btn_folder = ttk.Button(top_bar, text="📂 Open tests Folder", command=self.on_open_tests_dir)
         btn_folder.pack(side='left', padx=3)
-        add_tooltip(btn_folder, "Open C:\\Users\\USER\\Desktop\\tests in Windows Explorer.")
+        add_tooltip(btn_folder, "Open 3D wings tests and results directory in Windows Explorer.")
 
         btn_xlsx = ttk.Button(top_bar, text="📊 Open Excel", command=self.on_open_3d_excel)
         btn_xlsx.pack(side='left', padx=3)
@@ -11037,7 +11159,7 @@ class App(tk.Tk):
             return
 
         mode = self.wing_plot_mode.get()
-        tests_dir = Path(r"C:\Users\USER\Desktop\tests")
+        tests_dir = self.get_tests_dir()
         w_dir = tests_dir / info['folder'] / "plots"
         sum_dir = tests_dir / "SUMMARY_AND_3D_ANALYSIS" / "plots"
 
@@ -11166,12 +11288,13 @@ class App(tk.Tk):
                 self.wings_suite_status.set("Running 3D finite-wing polar sweep...")
                 import aero_auto_wings_suite as wings_suite
                 wings_suite.run_wings_suite()
+                tests_dir = self.get_tests_dir()
                 self.after(0, lambda: self.wings_suite_status.set("Completed successfully!"))
                 self.after(0, self._populate_wings_tree)
                 self.after(0, self._refresh_wing_plot)
                 self.after(0, lambda: messagebox.showinfo(
                     "Optimization Complete",
-                    "3D Front Wings & Aerodynamic Polar Suite completed successfully!\n\nAll results, polar curves, and 3D STLs are ready in C:\\Users\\USER\\Desktop\\tests\\"
+                    f"3D Front Wings & Aerodynamic Polar Suite completed successfully!\n\nAll results, polar curves, and 3D STLs are ready in:\n{tests_dir}"
                 ))
             except Exception as err:
                 self.after(0, lambda: self.wings_suite_status.set(f"Error: {err}"))
@@ -11184,8 +11307,8 @@ class App(tk.Tk):
         info = self._wings_info.get(sel[0]) if sel else None
         target_folder = info['folder'] if info else getattr(self, 'last_selected_wing_folder', '01_EVO1_3ELEMENT')
 
-        fluent_exe = r"C:\Program Files\ANSYS Inc\v241\fluent\ntbin\win64\fluent.exe"
-        case_dir = Path(r"C:\Users\USER\Desktop\tests") / target_folder / "fluent_case"
+        tests_dir = self.get_tests_dir()
+        case_dir = tests_dir / target_folder / "fluent_case"
 
         cas_file = None
         if case_dir.exists():
@@ -11193,59 +11316,73 @@ class App(tk.Tk):
             if cas_list:
                 cas_file = cas_list[0]
 
-        if os.path.exists(fluent_exe) and cas_file:
+        fluent_exe = self.get_fluent_exe()
+        if not fluent_exe:
+            fluent_exe = self._prompt_locate_fluent()
+
+        if fluent_exe and os.path.exists(fluent_exe) and cas_file:
             try:
-                # Do NOT pass -data (Fluent 2024 automatically loads matching .dat.h5 when -case is provided)
-                cmd = f'"{fluent_exe}" -r24.1.0 2ddp -t4 -case "{cas_file.name}"'
+                # Universal launch: version-agnostic, works on any ANSYS version
+                cmd = f'"{fluent_exe}" 2ddp -t4 -case "{cas_file.name}"'
                 subprocess.Popen(cmd, cwd=str(case_dir), shell=True)
                 return
             except Exception as e:
                 print(f"[warn] Failed to launch 2D fluent directly: {e}")
 
         # Fallback to wing-specific batch launcher
-        bat_path = Path(r"C:\Users\USER\Desktop\tests") / target_folder / f"LAUNCH_{target_folder}_ANSYS_2D.bat"
+        bat_path = tests_dir / target_folder / f"LAUNCH_{target_folder}_ANSYS_2D.bat"
         if not bat_path.exists():
-            bat_path = Path(r"C:\Users\USER\Desktop\tests\LAUNCH_2D_ANSYS_GUI.bat")
+            bat_path = tests_dir / "LAUNCH_2D_ANSYS_GUI.bat"
         if bat_path.exists():
             subprocess.Popen(f'"{bat_path}" "{target_folder}"', cwd=str(bat_path.parent), shell=True)
         else:
             messagebox.showwarning("File Not Found", f"Launcher not found at:\n{bat_path}")
 
     def on_launch_3d_front_wing_gui(self):
-        fluent_exe = r"C:\Program Files\ANSYS Inc\v241\fluent\ntbin\win64\fluent.exe"
-        sum_dir = Path(r"C:\Users\USER\Desktop\tests\SUMMARY_AND_3D_ANALYSIS")
+        tests_dir = self.get_tests_dir()
+        sum_dir = tests_dir / "SUMMARY_AND_3D_ANALYSIS"
         cas_file = sum_dir / "enprt_fw_3d_front_wing_solved.cas.h5"
         if not cas_file.exists():
             cas_file = sum_dir / "enprt_fw_3d_solved.cas.h5"
 
-        if os.path.exists(fluent_exe) and cas_file.exists():
+        fluent_exe = self.get_fluent_exe()
+        if not fluent_exe:
+            fluent_exe = self._prompt_locate_fluent()
+
+        if fluent_exe and os.path.exists(fluent_exe) and cas_file.exists():
             try:
-                cmd = f'"{fluent_exe}" -r24.1.0 3ddp -t4 -case "{cas_file.name}"'
+                # Universal launch: version-agnostic, works on any ANSYS version
+                cmd = f'"{fluent_exe}" 3ddp -t4 -case "{cas_file.name}"'
                 subprocess.Popen(cmd, cwd=str(sum_dir), shell=True)
                 return
             except Exception as e:
                 print(f"[warn] Failed to launch 3D Front Wing fluent directly: {e}")
 
-        bat_path = Path(r"C:\Users\USER\Desktop\tests\LAUNCH_3D_FRONT_WING_GROUND_EFFECT.bat")
+        bat_path = tests_dir / "LAUNCH_3D_FRONT_WING_GROUND_EFFECT.bat"
         if bat_path.exists():
             subprocess_open(bat_path)
         else:
             messagebox.showwarning("File Not Found", f"Launcher not found at:\n{bat_path}")
 
     def on_launch_3d_rear_wing_gui(self):
-        fluent_exe = r"C:\Program Files\ANSYS Inc\v241\fluent\ntbin\win64\fluent.exe"
-        sum_dir = Path(r"C:\Users\USER\Desktop\tests\SUMMARY_AND_3D_ANALYSIS")
+        tests_dir = self.get_tests_dir()
+        sum_dir = tests_dir / "SUMMARY_AND_3D_ANALYSIS"
         cas_file = sum_dir / "enprt_rw_3d_rear_wing_solved.cas.h5"
 
-        if os.path.exists(fluent_exe) and cas_file.exists():
+        fluent_exe = self.get_fluent_exe()
+        if not fluent_exe:
+            fluent_exe = self._prompt_locate_fluent()
+
+        if fluent_exe and os.path.exists(fluent_exe) and cas_file.exists():
             try:
-                cmd = f'"{fluent_exe}" -r24.1.0 3ddp -t4 -case "{cas_file.name}"'
+                # Universal launch: version-agnostic, works on any ANSYS version
+                cmd = f'"{fluent_exe}" 3ddp -t4 -case "{cas_file.name}"'
                 subprocess.Popen(cmd, cwd=str(sum_dir), shell=True)
                 return
             except Exception as e:
                 print(f"[warn] Failed to launch 3D Rear Wing fluent directly: {e}")
 
-        bat_path = Path(r"C:\Users\USER\Desktop\tests\LAUNCH_3D_REAR_WING_FREESTREAM.bat")
+        bat_path = tests_dir / "LAUNCH_3D_REAR_WING_FREESTREAM.bat"
         if bat_path.exists():
             subprocess_open(bat_path)
         else:
@@ -11258,19 +11395,24 @@ class App(tk.Tk):
         self.on_launch_2d_ansys_gui()
 
     def on_open_tests_dir(self):
-        subprocess_open(r"C:\Users\USER\Desktop\tests")
+        subprocess_open(str(self.get_tests_dir()))
 
     def on_open_3d_excel(self):
+        tests_dir = self.get_tests_dir()
+        desktop = tests_dir.parent
         p_choices = [
-            r"C:\Users\USER\Desktop\Front wings.xlsx",
-            r"C:\Users\USER\Desktop\Front wings 3D Verified & Optimized.xlsx",
-            r"C:\Users\USER\Desktop\tests\Front wings 3D Verified & Optimized.xlsx"
+            tests_dir / "Front wings 3D Verified & Optimized.xlsx",
+            desktop / "Front wings 3D Verified & Optimized.xlsx",
+            desktop / "Front wings.xlsx",
+            Path(r"C:\Users\USER\Desktop\Front wings 3D Verified & Optimized.xlsx"),
+            Path(r"C:\Users\USER\Desktop\Front wings.xlsx"),
+            tests_dir / "Front wings.xlsx"
         ]
         for p in p_choices:
-            if os.path.exists(p):
-                subprocess_open(p)
+            if p.exists():
+                subprocess_open(str(p))
                 return
-        messagebox.showwarning("File Not Found", "Excel benchmark file not found on Desktop.")
+        messagebox.showwarning("File Not Found", f"Excel benchmark file not found in:\n{tests_dir}\nor on Desktop.")
 
     def on_show_external_benchmark_links(self):
         """Dedicated viewer for official benchmark empirical papers, DOIs, and thesis repository links (100% Downloaded & Verified)."""
@@ -11344,7 +11486,7 @@ class App(tk.Tk):
         btn_bar.pack(fill='x', padx=16, pady=(4, 16))
 
         ttk.Button(btn_bar, text="📁 Open Downloaded PDFs Folder",
-                   command=lambda: subprocess_open(r"C:\Users\USER\Desktop\tests\EXTERNAL_BENCHMARKS_AND_VALIDATION")).pack(side='left', padx=4)
+                   command=lambda: subprocess_open(str(self.get_tests_dir() / "EXTERNAL_BENCHMARKS_AND_VALIDATION"))).pack(side='left', padx=4)
         ttk.Button(btn_bar, text="🏆 Open Full Benchmarks & Validation Table",
                    command=lambda: [dlg.destroy(), self.on_show_external_benchmarks()]).pack(side='left', padx=4)
         ttk.Button(btn_bar, text="📊 Open Excel (External Teams Validation)",
@@ -11485,7 +11627,7 @@ class App(tk.Tk):
         add_tooltip(btn_i, "Open free full-text PDF: Filipe Buscariolo et al. (arXiv:1909.06701, Imperial 10x5 Wind Tunnel: Cl=-5.30 to -5.54)")
 
         btn_folder = ttk.Button(b_row, text="📁 Local Downloaded PDFs",
-                                command=lambda: subprocess_open(r"C:\Users\USER\Desktop\tests\EXTERNAL_BENCHMARKS_AND_VALIDATION"))
+                                command=lambda: subprocess_open(str(self.get_tests_dir() / "EXTERNAL_BENCHMARKS_AND_VALIDATION")))
         btn_folder.pack(side='left', padx=6)
         add_tooltip(btn_folder, "Open local folder containing offline downloaded copies of all 4 verified papers")
 
@@ -11553,7 +11695,7 @@ class App(tk.Tk):
         ttk.Button(btn_bar, text="📊 Open Excel Sheet (External Teams Validation)",
                    command=self.on_open_3d_excel).pack(side='left', padx=4)
         ttk.Button(btn_bar, text="📁 Open Validation Plots Folder",
-                   command=lambda: subprocess_open(r"C:\Users\USER\Desktop\tests\EXTERNAL_BENCHMARKS_AND_VALIDATION")).pack(side='left', padx=4)
+                   command=lambda: subprocess_open(str(self.get_tests_dir() / "EXTERNAL_BENCHMARKS_AND_VALIDATION"))).pack(side='left', padx=4)
         ttk.Button(btn_bar, text="Close", command=dlg.destroy).pack(side='right', padx=4)
 
     def _on_open_selected_wing_stl(self):
@@ -11564,13 +11706,14 @@ class App(tk.Tk):
         if not info:
             return
         wid = info['id']
-        p = Path(r"C:\Users\USER\Desktop\tests") / f"{wid}_3D_ASSEMBLY.stl"
+        tests_dir = self.get_tests_dir()
+        p = tests_dir / f"{wid}_3D_ASSEMBLY.stl"
         if not p.exists():
-            p = Path(r"C:\Users\USER\Desktop\tests") / f"{wid.replace('-', '_')}_3D_ASSEMBLY.stl"
+            p = tests_dir / f"{wid.replace('-', '_')}_3D_ASSEMBLY.stl"
         if p.exists():
             subprocess_open(str(p))
         else:
-            messagebox.showinfo("CAD Model", f"3D STL for {wid} is located in:\nC:\\Users\\USER\\Desktop\\tests\\SUMMARY_AND_3D_ANALYSIS\\cad_stl\\")
+            messagebox.showinfo("CAD Model", f"3D STL for {wid} is located in:\n{tests_dir}\\SUMMARY_AND_3D_ANALYSIS\\cad_stl\\")
 
     def _on_open_selected_wing_folder(self):
         sel = self.wings_tree.selection()
@@ -11579,11 +11722,12 @@ class App(tk.Tk):
         info = self._wings_info.get(sel[0])
         if not info:
             return
-        p = Path(r"C:\Users\USER\Desktop\tests") / info['folder'] / "plots"
+        tests_dir = self.get_tests_dir()
+        p = tests_dir / info['folder'] / "plots"
         if p.exists():
             subprocess_open(str(p))
         else:
-            subprocess_open(r"C:\Users\USER\Desktop\tests")
+            subprocess_open(str(tests_dir))
 
 
 def main():

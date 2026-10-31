@@ -45,8 +45,13 @@ if str(APP_DIR) not in sys.path:
     sys.path.insert(0, str(APP_DIR))
 
 import aero_auto
+try:
+    from ansys_engine import get_tests_dir
+    TESTS_DIR = get_tests_dir()
+except Exception:
+    desktop = Path.home() / "Desktop"
+    TESTS_DIR = (desktop / "tests") if desktop.exists() else Path(r"C:\Users\USER\Desktop\tests")
 
-TESTS_DIR = Path(r"C:\Users\USER\Desktop\tests")
 SUMMARY_DIR = TESTS_DIR / "SUMMARY_AND_3D_ANALYSIS"
 SUMMARY_PLOTS_DIR = SUMMARY_DIR / "plots"
 SUMMARY_CAD_DIR = SUMMARY_DIR / "cad_stl"
