@@ -9,16 +9,18 @@ An automated multi-element aerodynamic optimization and campaign toolchain built
 
 ---
 
-## Windows Standalone Executable (Ready to Run - No Python Required)
+## Windows Executable Packages (Ready to Run - No Python Required)
 
 For Windows users who want to run Aero Auto immediately without installing Python or setting up an environment:
 
-- [**Download aero_ui_standalone.exe (v1.1)**](https://github.com/ALTARMAH/ENPRT_2D_JAVAFOIL_AUTOMATION/releases/download/v1.1/aero_ui_standalone.exe)
-  *Single-file portable executable (~85 MB). Download and double-click to launch.*
-- [**Download aero_auto_windows_standalone_1.1.zip**](https://github.com/ALTARMAH/ENPRT_2D_JAVAFOIL_AUTOMATION/releases/download/v1.1/aero_auto_windows_standalone_1.1.zip)
-  *Portable zip archive containing the standalone executable, official manuals, airfoils library, and batch launchers.*
-- [**Download aero_auto_windows_app_1.1.zip**](https://github.com/ALTARMAH/ENPRT_2D_JAVAFOIL_AUTOMATION/releases/download/v1.1/aero_auto_windows_app_1.1.zip)
-  *Full pre-extracted application folder bundle with START_AERO_AUTO.bat.*
+- [**Download AeroAuto_GUI_Windows_v1.2.zip (v1.2 - Recommended)**](https://github.com/ALTARMAH/ENPRT_2D_JAVAFOIL_AUTOMATION/releases/download/v1.2/AeroAuto_GUI_Windows_v1.2.zip)
+  *Complete pre-packaged Windows distribution archive (~120 MB). Extract and double-click `AeroAuto_GUI.exe` to launch immediately.*
+- [**Download AeroAuto_GUI_Standalone.exe (v1.2)**](https://github.com/ALTARMAH/ENPRT_2D_JAVAFOIL_AUTOMATION/releases/download/v1.2/AeroAuto_GUI_Standalone.exe)
+  *Single-file portable executable (~116 MB). No extraction needed.*
+- [**View Full v1.2 Release Notes**](https://github.com/ALTARMAH/ENPRT_2D_JAVAFOIL_AUTOMATION/releases/tag/v1.2)
+  *Release highlights: 3D race car wings engine, ANSYS Fluent automated meshing/journals, OpenFOAM/SU2 CFD cases, and verified empirical benchmarks.*
+
+*(Legacy v1.1 releases remain archived at [Releases / v1.1](https://github.com/ALTARMAH/ENPRT_2D_JAVAFOIL_AUTOMATION/releases/tag/v1.1))*
 
 *(Requirement: Java JRE/JDK 8+ installed on your system for JavaFoil simulation. Free installer: [Adoptium Temurin](https://adoptium.net))*
 
