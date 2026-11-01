@@ -249,6 +249,219 @@ def launch_fluent_gui(
         return False, f"Error launching Fluent: {e}"
 
 
+def detect_solidworks_executable(custom_path: Optional[str] = None) -> Optional[str]:
+    """
+    Auto-detect SolidWorks executable (SLDWORKS.exe) across:
+      1. User-specified custom path
+      2. Windows Registry (HKLM & HKCU: SOFTWARE\\SolidWorks\\SOLIDWORKS <year>\\Setup -> SolidWorks Folder)
+      3. Windows Registry App Paths (HKLM & HKCU: SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\App Paths\\SLDWORKS.exe)
+      4. Standard installation directories across all physical drives (C:, D:, E:, etc.)
+      5. System PATH environment variable
+    """
+    if custom_path and os.path.isfile(custom_path):
+        return str(Path(custom_path).resolve())
+
+    # 1. System PATH
+    p = shutil.which("SLDWORKS.exe") or shutil.which("SLDWORKS")
+    if p and os.path.isfile(p):
+        return str(Path(p).resolve())
+
+    # 2. Windows Registry
+    if os.name == 'nt':
+        try:
+            import winreg
+            for hkey in (winreg.HKEY_LOCAL_MACHINE, winreg.HKEY_CURRENT_USER):
+                for access in (winreg.KEY_WOW64_64KEY, winreg.KEY_WOW64_32KEY):
+                    # Check HKLM/HKCU\SOFTWARE\SolidWorks
+                    try:
+                        with winreg.OpenKey(hkey, r'SOFTWARE\SolidWorks', 0, winreg.KEY_READ | access) as root:
+                            num_subkeys, _, _ = winreg.QueryInfoKey(root)
+                            for i in range(num_subkeys):
+                                sk_name = winreg.EnumKey(root, i)
+                                if 'SOLIDWORKS' in sk_name.upper():
+                                    try:
+                                        with winreg.OpenKey(root, rf'{sk_name}\Setup', 0, winreg.KEY_READ | access) as setup_key:
+                                            val, _ = winreg.QueryValueEx(setup_key, 'SolidWorks Folder')
+                                            exe = os.path.join(val, 'SLDWORKS.exe')
+                                            if os.path.isfile(exe):
+                                                return str(Path(exe).resolve())
+                                    except OSError:
+                                        pass
+                    except OSError:
+                        pass
+                    # Check App Paths
+                    try:
+                        with winreg.OpenKey(hkey, r'SOFTWARE\Microsoft\Windows\CurrentVersion\App Paths\SLDWORKS.exe', 0, winreg.KEY_READ | access) as key:
+                            val, _ = winreg.QueryValue(key, '')
+                            if val and os.path.isfile(val):
+                                return str(Path(val).resolve())
+                    except OSError:
+                        pass
+        except Exception:
+            pass
+
+    # 3. Known Filesystem install locations across all available drives
+    drives = get_available_drive_letters()
+    for drive in drives:
+        candidates = [
+            Path(f"{drive}:/Program Files/SOLIDWORKS Corp/SOLIDWORKS/SLDWORKS.exe"),
+            Path(f"{drive}:/Program Files/SOLIDWORKS Corp (2)/SOLIDWORKS/SLDWORKS.exe"),
+            Path(f"{drive}:/Program Files/SOLIDWORKS Corp (3)/SOLIDWORKS/SLDWORKS.exe"),
+            Path(f"{drive}:/Program Files/SOLIDWORKS/SLDWORKS.exe"),
+            Path(f"{drive}:/Program Files (x86)/SOLIDWORKS Corp/SOLIDWORKS/SLDWORKS.exe"),
+            Path(f"{drive}:/Program Files/Dassault Systemes/SOLIDWORKS/SLDWORKS.exe"),
+        ]
+        for c in candidates:
+            if c.is_file():
+                return str(c.resolve())
+        # Check year folders like Program Files/SOLIDWORKS 2025/SLDWORKS.exe
+        for pattern in [f"{drive}:/Program Files/SOLIDWORKS*/SLDWORKS.exe", f"{drive}:/Program Files/SOLIDWORKS*/*/SLDWORKS.exe"]:
+            for match in glob.glob(pattern):
+                if os.path.isfile(match):
+                    return str(Path(match).resolve())
+
+    return None
+
+
+def detect_cad_executable(custom_path: Optional[str] = None) -> Optional[str]:
+    """
+    Detects SolidWorks first, or falls back to major CAD software suites
+    (Fusion 360, FreeCAD, Inventor, Rhino, NX, Creo).
+    """
+    sw = detect_solidworks_executable(custom_path)
+    if sw:
+        return sw
+
+    # 1. Fusion 360
+    local_app_data = os.environ.get("LOCALAPPDATA", "")
+    if local_app_data:
+        fusion_matches = glob.glob(os.path.join(local_app_data, "Autodesk", "webdeploy", "production", "*", "Autodesk Fusion 360.exe"))
+        if fusion_matches and os.path.isfile(fusion_matches[0]):
+            return str(Path(fusion_matches[0]).resolve())
+
+    # 2. FreeCAD
+    freecad_p = shutil.which("FreeCAD.exe") or shutil.which("FreeCAD")
+    if freecad_p and os.path.isfile(freecad_p):
+        return str(Path(freecad_p).resolve())
+    drives = get_available_drive_letters()
+    for drive in drives:
+        fc_matches = glob.glob(f"{drive}:/Program Files*/FreeCAD*/bin/FreeCAD.exe")
+        if fc_matches and os.path.isfile(fc_matches[0]):
+            return str(Path(fc_matches[0]).resolve())
+
+    # 3. Autodesk Inventor
+    for drive in drives:
+        inv_matches = glob.glob(f"{drive}:/Program Files*/Autodesk/Inventor*/Bin/Inventor.exe")
+        if inv_matches and os.path.isfile(inv_matches[0]):
+            return str(Path(inv_matches[0]).resolve())
+
+    # 4. Rhino
+    for drive in drives:
+        rhino_matches = glob.glob(f"{drive}:/Program Files*/Rhino*/System/Rhino.exe")
+        if rhino_matches and os.path.isfile(rhino_matches[0]):
+            return str(Path(rhino_matches[0]).resolve())
+
+    return None
+
+
+def get_solidworks_version_info(sw_bin: Optional[str] = None) -> Dict[str, str]:
+    """Returns human-readable version info for detected SolidWorks installation."""
+    if not sw_bin:
+        sw_bin = detect_solidworks_executable()
+    if not sw_bin or not os.path.isfile(sw_bin):
+        return {"version_name": "Not Installed", "version_year": "unknown", "path": ""}
+
+    # Check Windows Registry for exact edition name (e.g., 'SOLIDWORKS 2025')
+    if os.name == 'nt':
+        try:
+            import winreg
+            for hkey in (winreg.HKEY_LOCAL_MACHINE, winreg.HKEY_CURRENT_USER):
+                for access in (winreg.KEY_WOW64_64KEY, winreg.KEY_WOW64_32KEY):
+                    try:
+                        with winreg.OpenKey(hkey, r'SOFTWARE\SolidWorks', 0, winreg.KEY_READ | access) as root:
+                            for i in range(winreg.QueryInfoKey(root)[0]):
+                                sk = winreg.EnumKey(root, i)
+                                if 'SOLIDWORKS' in sk.upper():
+                                    try:
+                                        with winreg.OpenKey(root, rf'{sk}\Setup', 0, winreg.KEY_READ | access) as s:
+                                            f, _ = winreg.QueryValueEx(s, 'SolidWorks Folder')
+                                            if os.path.normpath(f).lower() in os.path.normpath(sw_bin).lower():
+                                                return {
+                                                    "version_name": sk.strip(),
+                                                    "version_year": "".join(c for c in sk if c.isdigit()),
+                                                    "path": sw_bin
+                                                }
+                                    except OSError:
+                                        pass
+                    except OSError:
+                        pass
+        except Exception:
+            pass
+
+    import re
+    match = re.search(r'20\d{2}', sw_bin)
+    year = match.group(0) if match else "Standard"
+    return {
+        "version_name": f"SolidWorks {year}",
+        "version_year": year,
+        "path": sw_bin
+    }
+
+
+def open_with_system_default(path: Union[str, Path]) -> bool:
+    """Open a file/folder with the OS default handler safely without blocking."""
+    try:
+        p_str = os.path.expanduser(str(path))
+        if sys.platform.startswith('win'):
+            os.startfile(p_str)
+            return True
+        elif sys.platform == 'darwin':
+            subprocess.Popen(['open', p_str], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            return True
+        else:
+            opener = shutil.which('xdg-open') or shutil.which('gio')
+            if opener:
+                cmd = [opener, 'open', p_str] if opener.endswith('gio') else [opener, p_str]
+                subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                return True
+    except Exception:
+        pass
+    return False
+
+
+def launch_cad_file(
+    file_path: Union[str, Path],
+    custom_cad_exe: Optional[str] = None
+) -> Tuple[bool, str]:
+    """
+    Universal CAD launcher that opens 3D models (STL, STEP, IGES, etc.) in SolidWorks
+    or the user's preferred CAD application.
+    Falls back gracefully to other installed CAD suites or the OS default 3D handler.
+    """
+    target_path = Path(file_path).resolve()
+    if not target_path.exists():
+        return False, f"File does not exist: {target_path}"
+
+    cad_exe = detect_solidworks_executable(custom_cad_exe) or detect_cad_executable(custom_cad_exe)
+    if cad_exe and os.path.isfile(cad_exe):
+        try:
+            if os.name == 'nt':
+                # Launch detached process so aero_ui never freezes
+                subprocess.Popen([cad_exe, str(target_path)], close_fds=False)
+            else:
+                subprocess.Popen([cad_exe, str(target_path)], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            app_info = get_solidworks_version_info(cad_exe)
+            return True, f"Launched in {app_info.get('version_name', 'SolidWorks')}"
+        except Exception as e:
+            pass
+
+    # Fallback to OS handler
+    opened = open_with_system_default(str(target_path))
+    if opened:
+        return True, "Opened with system default 3D viewer"
+    return False, "Failed to launch 3D viewer"
+
+
 class AnsysFluentEngine:
     """Interface to ANSYS Fluent on Windows via PyFluent or Batch Journal."""
 

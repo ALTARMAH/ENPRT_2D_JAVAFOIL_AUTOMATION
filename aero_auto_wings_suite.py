@@ -55,6 +55,7 @@ except Exception:
 SUMMARY_DIR = TESTS_DIR / "SUMMARY_AND_3D_ANALYSIS"
 SUMMARY_PLOTS_DIR = SUMMARY_DIR / "plots"
 SUMMARY_CAD_DIR = SUMMARY_DIR / "cad_stl"
+SUMMARY_CAD_STEP_DIR = SUMMARY_DIR / "cad_step"
 
 # Styling constants matching aero_auto dark UI
 DARK_BG = '#0b1120'
@@ -979,6 +980,74 @@ def export_authentic_3d_binary_stl(outs: List[np.ndarray], chord_mm: float, span
                                 float(p3[0]), float(p3[1]), float(p3[2]), 0))
 
 
+def export_authentic_3d_step(outs: List[np.ndarray], chord_mm: float, span_mm: float, filepath: Path) -> bool:
+    """
+    Exports a solid watertight ISO 10303-21 STEP CAD model (.step / .stp)
+    with authentic cascading multi-element wings, profiled endplate, and horizontal footplate
+    using OpenCASCADE (via gmsh.model.occ).
+    """
+    filepath = Path(filepath)
+    filepath.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        import gmsh
+        was_init = gmsh.isInitialized()
+        if not was_init:
+            gmsh.initialize()
+            gmsh.option.setNumber('General.Terminal', 0)
+
+        model_name = filepath.stem.replace('-', '_')
+        try:
+            gmsh.model.setCurrent(model_name)
+        except Exception:
+            gmsh.model.add(model_name)
+
+        # 1. Extrude each wing element
+        for elem_idx, o in enumerate(outs):
+            x_mm = o[:, 0] * chord_mm
+            z_mm = o[:, 1] * chord_mm
+
+            # Subsample to ~60 points if outline is very dense to make CAD model lightweight and robust
+            step_stride = max(1, len(o) // 60)
+            sub_x = list(x_mm[::step_stride])
+            sub_z = list(z_mm[::step_stride])
+            # Ensure closed curve
+            if abs(sub_x[0] - sub_x[-1]) > 1e-4 or abs(sub_z[0] - sub_z[-1]) > 1e-4:
+                sub_x.append(sub_x[0])
+                sub_z.append(sub_z[0])
+
+            pts = [gmsh.model.occ.addPoint(float(xi), 0.0, float(zi)) for xi, zi in zip(sub_x[:-1], sub_z[:-1])]
+            pts.append(pts[0])
+
+            spline = gmsh.model.occ.addBSpline(pts)
+            loop = gmsh.model.occ.addCurveLoop([spline])
+            surf = gmsh.model.occ.addPlaneSurface([loop])
+            gmsh.model.occ.extrude([(2, surf)], 0.0, float(span_mm), 0.0)
+
+        # 2. Add realistic aerodynamic Endplate & Footplate at tip Y=span_mm
+        all_x = np.concatenate([o[:, 0] * chord_mm for o in outs])
+        all_z = np.concatenate([o[:, 1] * chord_mm for o in outs])
+        min_x = float(np.min(all_x) - 15.0)
+        max_x = float(np.max(all_x) + 25.0)
+        min_z = float(np.min(all_z) - 20.0)
+        max_z = float(np.max(all_z) + 35.0)
+        ep_thick = 4.0
+
+        # Endplate
+        gmsh.model.occ.addBox(min_x, float(span_mm), min_z, max_x - min_x, ep_thick, max_z - min_z)
+        # Footplate
+        gmsh.model.occ.addBox(min_x, float(span_mm - 25.0), min_z, max_x - min_x, 35.0, 3.0)
+
+        gmsh.model.occ.synchronize()
+        gmsh.write(str(filepath))
+
+        if not was_init:
+            gmsh.finalize()
+        return True
+    except Exception as err:
+        print(f"Error exporting STEP to {filepath}: {err}")
+        return False
+
+
 def export_excel_report(all_wings_data: Dict[str, Any], filepath: Path):
     """Generates comprehensive Excel workbook with 3D results and full polar data."""
     import openpyxl
@@ -1166,6 +1235,7 @@ def run_wings_suite() -> Dict[str, Any]:
     SUMMARY_DIR.mkdir(parents=True, exist_ok=True)
     SUMMARY_PLOTS_DIR.mkdir(parents=True, exist_ok=True)
     SUMMARY_CAD_DIR.mkdir(parents=True, exist_ok=True)
+    SUMMARY_CAD_STEP_DIR.mkdir(parents=True, exist_ok=True)
 
     wing_defs = get_front_wings_definitions()
     all_wings_data = {}
@@ -1204,16 +1274,25 @@ def run_wings_suite() -> Dict[str, Any]:
     print("\n[2/4] Generating Master Comparative Polar Plots & Silhouette Gallery...")
     plot_master_comparisons(all_wings_data, SUMMARY_DIR)
 
-    print("\n[3/4] Exporting 3D Watertight Binary STLs for Top Wings...")
-    top_export_keys = ["01_EVO1_3ELEMENT", "02_EVO2_4ELEMENT", "06_TOP4_BASELINE", "08_MY_PROFILE_BASELINE"]
-    for k in top_export_keys:
-        wdata = all_wings_data[k]
+    print("\n[3/4] Exporting 3D Watertight STEP & Binary STL CAD Models for All Wings...")
+    for k, wdata in all_wings_data.items():
         wid = wdata['cfg']['id']
         stl_name = f"{wid}_3D_ASSEMBLY.stl"
-        # Export to summary cad_stl and root of tests/
+        step_name = f"{wid}_3D_ASSEMBLY.step"
+        # Export STL
         export_authentic_3d_binary_stl(wdata['outlines'], wdata['cfg']['chord_mm'], wdata['cfg']['span_mm'], SUMMARY_CAD_DIR / stl_name)
         export_authentic_3d_binary_stl(wdata['outlines'], wdata['cfg']['chord_mm'], wdata['cfg']['span_mm'], TESTS_DIR / stl_name)
-        print(f"     Exported STL: {stl_name}")
+        # Export STEP
+        export_authentic_3d_step(wdata['outlines'], wdata['cfg']['chord_mm'], wdata['cfg']['span_mm'], SUMMARY_CAD_STEP_DIR / step_name)
+        export_authentic_3d_step(wdata['outlines'], wdata['cfg']['chord_mm'], wdata['cfg']['span_mm'], TESTS_DIR / step_name)
+        if '-' in wid:
+            alt_stl = f"{wid.replace('-', '_')}_3D_ASSEMBLY.stl"
+            alt_step = f"{wid.replace('-', '_')}_3D_ASSEMBLY.step"
+            export_authentic_3d_binary_stl(wdata['outlines'], wdata['cfg']['chord_mm'], wdata['cfg']['span_mm'], SUMMARY_CAD_DIR / alt_stl)
+            export_authentic_3d_binary_stl(wdata['outlines'], wdata['cfg']['chord_mm'], wdata['cfg']['span_mm'], TESTS_DIR / alt_stl)
+            export_authentic_3d_step(wdata['outlines'], wdata['cfg']['chord_mm'], wdata['cfg']['span_mm'], SUMMARY_CAD_STEP_DIR / alt_step)
+            export_authentic_3d_step(wdata['outlines'], wdata['cfg']['chord_mm'], wdata['cfg']['span_mm'], TESTS_DIR / alt_step)
+        print(f"     Exported STEP & STL: {step_name}, {stl_name}")
 
     print("\n[4/4] Generating Master Excel Workbook & Comprehensive Report...")
     excel_path = TESTS_DIR / "Front wings 3D Verified & Optimized.xlsx"

@@ -517,6 +517,7 @@ class App(tk.Tk):
             'tip_delay': int(float(s.get('tip_delay', 450) or 0)),
             'tip_wrap': int(float(s.get('tip_wrap', 420) or 420)),
             'fluent_path': str(s.get('fluent_path', '') or ''),
+            'solidworks_path': str(s.get('solidworks_path', '') or ''),
         }
         if self._settings['theme'] not in THEMES:
             self._settings['theme'] = DEFAULT_THEME
@@ -705,6 +706,10 @@ class App(tk.Tk):
             self._settings['tips'] = bool(self.tips_var.get()) if hasattr(self, 'tips_var') else self._settings['tips']
             self._settings['tip_delay'] = int(float(self.tip_delay_var.get() or 0)) if hasattr(self, 'tip_delay_var') else self._settings['tip_delay']
             self._settings['tip_wrap'] = int(float(self.tip_wrap_var.get() or 420)) if hasattr(self, 'tip_wrap_var') else self._settings['tip_wrap']
+            if hasattr(self, 'fluent_path_var'):
+                self._settings['fluent_path'] = self.fluent_path_var.get().strip()
+            if hasattr(self, 'solidworks_path_var'):
+                self._settings['solidworks_path'] = self.solidworks_path_var.get().strip()
         except Exception as e:
             self.log(f"(settings not saved: {e})")
         fp['settings'] = dict(self._settings)
@@ -1103,6 +1108,8 @@ class App(tk.Tk):
             self._settings['tip_wrap'] = int(float(self.tip_wrap_var.get() or 420))
             if hasattr(self, 'fluent_path_var'):
                 self._settings['fluent_path'] = self.fluent_path_var.get().strip()
+            if hasattr(self, 'solidworks_path_var'):
+                self._settings['solidworks_path'] = self.solidworks_path_var.get().strip()
         except Exception:
             pass
         _TIP.set_options(
@@ -1135,6 +1142,21 @@ class App(tk.Tk):
             return detect_fluent_executable(p if p else None)
         except Exception:
             return None
+
+    def get_cad_exe(self) -> Optional[str]:
+        # 1. Custom user setting
+        p = self._settings.get('solidworks_path', '').strip()
+        if p and os.path.isfile(p):
+            return p
+        # 2. Dynamic multi-version detection
+        try:
+            from ansys_engine import detect_solidworks_executable, detect_cad_executable
+            return detect_solidworks_executable(p if p else None) or detect_cad_executable(p if p else None)
+        except Exception:
+            return None
+
+    def get_solidworks_exe(self) -> Optional[str]:
+        return self.get_cad_exe()
 
     def _prompt_locate_fluent(self) -> Optional[str]:
         ans = messagebox.askyesno(
@@ -10818,6 +10840,39 @@ class App(tk.Tk):
         self.fluent_status_lbl.pack(anchor='w', padx=10, pady=(4, 8))
         self._update_fluent_status_label()
 
+        cad_box = tk.LabelFrame(
+            right, text=' SolidWorks & 3D CAD Integration ', bg=BG, fg=ACCENT, bd=1, relief='groove',
+            labelanchor='nw', font=('TkDefaultFont', 10, 'bold')
+        )
+        cad_box.pack(fill='x', pady=(10, 0))
+
+        tk.Label(
+            cad_box,
+            text='Auto-detects SolidWorks (2018 through 2026+) and standard 3D CAD suites. If installed in a custom location, configure below:',
+            bg=BG, fg=MUTED, wraplength=340, justify='left'
+        ).pack(anchor='w', padx=10, pady=(6, 4))
+
+        cur_cad = self.get_cad_exe() or ''
+        self.solidworks_path_var = tk.StringVar(value=self._settings.get('solidworks_path') or cur_cad)
+
+        cad_p_row = tk.Frame(cad_box, bg=BG)
+        cad_p_row.pack(fill='x', padx=10, pady=3)
+        tk.Entry(cad_p_row, textvariable=self.solidworks_path_var, bg=PANEL, fg=TXT, insertbackground=ACCENT, bd=1, relief='solid', width=28).pack(side='left', fill='x', expand=True, padx=(0, 4))
+
+        tk.Button(
+            cad_p_row, text='Browse...', command=self._on_browse_solidworks, bg=PANEL, fg=TXT,
+            activebackground=ACCENT, activeforeground=SEL_BG, relief='flat', padx=8, pady=2
+        ).pack(side='left', padx=2)
+
+        tk.Button(
+            cad_p_row, text='Auto-Detect', command=self._on_autodetect_solidworks, bg=PANEL, fg=SKY,
+            activebackground=ACCENT, activeforeground=SEL_BG, relief='flat', padx=8, pady=2
+        ).pack(side='left', padx=2)
+
+        self.solidworks_status_lbl = tk.Label(cad_box, text='', bg=BG, font=('TkDefaultFont', 9))
+        self.solidworks_status_lbl.pack(anchor='w', padx=10, pady=(4, 8))
+        self._update_solidworks_status_label()
+
     def _update_fluent_status_label(self):
         if not hasattr(self, 'fluent_status_lbl'):
             return
@@ -10859,6 +10914,53 @@ class App(tk.Tk):
             else:
                 self._update_fluent_status_label()
                 messagebox.showwarning("Not Found", "Could not automatically locate fluent.exe. Please click 'Browse...' to select it.")
+        except Exception as e:
+            messagebox.showerror("Detection Error", f"Error during auto-detection: {e}")
+
+    def _update_solidworks_status_label(self):
+        if not hasattr(self, 'solidworks_status_lbl'):
+            return
+        p = self.solidworks_path_var.get().strip() if hasattr(self, 'solidworks_path_var') else ''
+        if not p:
+            p = self.get_cad_exe() or ''
+        if p and os.path.isfile(p):
+            try:
+                from ansys_engine import get_solidworks_version_info
+                info = get_solidworks_version_info(p)
+                vname = info.get('version_name', 'SolidWorks / CAD')
+            except Exception:
+                vname = "SolidWorks / CAD"
+            self.solidworks_status_lbl.config(text=f"✔ Ready: {vname} detected\nPath: {p}", fg='#34d399', justify='left')
+        else:
+            self.solidworks_status_lbl.config(text="⚠ Not found. Please browse to SLDWORKS.exe or use default 3D viewer.", fg='#f59e0b', justify='left')
+
+    def _on_browse_solidworks(self):
+        chosen = filedialog.askopenfilename(
+            title="Locate SolidWorks (SLDWORKS.exe) or CAD Executable",
+            filetypes=[("SolidWorks Executable", "SLDWORKS.exe"), ("CAD Executable", "*.exe"), ("All Files", "*.*")]
+        )
+        if chosen:
+            self.solidworks_path_var.set(chosen)
+            self._settings['solidworks_path'] = chosen
+            self._apply_settings(save=True)
+            self._update_solidworks_status_label()
+
+    def _on_autodetect_solidworks(self):
+        try:
+            from ansys_engine import detect_solidworks_executable, detect_cad_executable
+            detected = detect_solidworks_executable() or detect_cad_executable()
+            if detected:
+                self.solidworks_path_var.set(detected)
+                self._settings['solidworks_path'] = detected
+                self._apply_settings(save=True)
+                self._update_solidworks_status_label()
+                from ansys_engine import get_solidworks_version_info
+                info = get_solidworks_version_info(detected)
+                vname = info.get('version_name', 'SolidWorks')
+                messagebox.showinfo("CAD Application Detected", f"Successfully detected CAD software:\n{vname}\n{detected}")
+            else:
+                self._update_solidworks_status_label()
+                messagebox.showwarning("Not Found", "Could not automatically locate SLDWORKS.exe. Please click 'Browse...' to select it.")
         except Exception as e:
             messagebox.showerror("Detection Error", f"Error during auto-detection: {e}")
 
@@ -10959,14 +11061,24 @@ class App(tk.Tk):
                                          bg='#1e293b', fg='#f8fafc', relief='flat')
         self.wing_details_text.pack(fill='both', expand=True, padx=4, pady=4)
 
-        # Quick action buttons below details
+        # Quick action buttons below details (Row 1: 3D Solvers | Row 2: CAD, STL & Plots)
         btn_box = ttk.Frame(left_pane)
-        btn_box.pack(fill='x', padx=4, pady=4)
+        btn_box.pack(fill='x', padx=4, pady=(4, 2))
         ttk.Button(btn_box, text="🏎️ 3D Front Wing", command=self.on_launch_3d_front_wing_gui).pack(side='left', fill='x', expand=True, padx=2)
         ttk.Button(btn_box, text="🏁 3D Rear Wing", command=self.on_launch_3d_rear_wing_gui).pack(side='left', fill='x', expand=True, padx=2)
-        ttk.Button(btn_box, text="🚀 2D ANSYS", width=10, command=self.on_launch_2d_ansys_gui).pack(side='left', padx=2)
-        ttk.Button(btn_box, text="🧊 STL", width=6, command=self._on_open_selected_wing_stl).pack(side='left', padx=2)
-        ttk.Button(btn_box, text="📁 Plots", width=6, command=self._on_open_selected_wing_folder).pack(side='left', padx=2)
+
+        btn_box2 = ttk.Frame(left_pane)
+        btn_box2.pack(fill='x', padx=4, pady=(2, 4))
+        ttk.Button(btn_box2, text="🚀 2D ANSYS", width=10, command=self.on_launch_2d_ansys_gui).pack(side='left', padx=2)
+        btn_step = ttk.Button(btn_box2, text="📐 3D CAD (.STEP)", command=self._on_open_selected_wing_step)
+        btn_step.pack(side='left', fill='x', expand=True, padx=2)
+        add_tooltip(btn_step, "Open authentic 3D solid model (.step) directly in SolidWorks / CAD software")
+        btn_stl = ttk.Button(btn_box2, text="🧊 STL", width=6, command=self._on_open_selected_wing_stl)
+        btn_stl.pack(side='left', padx=2)
+        add_tooltip(btn_stl, "Open 3D watertight STL mesh for 3D printing or CAD inspection")
+        btn_plots = ttk.Button(btn_box2, text="📁 Plots", width=6, command=self._on_open_selected_wing_folder)
+        btn_plots.pack(side='left', padx=2)
+        add_tooltip(btn_plots, "Open folder containing CFD contours and polar curves for this wing")
 
         # Right Pane: Visual Plot Viewer & Canvas
         right_pane = ttk.Frame(paned)
@@ -11698,22 +11810,208 @@ class App(tk.Tk):
                    command=lambda: subprocess_open(str(self.get_tests_dir() / "EXTERNAL_BENCHMARKS_AND_VALIDATION"))).pack(side='left', padx=4)
         ttk.Button(btn_bar, text="Close", command=dlg.destroy).pack(side='right', padx=4)
 
-    def _on_open_selected_wing_stl(self):
+    def _on_open_selected_wing_step(self):
         sel = self.wings_tree.selection()
         if not sel:
+            messagebox.showinfo("Select Wing", "Please select a wing from the table to open its 3D STEP CAD model.")
             return
         info = self._wings_info.get(sel[0])
         if not info:
             return
         wid = info['id']
         tests_dir = self.get_tests_dir()
-        p = tests_dir / f"{wid}_3D_ASSEMBLY.stl"
-        if not p.exists():
-            p = tests_dir / f"{wid.replace('-', '_')}_3D_ASSEMBLY.stl"
-        if p.exists():
-            subprocess_open(str(p))
-        else:
-            messagebox.showinfo("CAD Model", f"3D STL for {wid} is located in:\n{tests_dir}\\SUMMARY_AND_3D_ANALYSIS\\cad_stl\\")
+
+        # Check candidate locations for the STEP file (.step and .stp)
+        candidate_paths = [
+            tests_dir / f"{wid}_3D_ASSEMBLY.step",
+            tests_dir / f"{wid}_3D_ASSEMBLY.stp",
+            tests_dir / f"{wid.replace('-', '_')}_3D_ASSEMBLY.step",
+            tests_dir / f"{wid.replace('-', '_')}_3D_ASSEMBLY.stp",
+            tests_dir / "SUMMARY_AND_3D_ANALYSIS" / "cad_step" / f"{wid}_3D_ASSEMBLY.step",
+            tests_dir / "SUMMARY_AND_3D_ANALYSIS" / "cad_step" / f"{wid}_3D_ASSEMBLY.stp",
+            tests_dir / "SUMMARY_AND_3D_ANALYSIS" / "cad_step" / f"{wid.replace('-', '_')}_3D_ASSEMBLY.step",
+            tests_dir / "SUMMARY_AND_3D_ANALYSIS" / "cad_step" / f"{wid.replace('-', '_')}_3D_ASSEMBLY.stp",
+            tests_dir / info.get('folder', '') / f"{wid}_3D_ASSEMBLY.step",
+            tests_dir / info.get('folder', '') / f"{wid.replace('-', '_')}_3D_ASSEMBLY.step",
+        ]
+
+        step_path = None
+        for cand in candidate_paths:
+            if cand.exists():
+                step_path = cand
+                break
+
+        if not step_path:
+            # Fallback glob
+            matches = list(tests_dir.glob(f"*{wid}*.step")) or list(tests_dir.glob(f"*{wid}*.stp")) or \
+                      list((tests_dir / "SUMMARY_AND_3D_ANALYSIS" / "cad_step").glob(f"*{wid}*.step"))
+            if matches:
+                step_path = matches[0]
+
+        if not step_path or not step_path.exists():
+            # Dynamically generate on the fly with Gmsh OCC
+            try:
+                import aero_auto_wings_suite as aws
+                import aero_auto
+                aero_auto.ensure_airfoils_loaded()
+                wing_defs = aws.get_front_wings_definitions()
+                wcfg = wing_defs.get(info.get('folder', ''))
+                if not wcfg:
+                    for k, v in wing_defs.items():
+                        if v['id'] == wid:
+                            wcfg = v
+                            break
+                if wcfg:
+                    chord_mm = wcfg['chord_mm']
+                    span_mm = wcfg['span_mm']
+                    gh_pct = (wcfg['ground_h_mm'] / chord_mm) * 100.0
+                    outs = aero_auto.build_outlines((wcfg['main'], wcfg['flaps']), ground_h=gh_pct)
+                    target_out = tests_dir / f"{wid}_3D_ASSEMBLY.step"
+                    aws.export_authentic_3d_step(outs, chord_mm, span_mm, target_out)
+                    sum_cad = tests_dir / "SUMMARY_AND_3D_ANALYSIS" / "cad_step" / f"{wid}_3D_ASSEMBLY.step"
+                    aws.export_authentic_3d_step(outs, chord_mm, span_mm, sum_cad)
+                    step_path = target_out
+            except Exception as gen_err:
+                self.log(f"(Could not dynamically generate STEP for {wid}: {gen_err})")
+
+        if not step_path or not step_path.exists():
+            messagebox.showwarning("CAD Model Missing", f"Could not find or generate 3D STEP file for {wid} in:\n{tests_dir}")
+            return
+
+        cad_exe = self.get_cad_exe()
+        if not cad_exe:
+            ans = messagebox.askyesno(
+                "SolidWorks Not Found",
+                "SolidWorks (SLDWORKS.exe) was not automatically detected on this computer.\n\n"
+                "Would you like to browse and locate SLDWORKS.exe now?\n\n"
+                "(Click 'No' to open the model with the Windows default CAD viewer)"
+            )
+            if ans:
+                chosen = filedialog.askopenfilename(
+                    title="Locate SolidWorks (SLDWORKS.exe)",
+                    filetypes=[("SolidWorks Executable", "SLDWORKS.exe"), ("CAD Executable", "*.exe"), ("All Files", "*.*")]
+                )
+                if chosen and os.path.isfile(chosen):
+                    self._settings['solidworks_path'] = chosen
+                    if hasattr(self, 'solidworks_path_var'):
+                        self.solidworks_path_var.set(chosen)
+                    self._apply_settings(save=True)
+                    self._update_solidworks_status_label()
+                    cad_exe = chosen
+                else:
+                    subprocess_open(str(step_path))
+                    return
+
+        try:
+            from ansys_engine import launch_cad_file
+            success, msg = launch_cad_file(step_path, custom_cad_exe=cad_exe)
+            if success:
+                self.log(f"Opened 3D STEP model: {step_path.name} -> {msg}")
+            else:
+                subprocess_open(str(step_path))
+        except Exception as launch_err:
+            self.log(f"(Launch CAD error: {launch_err}, falling back to OS handler)")
+            subprocess_open(str(step_path))
+
+    def _on_open_selected_wing_stl(self):
+        sel = self.wings_tree.selection()
+        if not sel:
+            messagebox.showinfo("Select Wing", "Please select a wing from the table to open its 3D CAD model.")
+            return
+        info = self._wings_info.get(sel[0])
+        if not info:
+            return
+        wid = info['id']
+        tests_dir = self.get_tests_dir()
+
+        # Check candidate locations for the STL file
+        candidate_paths = [
+            tests_dir / f"{wid}_3D_ASSEMBLY.stl",
+            tests_dir / f"{wid.replace('-', '_')}_3D_ASSEMBLY.stl",
+            tests_dir / "SUMMARY_AND_3D_ANALYSIS" / "cad_stl" / f"{wid}_3D_ASSEMBLY.stl",
+            tests_dir / "SUMMARY_AND_3D_ANALYSIS" / "cad_stl" / f"{wid.replace('-', '_')}_3D_ASSEMBLY.stl",
+            tests_dir / info.get('folder', '') / f"{wid}_3D_ASSEMBLY.stl",
+            tests_dir / info.get('folder', '') / f"{wid.replace('-', '_')}_3D_ASSEMBLY.stl",
+        ]
+
+        stl_path = None
+        for cand in candidate_paths:
+            if cand.exists():
+                stl_path = cand
+                break
+
+        if not stl_path:
+            # Fallback to searching tests_dir for any matching STL
+            matches = list(tests_dir.glob(f"*{wid}*.stl")) or list((tests_dir / "SUMMARY_AND_3D_ANALYSIS" / "cad_stl").glob(f"*{wid}*.stl"))
+            if matches:
+                stl_path = matches[0]
+
+        if not stl_path or not stl_path.exists():
+            # If not found on disk, auto-generate it dynamically on the fly
+            try:
+                import aero_auto_wings_suite as aws
+                import aero_auto
+                aero_auto.ensure_airfoils_loaded()
+                wing_defs = aws.get_front_wings_definitions()
+                wcfg = wing_defs.get(info.get('folder', ''))
+                if not wcfg:
+                    for k, v in wing_defs.items():
+                        if v['id'] == wid:
+                            wcfg = v
+                            break
+                if wcfg:
+                    chord_mm = wcfg['chord_mm']
+                    span_mm = wcfg['span_mm']
+                    gh_pct = (wcfg['ground_h_mm'] / chord_mm) * 100.0
+                    outs = aero_auto.build_outlines((wcfg['main'], wcfg['flaps']), ground_h=gh_pct)
+                    target_out = tests_dir / f"{wid}_3D_ASSEMBLY.stl"
+                    aws.export_authentic_3d_binary_stl(outs, chord_mm, span_mm, target_out)
+                    sum_cad = tests_dir / "SUMMARY_AND_3D_ANALYSIS" / "cad_stl" / f"{wid}_3D_ASSEMBLY.stl"
+                    aws.export_authentic_3d_binary_stl(outs, chord_mm, span_mm, sum_cad)
+                    stl_path = target_out
+            except Exception as gen_err:
+                self.log(f"(Could not dynamically generate STL for {wid}: {gen_err})")
+
+        if not stl_path or not stl_path.exists():
+            messagebox.showwarning("CAD Model Missing", f"Could not find or generate 3D STL for {wid} in:\n{tests_dir}")
+            return
+
+        # Attempt to launch with SolidWorks / CAD software
+        cad_exe = self.get_cad_exe()
+        if not cad_exe:
+            # Prompt the user to locate SolidWorks or open with default viewer
+            ans = messagebox.askyesno(
+                "SolidWorks Not Found",
+                "SolidWorks (SLDWORKS.exe) was not automatically detected on this computer.\n\n"
+                "Would you like to browse and locate SLDWORKS.exe now?\n\n"
+                "(Click 'No' to open the model with the Windows default 3D viewer)"
+            )
+            if ans:
+                chosen = filedialog.askopenfilename(
+                    title="Locate SolidWorks (SLDWORKS.exe)",
+                    filetypes=[("SolidWorks Executable", "SLDWORKS.exe"), ("CAD Executable", "*.exe"), ("All Files", "*.*")]
+                )
+                if chosen and os.path.isfile(chosen):
+                    self._settings['solidworks_path'] = chosen
+                    if hasattr(self, 'solidworks_path_var'):
+                        self.solidworks_path_var.set(chosen)
+                    self._apply_settings(save=True)
+                    self._update_solidworks_status_label()
+                    cad_exe = chosen
+                else:
+                    subprocess_open(str(stl_path))
+                    return
+
+        try:
+            from ansys_engine import launch_cad_file
+            success, msg = launch_cad_file(stl_path, custom_cad_exe=cad_exe)
+            if success:
+                self.log(f"Opened 3D CAD model: {stl_path.name} -> {msg}")
+            else:
+                subprocess_open(str(stl_path))
+        except Exception as launch_err:
+            self.log(f"(Launch CAD error: {launch_err}, falling back to OS handler)")
+            subprocess_open(str(stl_path))
 
     def _on_open_selected_wing_folder(self):
         sel = self.wings_tree.selection()
