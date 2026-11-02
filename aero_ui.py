@@ -11062,14 +11062,31 @@ class App(tk.Tk):
         self.wing_details_text.pack(fill='both', expand=True, padx=4, pady=4)
 
         # Quick action buttons below details (Row 1: 3D Solvers | Row 2: CAD, STL & Plots)
+        cfd_opt_frame = ttk.Frame(left_pane)
+        cfd_opt_frame.pack(fill='x', padx=4, pady=(4, 2))
+        self.load_solved_cfd_var = tk.BooleanVar(value=True)
+        cb_solved = ttk.Checkbutton(
+            cfd_opt_frame,
+            text="⚡ Pre-Calculated Solution (Mesh + Calculations + Graphs Ready)",
+            variable=self.load_solved_cfd_var
+        )
+        cb_solved.pack(anchor='w', padx=2)
+        add_tooltip(cb_solved, "When checked (default), ANSYS Fluent opens directly with converged flow calculations, pressure contours, and aerodynamic force graphs ready.")
+
         btn_box = ttk.Frame(left_pane)
-        btn_box.pack(fill='x', padx=4, pady=(4, 2))
-        ttk.Button(btn_box, text="🏎️ 3D Front Wing", command=self.on_launch_3d_front_wing_gui).pack(side='left', fill='x', expand=True, padx=2)
-        ttk.Button(btn_box, text="🏁 3D Rear Wing", command=self.on_launch_3d_rear_wing_gui).pack(side='left', fill='x', expand=True, padx=2)
+        btn_box.pack(fill='x', padx=4, pady=(2, 2))
+        btn_3dfw = ttk.Button(btn_box, text="🏎️ 3D Front Wing", command=self.on_launch_3d_front_wing_gui)
+        btn_3dfw.pack(side='left', fill='x', expand=True, padx=2)
+        add_tooltip(btn_3dfw, "Open ANSYS Fluent with full 3D front wing in ground effect (calculations and graphs ready)")
+        btn_3drw = ttk.Button(btn_box, text="🏁 3D Rear Wing", command=self.on_launch_3d_rear_wing_gui)
+        btn_3drw.pack(side='left', fill='x', expand=True, padx=2)
+        add_tooltip(btn_3drw, "Open ANSYS Fluent with full 3D rear wing in freestream (calculations and graphs ready)")
 
         btn_box2 = ttk.Frame(left_pane)
         btn_box2.pack(fill='x', padx=4, pady=(2, 4))
-        ttk.Button(btn_box2, text="🚀 2D ANSYS", width=10, command=self.on_launch_2d_ansys_gui).pack(side='left', padx=2)
+        btn_2d = ttk.Button(btn_box2, text="🚀 2D ANSYS", width=10, command=self.on_launch_2d_ansys_gui)
+        btn_2d.pack(side='left', padx=2)
+        add_tooltip(btn_2d, "Open ANSYS Fluent for selected wing with pre-calculated 2D flowfield, pressure contours, and force monitors ready")
         btn_step = ttk.Button(btn_box2, text="📐 3D CAD (.STEP)", command=self._on_open_selected_wing_step)
         btn_step.pack(side='left', fill='x', expand=True, padx=2)
         add_tooltip(btn_step, "Open authentic 3D solid model (.step) directly in SolidWorks / CAD software")
@@ -11424,7 +11441,7 @@ class App(tk.Tk):
 
         cas_file = None
         if case_dir.exists():
-            cas_list = list(case_dir.glob("*.cas.h5"))
+            cas_list = list(case_dir.glob("*_solved.cas.h5")) or list(case_dir.glob("*.cas.h5"))
             if cas_list:
                 cas_file = cas_list[0]
 
@@ -11432,12 +11449,17 @@ class App(tk.Tk):
         if not fluent_exe:
             fluent_exe = self._prompt_locate_fluent()
 
+        load_solved = getattr(self, 'load_solved_cfd_var', None)
+        load_solved_val = bool(load_solved.get()) if load_solved else True
+
         if fluent_exe and os.path.exists(fluent_exe) and cas_file:
             try:
-                # Universal launch: version-agnostic, works on any ANSYS version
-                cmd = f'"{fluent_exe}" 2ddp -t4 -case "{cas_file.name}"'
-                subprocess.Popen(cmd, cwd=str(case_dir), shell=True)
-                return
+                from ansys_engine import launch_fluent_gui
+                ok, msg = launch_fluent_gui(cas_file, is_3d=False, custom_fluent_exe=fluent_exe, working_dir=case_dir, load_solved_data=load_solved_val)
+                if ok:
+                    mode_str = "Pre-Calculated Solution (Mesh, Calculations & Graphs Ready)" if load_solved_val else "Mesh Setup"
+                    self.log(f"Launched ANSYS Fluent 2D ({mode_str}): {cas_file.name}")
+                    return
             except Exception as e:
                 print(f"[warn] Failed to launch 2D fluent directly: {e}")
 
@@ -11461,12 +11483,17 @@ class App(tk.Tk):
         if not fluent_exe:
             fluent_exe = self._prompt_locate_fluent()
 
+        load_solved = getattr(self, 'load_solved_cfd_var', None)
+        load_solved_val = bool(load_solved.get()) if load_solved else True
+
         if fluent_exe and os.path.exists(fluent_exe) and cas_file.exists():
             try:
-                # Universal launch: version-agnostic, works on any ANSYS version
-                cmd = f'"{fluent_exe}" 3ddp -t4 -case "{cas_file.name}"'
-                subprocess.Popen(cmd, cwd=str(sum_dir), shell=True)
-                return
+                from ansys_engine import launch_fluent_gui
+                ok, msg = launch_fluent_gui(cas_file, is_3d=True, custom_fluent_exe=fluent_exe, working_dir=sum_dir, load_solved_data=load_solved_val)
+                if ok:
+                    mode_str = "Pre-Calculated Solution (Mesh, Calculations & Graphs Ready)" if load_solved_val else "Mesh Setup"
+                    self.log(f"Launched ANSYS Fluent 3D Front Wing ({mode_str}): {cas_file.name}")
+                    return
             except Exception as e:
                 print(f"[warn] Failed to launch 3D Front Wing fluent directly: {e}")
 
@@ -11485,12 +11512,17 @@ class App(tk.Tk):
         if not fluent_exe:
             fluent_exe = self._prompt_locate_fluent()
 
+        load_solved = getattr(self, 'load_solved_cfd_var', None)
+        load_solved_val = bool(load_solved.get()) if load_solved else True
+
         if fluent_exe and os.path.exists(fluent_exe) and cas_file.exists():
             try:
-                # Universal launch: version-agnostic, works on any ANSYS version
-                cmd = f'"{fluent_exe}" 3ddp -t4 -case "{cas_file.name}"'
-                subprocess.Popen(cmd, cwd=str(sum_dir), shell=True)
-                return
+                from ansys_engine import launch_fluent_gui
+                ok, msg = launch_fluent_gui(cas_file, is_3d=True, custom_fluent_exe=fluent_exe, working_dir=sum_dir, load_solved_data=load_solved_val)
+                if ok:
+                    mode_str = "Pre-Calculated Solution (Mesh, Calculations & Graphs Ready)" if load_solved_val else "Mesh Setup"
+                    self.log(f"Launched ANSYS Fluent 3D Rear Wing ({mode_str}): {cas_file.name}")
+                    return
             except Exception as e:
                 print(f"[warn] Failed to launch 3D Rear Wing fluent directly: {e}")
 

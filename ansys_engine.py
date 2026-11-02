@@ -214,17 +214,54 @@ def get_ansys_version_info(fluent_bin: Optional[str] = None) -> Dict[str, str]:
         "path": fluent_bin
     }
 
+def create_solved_startup_journal(
+    case_file: Union[str, Path],
+    output_jou_path: Optional[Union[str, Path]] = None,
+    wall_zones: str = "()"
+) -> Path:
+    """
+    Creates an automated ANSYS Fluent startup journal that loads both the case and converged data,
+    sets up surface pressure contours, displays the geometry, and prints converged forces.
+    Leaves Fluent in full interactive GUI mode.
+    """
+    case_p = Path(case_file).resolve()
+    if not output_jou_path:
+        output_jou_path = case_p.parent / "load_solved_solution.jou"
+    else:
+        output_jou_path = Path(output_jou_path).resolve()
+
+    cas_name = case_p.name
+    jou_content = (
+        f'; =========================================================================\n'
+        f'; FSAE Aerodynamics Solved Solution Startup Journal for ANSYS Fluent\n'
+        f'; Automatically loads Mesh, Converged Calculations, Contours, and Forces\n'
+        f'; =========================================================================\n'
+        f'/file/read-case-data "{cas_name}"\n'
+        f'/display/set/picture/driver png\n'
+        f'/display/contour pressure\n'
+        f'/report/forces/wall-forces yes 0 -1 0 {wall_zones}\n'
+        f'/report/forces/wall-forces yes 1 0 0 {wall_zones}\n'
+        f'; Fluent is now ready in interactive GUI mode.\n'
+    )
+    output_jou_path.parent.mkdir(parents=True, exist_ok=True)
+    with open(output_jou_path, "w", encoding="utf-8") as f:
+        f.write(jou_content)
+    return output_jou_path
+
+
 def launch_fluent_gui(
     case_file: Optional[Path] = None,
     journal_file: Optional[Path] = None,
     is_3d: bool = True,
     num_procs: int = 4,
     custom_fluent_exe: Optional[str] = None,
-    working_dir: Optional[Path] = None
+    working_dir: Optional[Path] = None,
+    load_solved_data: bool = True
 ) -> Tuple[bool, str]:
     """
     Universal Fluent launcher that works across ANY version and ANY directory.
-    Does NOT pass hardcoded version flags (-r24.1.0) so it runs natively on 2020 through 2026+.
+    When load_solved_data=True and a solved data file exists, automatically loads both
+    mesh and converged calculation data, displays pressure contours, and reports forces.
     """
     fluent_bin = detect_fluent_executable(custom_fluent_exe)
     if not fluent_bin or not os.path.exists(fluent_bin):
@@ -233,14 +270,32 @@ def launch_fluent_gui(
     dim_flag = "3ddp" if is_3d else "2ddp"
     cmd_parts = [f'"{fluent_bin}"', dim_flag, f"-t{num_procs}"]
 
-    if case_file and Path(case_file).exists():
-        cmd_parts.append(f'-case "{Path(case_file).name}"')
+    cwd_dir = working_dir if working_dir else (Path(case_file).parent if case_file else Path.cwd())
 
-    if journal_file and Path(journal_file).exists():
-        cmd_parts.append(f'-i "{Path(journal_file).name}"')
+    # If load_solved_data is requested and case_file exists
+    if load_solved_data and case_file:
+        case_p = Path(case_file)
+        # Check if corresponding .dat.h5 or .dat exists
+        dat_h5 = case_p.with_suffix('.dat.h5') if case_p.name.endswith('.cas.h5') else case_p.with_suffix('.dat')
+        alt_dat = case_p.parent / case_p.name.replace('.cas.h5', '.dat.h5')
+        existing_jou = case_p.parent / "load_solved_solution.jou"
+
+        if existing_jou.exists():
+            cmd_parts.append(f'-i "{existing_jou.name}"')
+        elif dat_h5.exists() or alt_dat.exists() or 'solved' in case_p.name:
+            startup_jou = create_solved_startup_journal(case_p)
+            cmd_parts.append(f'-i "{startup_jou.name}"')
+        else:
+            cmd_parts.append(f'-case "{case_p.name}"')
+            if journal_file and Path(journal_file).exists():
+                cmd_parts.append(f'-i "{Path(journal_file).name}"')
+    else:
+        if case_file and Path(case_file).exists():
+            cmd_parts.append(f'-case "{Path(case_file).name}"')
+        if journal_file and Path(journal_file).exists():
+            cmd_parts.append(f'-i "{Path(journal_file).name}"')
 
     cmd = " ".join(cmd_parts)
-    cwd_dir = working_dir if working_dir else (Path(case_file).parent if case_file else Path.cwd())
 
     try:
         subprocess.Popen(cmd, cwd=str(cwd_dir), shell=True)

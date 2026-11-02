@@ -14,11 +14,11 @@ An automated multi-element aerodynamic optimization and campaign toolchain built
 For Windows users who want to run Aero Auto immediately without installing Python or setting up an environment:
 
 - [**Download AeroAuto_GUI_Windows_v1.2.zip (v1.2 - Recommended)**](https://github.com/ALTARMAH/ENPRT_2D_JAVAFOIL_AUTOMATION/releases/download/v1.2/AeroAuto_GUI_Windows_v1.2.zip)
-  *Complete pre-packaged Windows distribution archive (~120 MB). Extract and double-click `AeroAuto_GUI.exe` to launch immediately.*
+  *Complete pre-packaged Windows distribution archive (~132 MB). Extract and double-click `AeroAuto_GUI.exe` to launch immediately.*
 - [**Download AeroAuto_GUI_Standalone.exe (v1.2)**](https://github.com/ALTARMAH/ENPRT_2D_JAVAFOIL_AUTOMATION/releases/download/v1.2/AeroAuto_GUI_Standalone.exe)
-  *Single-file portable executable (~116 MB). No extraction needed.*
+  *Single-file portable executable (~128 MB). No installation needed.*
 - [**View Full v1.2 Release Notes**](https://github.com/ALTARMAH/ENPRT_2D_JAVAFOIL_AUTOMATION/releases/tag/v1.2)
-  *Release highlights: 3D race car wings engine, universal multi-version ANSYS Fluent detection (2020 through 2026+) with in-GUI CFD path configuration, OpenFOAM/SU2 CFD cases, and verified empirical benchmarks.*
+  *Release highlights: 3D race car wings engine, authentic ISO 10303-21 `.step` solid CAD models with 1-click SolidWorks launcher, universal multi-version ANSYS Fluent detection (2020 through 2026+) with pre-calculated CFD solution loading (mesh, converged data, pressure contours & force monitors ready), OpenFOAM/SU2 CFD cases, and verified empirical benchmarks.*
 
 *(Legacy v1.1 releases remain archived at [Releases / v1.1](https://github.com/ALTARMAH/ENPRT_2D_JAVAFOIL_AUTOMATION/releases/tag/v1.1))*
 
@@ -49,7 +49,16 @@ For Windows users who want to run Aero Auto immediately without installing Pytho
   - **Boundary Layer Friction**: $C_f$ vs $x/c$
   - **Boundary Layer Thickness**: $\delta$ vs $x/c$
 
-- **CAD Model Export**:
+- **Authentic 3D STEP Solid CAD Models & 1-Click SolidWorks Launcher**:
+  Direct generation of watertight 3D solid BREP models (`.step` / `.stp`) with curved 3D endplates and footplates conforming to ISO 10303-21 standards. Includes automatic detection of SolidWorks (2020 through 2026+) and instant 1-click launch from the GUI.
+
+- **Pre-Calculated ANSYS Fluent Interactive Integration**:
+  Direct 1-click launch into ANSYS Fluent GUI loading full converged solution data (`/file/read-case-data`). Mesh, converged velocity/pressure flowfields, wall shear stress, surface pressure contours, and aerodynamic force reports ($C_l, C_d, C_m$) are rendered on screen and ready for instant interactive exploration without waiting for re-computation.
+
+- **Universal Multi-Version ANSYS Compatibility (2020 to 2026+)**:
+  Automatic dynamic detection across all standard installation paths (`C:\Program Files\ANSYS Inc\v***\fluent\ntbin\win64\fluent.exe`), dynamic desktop discovery, and GUI settings configurator for custom CFD executable paths.
+
+- **CAD Model Export (2D)**:
   Direct 2D CAD export of multi-element configurations into **DXF (AutoCAD)** and **SVG** vector formats for import into CAD software (Fusion 360, SolidWorks, CATIA, Onshape).
 
 - **Formula Student Regulatory Compliance**:
