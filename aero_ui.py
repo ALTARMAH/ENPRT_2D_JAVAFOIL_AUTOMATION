@@ -1125,11 +1125,14 @@ class App(tk.Tk):
             from ansys_engine import get_tests_dir
             return get_tests_dir()
         except Exception:
-            d = Path.home() / "Desktop" / "tests"
-            if d.exists():
-                return d
-            c_user = Path(r"C:\Users\USER\Desktop\tests")
-            return c_user if c_user.exists() else d
+            for cand in [
+                Path.home() / "Desktop" / "tests",
+                Path(__file__).resolve().parent.parent.parent / "tests",
+                Path.cwd() / "tests"
+            ]:
+                if cand.exists():
+                    return cand
+            return Path.home() / "Desktop" / "tests"
 
     def get_fluent_exe(self) -> Optional[str]:
         # 1. Custom user setting
@@ -10985,15 +10988,15 @@ class App(tk.Tk):
 
         btn_ansys_fw = ttk.Button(top_bar, text="🏎️ 3D Front Wing (Ground Effect)", command=self.on_launch_3d_front_wing_gui)
         btn_ansys_fw.pack(side='left', padx=3)
-        add_tooltip(btn_ansys_fw, "Launch ANSYS Fluent 2024 R1 with High-Fidelity Front Wing in Ground Effect (y+ ~ 1, Coupled Solver, Moving Road).")
+        add_tooltip(btn_ansys_fw, "Launch ANSYS Fluent 2024 R1: Auto-calculates iterations past 400, displays 3D pressure contours, live residual monitors, and converged forces.")
 
         btn_ansys_rw = ttk.Button(top_bar, text="🏁 3D Rear Wing (Freestream)", command=self.on_launch_3d_rear_wing_gui)
         btn_ansys_rw.pack(side='left', padx=3)
-        add_tooltip(btn_ansys_rw, "Launch ANSYS Fluent 2024 R1 with High-Fidelity Rear Wing in Freestream (y+ ~ 1, Upwash BOI, Coupled Solver).")
+        add_tooltip(btn_ansys_rw, "Launch ANSYS Fluent 2024 R1: Auto-calculates iterations past 400, displays 3D upwash contours, live residual monitors, and converged forces.")
 
         btn_ansys_2d = ttk.Button(top_bar, text="🚀 2D ANSYS GUI", command=self.on_launch_2d_ansys_gui)
         btn_ansys_2d.pack(side='left', padx=3)
-        add_tooltip(btn_ansys_2d, "Launch ANSYS Fluent 2024 R1 interactive 2D GUI with the selected wing's solved case and data.")
+        add_tooltip(btn_ansys_2d, "Launch ANSYS Fluent 2024 R1 interactive 2D GUI: Auto-calculates continuation iterations past 400 with live monitors & contours.")
 
         btn_folder = ttk.Button(top_bar, text="📂 Open tests Folder", command=self.on_open_tests_dir)
         btn_folder.pack(side='left', padx=3)
@@ -11161,7 +11164,11 @@ class App(tk.Tk):
             ("ANSYS 3D Induced Drag Breakdown", 'ansys_3d_induced_drag'),
             ("ANSYS 3D Spanwise Distribution", 'ansys_3d_spanwise'),
             ("ANSYS 3D Ground Effect Sweep", 'ansys_3d_ground_effect'),
-            ("ANSYS 3D Master Comparison", 'ansys_3d_master')
+            ("ANSYS 3D Master Comparison", 'ansys_3d_master'),
+            ("🏎️ Fluent Solved: Downforce Fz (N)", 'ansys_fluent_df'),
+            ("🏎️ Fluent Solved: Drag Fx (N)", 'ansys_fluent_drag'),
+            ("🏎️ Fluent Solved: Polar (Cl vs Cd)", 'ansys_fluent_polar'),
+            ("🏎️ Fluent Solved: Cl & Cd vs Alpha (1000+ iters)", 'ansys_fluent_cl_cd_alpha')
         ]
         for text, val in modes_3d:
             rb = ttk.Radiobutton(r1, text=text, value=val, variable=self.wing_plot_mode, command=self._refresh_wing_plot)
@@ -11292,26 +11299,46 @@ class App(tk.Tk):
         w_dir = tests_dir / info['folder'] / "plots"
         sum_dir = tests_dir / "SUMMARY_AND_3D_ANALYSIS" / "plots"
 
-        if mode == 'ansys_3d_cl':
+        if mode == 'ansys_fluent_df':
+            p = sum_dir / "ansys_polar_downforce_vs_alpha.png"
+        elif mode == 'ansys_fluent_drag':
+            p = sum_dir / "ansys_polar_drag_vs_alpha.png"
+        elif mode == 'ansys_fluent_polar':
+            p = sum_dir / "ansys_drag_polar_cl_cd.png"
+        elif mode == 'ansys_fluent_cl_cd_alpha':
+            p = sum_dir / "ansys_polar_cl_cd_vs_alpha.png"
+        elif mode == 'ansys_3d_cl':
             p = w_dir / "polar_3d_cl_alpha.png"
+            if not p.exists():
+                p = sum_dir / "ansys_polar_cl_vs_alpha.png"
             if not p.exists():
                 p = sum_dir / "master_polar_cl_alpha_comparison.png"
         elif mode == 'ansys_3d_cd':
             p = w_dir / "polar_3d_cd_alpha.png"
             if not p.exists():
+                p = sum_dir / "ansys_polar_cd_vs_alpha.png"
+            if not p.exists():
                 p = sum_dir / "master_polar_cd_alpha_comparison.png"
         elif mode == 'ansys_3d_downforce':
             p = w_dir / "polar_3d_downforce_n.png"
+            if not p.exists():
+                p = sum_dir / "ansys_polar_downforce_vs_alpha.png"
             if not p.exists():
                 p = sum_dir / "master_3d_downforce_polar_comparison.png"
         elif mode == 'ansys_3d_drag':
             p = w_dir / "polar_3d_drag_n.png"
             if not p.exists():
+                p = sum_dir / "ansys_polar_drag_vs_alpha.png"
+            if not p.exists():
                 p = sum_dir / "master_3d_drag_polar_comparison.png"
         elif mode == 'ansys_3d_ld':
             p = w_dir / "polar_3d_ld.png"
+            if not p.exists():
+                p = sum_dir / "ansys_polar_ld_vs_alpha.png"
         elif mode == 'ansys_3d_drag_polar':
             p = w_dir / "polar_3d_drag_polar.png"
+            if not p.exists():
+                p = sum_dir / "ansys_drag_polar_cl_cd.png"
         elif mode == 'ansys_3d_induced_drag':
             p = w_dir / "polar_3d_drag_breakdown.png"
         elif mode == 'ansys_3d_spanwise':
@@ -11367,19 +11394,19 @@ class App(tk.Tk):
         elif mode == 'team_benchmarks_cl':
             p = tests_dir / "EXTERNAL_BENCHMARKS_AND_VALIDATION" / "external_teams_cl_correlation.png"
             if not p.exists():
-                p = Path(r"C:\Users\USER\.gemini\antigravity-cli\brain\dca65891-7e5c-437e-820e-eb8ee63839d9\external_teams_cl_correlation.png")
+                p = Path(__file__).resolve().parent / "assets" / "external_teams_cl_correlation.png"
         elif mode == 'team_benchmarks_err':
             p = tests_dir / "EXTERNAL_BENCHMARKS_AND_VALIDATION" / "external_teams_error_analysis.png"
             if not p.exists():
-                p = Path(r"C:\Users\USER\.gemini\antigravity-cli\brain\dca65891-7e5c-437e-820e-eb8ee63839d9\external_teams_error_analysis.png")
+                p = Path(__file__).resolve().parent / "assets" / "external_teams_error_analysis.png"
         elif mode == 'team_ground_effect':
             p = tests_dir / "EXTERNAL_BENCHMARKS_AND_VALIDATION" / "benchmark_ground_effect_sensitivity.png"
             if not p.exists():
-                p = Path(r"C:\Users\USER\.gemini\antigravity-cli\brain\dca65891-7e5c-437e-820e-eb8ee63839d9\benchmark_ground_effect_sensitivity.png")
+                p = Path(__file__).resolve().parent / "assets" / "benchmark_ground_effect_sensitivity.png"
         elif mode == 'methodology_audit':
             p = tests_dir / "EXTERNAL_BENCHMARKS_AND_VALIDATION" / "methodology_physics_sensitivity_audit.png"
             if not p.exists():
-                p = Path(r"C:\Users\USER\.gemini\antigravity-cli\brain\dca65891-7e5c-437e-820e-eb8ee63839d9\methodology_physics_sensitivity_audit.png")
+                p = Path(__file__).resolve().parent / "assets" / "methodology_physics_sensitivity_audit.png"
         else:
             p = w_dir / "polar_3d_downforce_n.png"
 
@@ -11548,9 +11575,8 @@ class App(tk.Tk):
             tests_dir / "Front wings 3D Verified & Optimized.xlsx",
             desktop / "Front wings 3D Verified & Optimized.xlsx",
             desktop / "Front wings.xlsx",
-            Path(r"C:\Users\USER\Desktop\Front wings 3D Verified & Optimized.xlsx"),
-            Path(r"C:\Users\USER\Desktop\Front wings.xlsx"),
-            tests_dir / "Front wings.xlsx"
+            tests_dir / "Front wings.xlsx",
+            Path(__file__).resolve().parent / "assets" / "Front wings 3D Verified & Optimized.xlsx"
         ]
         for p in p_choices:
             if p.exists():

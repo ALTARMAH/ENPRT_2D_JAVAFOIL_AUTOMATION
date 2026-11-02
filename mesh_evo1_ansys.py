@@ -14,8 +14,8 @@ import subprocess
 import numpy as np
 from pathlib import Path
 
-REPO_ROOT = Path(r"C:\Users\USER\Desktop\ENPRT")
-APP_DIR = REPO_ROOT / "04_AERO_AUTO_APP"
+REPO_ROOT = Path(__file__).resolve().parent.parent
+APP_DIR = Path(__file__).resolve().parent
 if str(APP_DIR) not in sys.path:
     sys.path.insert(0, str(APP_DIR))
 

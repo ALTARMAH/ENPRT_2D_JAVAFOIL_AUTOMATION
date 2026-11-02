@@ -1,7 +1,7 @@
 import sys
 from pathlib import Path
 
-app_dir = Path(r"C:\Users\USER\Desktop\ENPRT\04_AERO_AUTO_APP")
+app_dir = Path(__file__).resolve().parent
 sys.path.insert(0, str(app_dir))
 
 import tkinter as tk

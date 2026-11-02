@@ -47,3 +47,34 @@ wing.txt
 *.step
 *.stp
 
+# ANSYS Fluent & CFD Heavy Simulation Binaries (Prevents 100MB GitHub reject)
+*.cas.h5
+*.dat.h5
+*.cas
+*.dat
+*.msh
+*.msh.h5
+*.trn
+*.prof
+*.ip
+cleanup-fluent-*.bat
+cleanup-fluent-*.sh
+fl_mpi*
+fluent-*.log
+fluent-*.trn
+*.jou
+
+# OpenFOAM and SU2 Runtime heavy artifacts
+*.foam
+postProcessing/
+processor*/
+*.su2_restart
+*.su2_solution
+
+# Python / IDE / Misc
+*.pyc
+.pytest_cache/
+.coverage
+htmlcov/
+
+

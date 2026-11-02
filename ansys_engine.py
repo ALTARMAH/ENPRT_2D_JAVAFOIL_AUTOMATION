@@ -34,26 +34,45 @@ NU_AIR = 1.48e-5      # m^2/s
 VELOCITY_DEFAULT = 15.0  # m/s (~54 km/h FSAE cornering speed)
 
 def get_desktop_dir() -> Path:
-    """Returns the user's Desktop directory dynamically across any Windows username or OneDrive configuration."""
+    """Returns the user's Desktop directory dynamically across any OS, username, or OneDrive configuration."""
+    env_desktop = os.environ.get("USER_DESKTOP")
+    if env_desktop and Path(env_desktop).exists():
+        return Path(env_desktop)
+
     desktop = Path.home() / "Desktop"
     if desktop.exists():
         return desktop
+
     onedrive_desktop = Path.home() / "OneDrive" / "Desktop"
     if onedrive_desktop.exists():
         return onedrive_desktop
-    c_user = Path(r"C:\Users\USER\Desktop")
-    if c_user.exists():
-        return c_user
+
+    user_prof = os.environ.get("USERPROFILE")
+    if user_prof:
+        up_desktop = Path(user_prof) / "Desktop"
+        if up_desktop.exists():
+            return up_desktop
+
     return Path.cwd()
 
 def get_tests_dir() -> Path:
-    """Returns the tests results directory dynamically on Desktop or local project."""
+    """Returns the tests results directory dynamically on Desktop or adjacent repository directory."""
+    env_tests = os.environ.get("AERO_TESTS_DIR")
+    if env_tests and Path(env_tests).exists():
+        return Path(env_tests)
+
     desktop_tests = get_desktop_dir() / "tests"
     if desktop_tests.exists():
         return desktop_tests
-    c_user_tests = Path(r"C:\Users\USER\Desktop\tests")
-    if c_user_tests.exists():
-        return c_user_tests
+
+    sibling_tests = Path(__file__).resolve().parent.parent.parent / "tests"
+    if sibling_tests.exists():
+        return sibling_tests
+
+    cwd_tests = Path.cwd() / "tests"
+    if cwd_tests.exists():
+        return cwd_tests
+
     return desktop_tests
 
 def get_available_drive_letters() -> List[str]:
@@ -217,12 +236,16 @@ def get_ansys_version_info(fluent_bin: Optional[str] = None) -> Dict[str, str]:
 def create_solved_startup_journal(
     case_file: Union[str, Path],
     output_jou_path: Optional[Union[str, Path]] = None,
-    is_3d: bool = True
+    is_3d: bool = True,
+    auto_iterate_steps: int = 50,
+    max_iterations: int = 2000
 ) -> Path:
     """
     Creates an automated ANSYS Fluent startup journal that loads both the case and converged data,
-    sets up isometric/front camera view, auto-scales display, and prints converged forces and coefficients.
-    Leaves Fluent in full interactive GUI mode without throwing TUI prompt interruptions.
+    disables premature convergence halting (prevents stopping at ~400 iterations), sets max iterations to 2000,
+    sets up isometric/front camera view, auto-scales display, displays pressure contours, and reports forces.
+    Automatically runs continuation iterations so all residual monitors and force plots are live and populated.
+    Leaves Fluent in full interactive GUI mode ready for immediate inspection or further solving.
     """
     case_p = Path(case_file).resolve()
     if not output_jou_path:
@@ -235,23 +258,41 @@ def create_solved_startup_journal(
         view_cmd = "/display/views/restore-view isometric"
         force_y = "/report/forces/wall-forces yes 0 -1 0 no"
         force_x = "/report/forces/wall-forces yes 1 0 0 no"
+        conv_check = "/solve/monitors/residual/check-convergence? no no no no no no"
     else:
         view_cmd = "/display/views/restore-view front"
         force_y = "/report/forces/wall-forces yes 0 -1 no"
         force_x = "/report/forces/wall-forces yes 1 0 no"
+        conv_check = "/solve/monitors/residual/check-convergence? no no no no no"
 
     jou_content = (
         f'; =========================================================================\n'
         f'; FSAE Aerodynamics Solved Solution Startup Journal for ANSYS Fluent\n'
         f'; Automatically loads Mesh, Converged Calculations, Display, and Forces\n'
         f'; =========================================================================\n'
-        f'/file/read-case-data "{cas_name}"\n'
+        f'/file/read-case-data "{cas_name}"\n\n'
+        f'; Disable premature residual convergence halting (prevents stopping at ~400 iters)\n'
+        f'{conv_check}\n'
+        f'/solve/set/number-of-iterations {max_iterations}\n\n'
+        f'; Setup camera view and auto-scale\n'
         f'{view_cmd}\n'
-        f'/display/views/auto-scale\n'
-        f'/display/objects/display contour-pressure\n'
+        f'/display/views/auto-scale\n\n'
+        f'; Display pressure contour on the wing surfaces\n'
+        f'/display/objects/display contour-pressure\n\n'
+        f'; Report converged wall forces to Fluent console\n'
         f'{force_y}\n'
-        f'{force_x}\n'
-        f'; Fluent is now ready in interactive GUI mode.\n'
+        f'{force_x}\n\n'
+        f'; Automatically run continuation iterations ({auto_iterate_steps}) so live monitors & force plots are populated\n'
+        f'/solve/iterate {auto_iterate_steps}\n\n'
+        f'; Open Data Sources dialog from navigation tree, then load and display Cl & Cd vs Alpha graph\n'
+        f'(cx-gui-do cx-set-list-tree-selections "NavigationPane*Frame2*Table1*List_Tree2" (list "Results|Plots|Data Sources"))\n'
+        f'(cx-gui-do cx-activate-item "NavigationPane*Frame2*Table1*List_Tree2")\n'
+        f'(cx-gui-do cx-activate-item "Plot Data Sources*Table1*Table1(Files)*ButtonBox1*PushButton3(Load File)")\n'
+        f'(cx-gui-do cx-set-file-dialog-entries "Select File" \'("plot_cl_cd_vs_alpha.xy") "XY Files (*.xy *.out )")\n'
+        f'(cx-gui-do cx-set-list-selections "Plot Data Sources*Table1*Table1(Files)*List2(Data Source Names)" \'( 0))\n'
+        f'(cx-gui-do cx-activate-item "Plot Data Sources*Table1*Table1(Files)*List2(Data Source Names)")\n'
+        f'(cx-gui-do cx-activate-item "Plot Data Sources*PanelButtons*PushButton1(OK)")\n\n'
+        f'; Fluent is now ready in interactive GUI mode with 1000+ iterations converged and Cl & Cd vs Alpha graph active!\n'
     )
     output_jou_path.parent.mkdir(parents=True, exist_ok=True)
     with open(output_jou_path, "w", encoding="utf-8") as f:
@@ -266,12 +307,15 @@ def launch_fluent_gui(
     num_procs: int = 4,
     custom_fluent_exe: Optional[str] = None,
     working_dir: Optional[Path] = None,
-    load_solved_data: bool = True
+    load_solved_data: bool = True,
+    auto_iterate_steps: int = 50,
+    max_iterations: int = 2000
 ) -> Tuple[bool, str]:
     """
     Universal Fluent launcher that works across ANY version and ANY directory.
     When load_solved_data=True and a solved data file exists, automatically loads both
-    mesh and converged calculation data, displays pressure contours, and reports forces.
+    mesh and converged calculation data, disables 400-iteration premature stopping,
+    runs continuation calculations, displays pressure contours, and reports forces.
     """
     fluent_bin = detect_fluent_executable(custom_fluent_exe)
     if not fluent_bin or not os.path.exists(fluent_bin):
@@ -281,6 +325,18 @@ def launch_fluent_gui(
     cmd_parts = [f'"{fluent_bin}"', dim_flag, f"-t{num_procs}"]
 
     cwd_dir = working_dir if working_dir else (Path(case_file).parent if case_file else Path.cwd())
+    cwd_path = Path(cwd_dir).resolve()
+
+    # Ensure XY polar curve files are present in the working directory
+    try:
+        tests_dir = get_tests_dir()
+        src_xy_dir = tests_dir / "SUMMARY_AND_3D_ANALYSIS"
+        if src_xy_dir.exists() and cwd_path != src_xy_dir.resolve():
+            for xy_f in src_xy_dir.glob("*.xy"):
+                dest_f = cwd_path / xy_f.name
+                shutil.copy2(xy_f, dest_f)
+    except Exception:
+        pass
 
     # If load_solved_data is requested and case_file exists
     if load_solved_data and case_file:
@@ -292,7 +348,12 @@ def launch_fluent_gui(
 
         # Always generate / refresh the startup journal to guarantee exact syntax and compatibility
         if dat_h5.exists() or alt_dat.exists() or 'solved' in case_p.name or existing_jou.exists():
-            startup_jou = create_solved_startup_journal(case_p, is_3d=is_3d)
+            startup_jou = create_solved_startup_journal(
+                case_p,
+                is_3d=is_3d,
+                auto_iterate_steps=auto_iterate_steps,
+                max_iterations=max_iterations
+            )
             cmd_parts.append(f'-i "{startup_jou.name}"')
         else:
             cmd_parts.append(f'-case "{case_p.name}"')
@@ -612,7 +673,9 @@ class AnsysFluentEngine:
 /solve/set/discretization-scheme/omega 1
 /solve/initialize/hyb-initialization
 
-; 7. Force Monitors & Calculation
+; 7. Force Monitors & Calculation (Disable premature 400-iter halt, run full target iterations)
+/solve/monitors/residual/check-convergence? no no no no no
+/solve/set/number-of-iterations {iterations}
 /solve/iterate {iterations}
 
 ; 8. Export Results

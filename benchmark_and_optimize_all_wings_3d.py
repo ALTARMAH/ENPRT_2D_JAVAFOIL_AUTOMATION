@@ -23,14 +23,14 @@ matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 
 # Ensure local imports work
-REPO_ROOT = Path(r"C:\Users\USER\Desktop\ENPRT")
-APP_DIR = REPO_ROOT / "04_AERO_AUTO_APP"
+REPO_ROOT = Path(__file__).resolve().parent.parent
+APP_DIR = Path(__file__).resolve().parent
 if str(APP_DIR) not in sys.path:
     sys.path.insert(0, str(APP_DIR))
 
 import aero_3d_engine as E
 
-DESKTOP_PATH = Path(r"C:\Users\USER\Desktop")
+DESKTOP_PATH = Path.home() / "Desktop"
 ORIGINAL_XLSX = DESKTOP_PATH / "Front wings.xlsx"
 OUTPUT_XLSX = DESKTOP_PATH / "Front wings 3D Verified & Optimized.xlsx"
 PLOTS_DIR = REPO_ROOT / "03_CFD_AND_ANSYS_VERIFICATION" / "plots"

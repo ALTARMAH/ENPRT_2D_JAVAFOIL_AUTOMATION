@@ -50,7 +50,7 @@ try:
     TESTS_DIR = get_tests_dir()
 except Exception:
     desktop = Path.home() / "Desktop"
-    TESTS_DIR = (desktop / "tests") if desktop.exists() else Path(r"C:\Users\USER\Desktop\tests")
+    TESTS_DIR = (desktop / "tests") if desktop.exists() else (Path.home() / "Desktop" / "tests")
 
 SUMMARY_DIR = TESTS_DIR / "SUMMARY_AND_3D_ANALYSIS"
 SUMMARY_PLOTS_DIR = SUMMARY_DIR / "plots"
