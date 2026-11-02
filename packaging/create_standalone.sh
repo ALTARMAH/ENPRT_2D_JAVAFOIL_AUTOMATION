@@ -3,7 +3,7 @@
 # Requires: venv with `pip install -r requirements.txt pyinstaller`
 set -e
 DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-cd "$DIR"
+cd "$DIR/.."
 PY=python3
 command -v "$PY" >/dev/null 2>&1 || PY=python
 "$PY" -m PyInstaller --noconfirm --clean \

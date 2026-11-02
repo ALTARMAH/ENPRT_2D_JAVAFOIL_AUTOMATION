@@ -31,6 +31,7 @@ from tkinter import ttk, filedialog, messagebox
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 POSSIBLE_APP_DIRS = [
     SCRIPT_DIR,
+    os.path.abspath(os.path.join(SCRIPT_DIR, "..")),
     os.path.join(SCRIPT_DIR, "..", "08_AERO_AUTO_APP", "engine"),
     "/home/user/Applications/aero_auto",
     os.environ.get("AERO_AUTO_APP", "")
@@ -230,7 +231,7 @@ class LauncherApp(tk.Tk):
         self.current_cfg = self.presets[0]
 
         # Scan configs directory for any extra user configs
-        cfg_dir = os.path.join(SCRIPT_DIR, "configs")
+        cfg_dir = os.path.join(APP_DIR, "configs") if os.path.isdir(os.path.join(APP_DIR, "configs")) else os.path.join(SCRIPT_DIR, "configs")
         if os.path.isdir(cfg_dir):
             existing_ids = {p.get("id") for p in self.presets} | {p.get("name") for p in self.presets}
             for fn in sorted(os.listdir(cfg_dir)):
@@ -458,8 +459,8 @@ class LauncherApp(tk.Tk):
         self.status_lbl.config(text=f"Selected: {name}")
 
     def on_browse_json(self):
-        cfg_dir = os.path.join(SCRIPT_DIR, "configs")
-        init_dir = cfg_dir if os.path.isdir(cfg_dir) else SCRIPT_DIR
+        cfg_dir = os.path.join(APP_DIR, "configs") if os.path.isdir(os.path.join(APP_DIR, "configs")) else os.path.join(SCRIPT_DIR, "configs")
+        init_dir = cfg_dir if os.path.isdir(cfg_dir) else APP_DIR
         fn = filedialog.askopenfilename(
             parent=self,
             title="Open Wing Configuration JSON",

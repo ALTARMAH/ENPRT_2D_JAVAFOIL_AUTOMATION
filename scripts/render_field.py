@@ -13,7 +13,11 @@ import os
 import sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-sys.path.insert(0, HERE)
+REPO_ROOT = os.path.dirname(HERE)
+if REPO_ROOT not in sys.path:
+    sys.path.insert(0, REPO_ROOT)
+if HERE not in sys.path:
+    sys.path.insert(0, HERE)
 
 import numpy as np  # noqa: E402
 import matplotlib  # noqa: E402

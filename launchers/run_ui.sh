@@ -2,7 +2,7 @@
 # aero_auto toolchain - Linux/macOS launcher (double-click or ./run_ui.sh)
 set -e
 DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-cd "$DIR"
+cd "$DIR/.."
 PY=python3
 command -v "$PY" >/dev/null 2>&1 || PY=python
 if ! command -v "$PY" >/dev/null 2>&1; then

@@ -63,6 +63,9 @@ sys.excepthook = _crash_handler
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
+scripts_dir = os.path.join(HERE, "scripts")
+if os.path.isdir(scripts_dir) and scripts_dir not in sys.path:
+    sys.path.insert(0, scripts_dir)
 
 import aero_auto as A  # noqa: E402
 

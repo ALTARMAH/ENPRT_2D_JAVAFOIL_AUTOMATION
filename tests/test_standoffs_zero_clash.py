@@ -1,4 +1,7 @@
-import sys, math
+import sys, os, math
+HERE = os.path.dirname(os.path.abspath(__file__))
+if HERE not in sys.path:
+    sys.path.insert(0, HERE)
 sys.path.append('/usr/lib/freecad/lib')
 import FreeCAD as App
 import Part

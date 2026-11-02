@@ -10,6 +10,10 @@ import pandas as pd
 import numpy as np
 
 HERE = os.path.dirname(os.path.abspath(__file__))
+REPO_ROOT = os.path.dirname(HERE)
+BENCHMARKS_DIR = os.path.join(REPO_ROOT, "benchmarks")
+DOCS_DIR = os.path.join(REPO_ROOT, "docs")
+sys.path.insert(0, REPO_ROOT)
 sys.path.insert(0, HERE)
 
 def wait_for_process(name, timeout=600):
@@ -29,35 +33,43 @@ wait_for_process("run_step4_mesh_independence.py", timeout=400)
 time.sleep(2)
 
 # Verify Step 4.2 CSV exists
-mesh_csv = os.path.join(HERE, "step4_mesh_independence_results.csv")
+mesh_csv = os.path.join(BENCHMARKS_DIR, "step4_mesh_independence_results.csv")
+if not os.path.exists(mesh_csv):
+    mesh_csv = os.path.join(HERE, "step4_mesh_independence_results.csv")
 if os.path.exists(mesh_csv):
     print("Step 4.2 output verified!")
 else:
     print("Warning: Step 4.2 output not found. Running step 4.2 directly...")
-    subprocess.run([sys.executable, "run_step4_mesh_independence.py"], cwd=HERE)
+    subprocess.run([sys.executable, os.path.join(HERE, "run_step4_mesh_independence.py")], cwd=HERE)
 
 # 2. Run Step 4.3 (NASA 30P-30N benchmark)
 print("\n>>> Launching Step 4.3: NASA 30P-30N Multi-Element Benchmark...")
-subprocess.run([sys.executable, "run_step4_30p30n.py"], cwd=HERE, check=True)
+subprocess.run([sys.executable, os.path.join(HERE, "run_step4_30p30n.py")], cwd=HERE, check=True)
 
 # 3. Run Step 5 (Re-testing User Values)
 print("\n>>> Launching Step 5: Re-testing User Values (Run_1 vs Run_1_famous)...")
-subprocess.run([sys.executable, "run_step5_retest_values.py"], cwd=HERE, check=True)
+subprocess.run([sys.executable, os.path.join(HERE, "run_step5_retest_values.py")], cwd=HERE, check=True)
 
 # 4. Compile Comprehensive validation_report.md
 print("\n>>> Compiling comprehensive validation_report.md...")
 
-single_csv = os.path.join(HERE, "step4_single_element_results.csv")
-mesh_csv = os.path.join(HERE, "step4_mesh_independence_results.csv")
-nasa_csv = os.path.join(HERE, "step4_nasa_30p30n_results.csv")
-step5_csv = os.path.join(HERE, "step5_retest_values_results.csv")
+single_csv = os.path.join(BENCHMARKS_DIR, "step4_single_element_results.csv")
+if not os.path.exists(single_csv): single_csv = os.path.join(HERE, "step4_single_element_results.csv")
+
+if not os.path.exists(mesh_csv): mesh_csv = os.path.join(BENCHMARKS_DIR, "step4_mesh_independence_results.csv")
+
+nasa_csv = os.path.join(BENCHMARKS_DIR, "step4_nasa_30p30n_results.csv")
+if not os.path.exists(nasa_csv): nasa_csv = os.path.join(HERE, "step4_nasa_30p30n_results.csv")
+
+step5_csv = os.path.join(BENCHMARKS_DIR, "step5_retest_values_results.csv")
+if not os.path.exists(step5_csv): step5_csv = os.path.join(HERE, "step5_retest_values_results.csv")
 
 df_single = pd.read_csv(single_csv) if os.path.exists(single_csv) else pd.DataFrame()
 df_mesh = pd.read_csv(mesh_csv) if os.path.exists(mesh_csv) else pd.DataFrame()
 df_nasa = pd.read_csv(nasa_csv) if os.path.exists(nasa_csv) else pd.DataFrame()
 df_step5 = pd.read_csv(step5_csv) if os.path.exists(step5_csv) else pd.DataFrame()
 
-report_path = os.path.join(HERE, "validation_report.md")
+report_path = os.path.join(DOCS_DIR, "validation_report.md")
 
 with open(report_path, "w", encoding="utf-8") as rf:
     rf.write("""# Aerodynamic Solver Validation Report: JavaFoil vs. SU2 2D RANS

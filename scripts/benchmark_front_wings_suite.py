@@ -22,9 +22,10 @@ import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 
-HERE = "/home/user/Applications/aero_auto"
-if HERE not in sys.path:
-    sys.path.insert(0, HERE)
+HERE = os.path.dirname(os.path.abspath(__file__))
+REPO_ROOT = os.path.dirname(HERE)
+if REPO_ROOT not in sys.path:
+    sys.path.insert(0, REPO_ROOT)
 
 import aero_auto as A
 import su2_engine as su2

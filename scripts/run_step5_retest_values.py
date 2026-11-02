@@ -11,6 +11,8 @@ import numpy as np
 import pandas as pd
 
 HERE = os.path.dirname(os.path.abspath(__file__))
+REPO_ROOT = os.path.dirname(HERE)
+sys.path.insert(0, REPO_ROOT)
 sys.path.insert(0, HERE)
 
 import aero_auto as A
@@ -88,7 +90,9 @@ for name, cfg in cases:
         })
 
 df = pd.DataFrame(all_records)
-out_csv = os.path.join(HERE, "step5_retest_values_results.csv")
+benchmarks_dir = os.path.join(REPO_ROOT, "benchmarks")
+os.makedirs(benchmarks_dir, exist_ok=True)
+out_csv = os.path.join(benchmarks_dir, "step5_retest_values_results.csv")
 df.to_csv(out_csv, index=False)
 print(f"\nStep 5 Complete. Results saved to {out_csv}")
 print(df.to_string())

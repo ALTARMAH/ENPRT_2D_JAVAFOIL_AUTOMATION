@@ -10,8 +10,9 @@ import sys
 import time
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-if HERE not in sys.path:
-    sys.path.insert(0, HERE)
+REPO_ROOT = os.path.dirname(HERE)
+if REPO_ROOT not in sys.path:
+    sys.path.insert(0, REPO_ROOT)
 
 import aero_auto as A
 import su2_engine as su2

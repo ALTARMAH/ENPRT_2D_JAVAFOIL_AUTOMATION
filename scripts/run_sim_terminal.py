@@ -1,11 +1,16 @@
 #!/usr/bin/env python3
 """Run a single simulation in a terminal. Reads config from JSON file."""
 import os, sys, json
+from pathlib import Path
+
+ROOT_DIR = Path(__file__).resolve().parent.parent
+if str(ROOT_DIR) not in sys.path:
+    sys.path.insert(0, str(ROOT_DIR))
 
 # Setup worker directory
 from queue import Queue
 import aero_auto as A
-w = os.path.join(os.path.dirname(os.path.abspath(__file__)), "workers")
+w = str(ROOT_DIR / "workers")
 A.WORKER_DIRS = Queue()
 A.WORKER_DIRS.put(w)
 

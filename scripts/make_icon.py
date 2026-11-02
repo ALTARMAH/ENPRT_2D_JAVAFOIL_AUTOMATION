@@ -13,7 +13,8 @@ import os
 import sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-ASSETS = os.path.join(HERE, "assets")
+REPO_ROOT = os.path.dirname(HERE)
+ASSETS = os.path.join(REPO_ROOT, "assets") if os.path.isdir(os.path.join(REPO_ROOT, "assets")) else os.path.join(HERE, "assets")
 
 from PIL import Image, ImageDraw, ImageFont  # noqa: E402
 

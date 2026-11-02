@@ -1,6 +1,6 @@
 @echo off
 REM aero_auto toolchain - Windows launcher (double-click run_ui.bat)
-cd /d "%~dp0"
+cd /d "%~dp0.."
 
 set PY=python
 where python >nul 2>nul || set PY=py

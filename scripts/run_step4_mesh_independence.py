@@ -9,6 +9,8 @@ import sys
 import pandas as pd
 
 HERE = os.path.dirname(os.path.abspath(__file__))
+REPO_ROOT = os.path.dirname(HERE)
+sys.path.insert(0, REPO_ROOT)
 sys.path.insert(0, HERE)
 
 import aero_auto as A
@@ -66,7 +68,9 @@ for d in densities:
     })
 
 df = pd.DataFrame(results)
-out_csv = os.path.join(HERE, "step4_mesh_independence_results.csv")
+benchmarks_dir = os.path.join(REPO_ROOT, "benchmarks")
+os.makedirs(benchmarks_dir, exist_ok=True)
+out_csv = os.path.join(benchmarks_dir, "step4_mesh_independence_results.csv")
 df.to_csv(out_csv, index=False)
 print(f"\nMesh Independence Complete. Saved to {out_csv}")
 print(df.to_string())

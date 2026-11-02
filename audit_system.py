@@ -118,8 +118,12 @@ class CodebaseAuditor:
         hardcoded_user_pattern = re.compile(r'C:\\Users\\USER', re.IGNORECASE)
         hardcoded_brain_pattern = re.compile(r'\.gemini[\\/]antigravity-cli[\\/]brain', re.IGNORECASE)
 
-        py_files = [p for p in self.repo_dir.glob("*.py") if p.name != "audit_system.py"]
-        print(f"Scanning {len(py_files)} Python files in {self.repo_dir.name}...")
+        ignored_dirs = {'build', 'dist', 'build_win', 'build_win_onefile', 'workers', 'work', 'failed', 'runs', '.venv', 'env', '.git', '__pycache__'}
+        py_files = [
+            p for p in self.repo_dir.rglob("*.py")
+            if p.name != "audit_system.py" and not any(part in ignored_dirs for part in p.parts)
+        ]
+        print(f"Scanning {len(py_files)} Python files across {self.repo_dir.name} modules & subfolders...")
 
         found_hardcoded = 0
         for py_path in py_files:
@@ -194,8 +198,8 @@ class CodebaseAuditor:
         # Check 3: Secrets / Credentials Scan
         leaks_found = 0
         token_prefix = "gh" + "p_"
-        for py_path in self.repo_dir.glob("*.py"):
-            if py_path.name == "audit_system.py":
+        for py_path in self.repo_dir.rglob("*.py"):
+            if py_path.name == "audit_system.py" or any(part in ignored_dirs for part in py_path.parts):
                 continue
             text = py_path.read_text(encoding='utf-8', errors='ignore')
             if token_prefix in text:

@@ -15,13 +15,15 @@ import urllib.request
 import pandas as pd
 
 HERE = os.path.dirname(os.path.abspath(__file__))
+REPO_ROOT = os.path.dirname(HERE)
+sys.path.insert(0, REPO_ROOT)
 sys.path.insert(0, HERE)
 
 import su2_engine as su2
 
 OFFICIAL_MESH_URL = "https://raw.githubusercontent.com/su2code/TestCases/master/vandv/rans/30p30n/2D_L1_coarse_r1.su2"
 
-workdir = os.path.join(HERE, "runs", "su2_runs", "nasa_30p30n_benchmark")
+workdir = os.path.join(REPO_ROOT, "runs", "su2_runs", "nasa_30p30n_benchmark")
 os.makedirs(workdir, exist_ok=True)
 
 mesh_file = os.path.join(workdir, "2D_L1_coarse_r1.su2")
@@ -158,7 +160,9 @@ summary = {
 }
 
 df = pd.DataFrame([summary])
-out_csv = os.path.join(HERE, "step4_nasa_30p30n_results.csv")
+benchmarks_dir = os.path.join(REPO_ROOT, "benchmarks")
+os.makedirs(benchmarks_dir, exist_ok=True)
+out_csv = os.path.join(benchmarks_dir, "step4_nasa_30p30n_results.csv")
 df.to_csv(out_csv, index=False)
 print(f"\n30P-30N Benchmark Complete. Saved to {out_csv}")
 print(df.to_string())
