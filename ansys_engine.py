@@ -217,12 +217,12 @@ def get_ansys_version_info(fluent_bin: Optional[str] = None) -> Dict[str, str]:
 def create_solved_startup_journal(
     case_file: Union[str, Path],
     output_jou_path: Optional[Union[str, Path]] = None,
-    wall_zones: str = "()"
+    is_3d: bool = True
 ) -> Path:
     """
     Creates an automated ANSYS Fluent startup journal that loads both the case and converged data,
-    sets up surface pressure contours, displays the geometry, and prints converged forces.
-    Leaves Fluent in full interactive GUI mode.
+    sets up isometric/front camera view, auto-scales display, and prints converged forces and coefficients.
+    Leaves Fluent in full interactive GUI mode without throwing TUI prompt interruptions.
     """
     case_p = Path(case_file).resolve()
     if not output_jou_path:
@@ -231,16 +231,25 @@ def create_solved_startup_journal(
         output_jou_path = Path(output_jou_path).resolve()
 
     cas_name = case_p.name
+    if is_3d:
+        view_cmd = "/display/views/restore-view isometric"
+        force_y = "/report/forces/wall-forces yes 0 -1 0 no"
+        force_x = "/report/forces/wall-forces yes 1 0 0 no"
+    else:
+        view_cmd = "/display/views/restore-view front"
+        force_y = "/report/forces/wall-forces yes 0 -1 no"
+        force_x = "/report/forces/wall-forces yes 1 0 no"
+
     jou_content = (
         f'; =========================================================================\n'
         f'; FSAE Aerodynamics Solved Solution Startup Journal for ANSYS Fluent\n'
-        f'; Automatically loads Mesh, Converged Calculations, Contours, and Forces\n'
+        f'; Automatically loads Mesh, Converged Calculations, Display, and Forces\n'
         f'; =========================================================================\n'
         f'/file/read-case-data "{cas_name}"\n'
-        f'/display/set/picture/driver png\n'
-        f'/display/contour pressure\n'
-        f'/report/forces/wall-forces yes 0 -1 0 {wall_zones}\n'
-        f'/report/forces/wall-forces yes 1 0 0 {wall_zones}\n'
+        f'{view_cmd}\n'
+        f'/display/views/auto-scale\n'
+        f'{force_y}\n'
+        f'{force_x}\n'
         f'; Fluent is now ready in interactive GUI mode.\n'
     )
     output_jou_path.parent.mkdir(parents=True, exist_ok=True)
@@ -280,10 +289,9 @@ def launch_fluent_gui(
         alt_dat = case_p.parent / case_p.name.replace('.cas.h5', '.dat.h5')
         existing_jou = case_p.parent / "load_solved_solution.jou"
 
-        if existing_jou.exists():
-            cmd_parts.append(f'-i "{existing_jou.name}"')
-        elif dat_h5.exists() or alt_dat.exists() or 'solved' in case_p.name:
-            startup_jou = create_solved_startup_journal(case_p)
+        # Always generate / refresh the startup journal to guarantee exact syntax and compatibility
+        if dat_h5.exists() or alt_dat.exists() or 'solved' in case_p.name or existing_jou.exists():
+            startup_jou = create_solved_startup_journal(case_p, is_3d=is_3d)
             cmd_parts.append(f'-i "{startup_jou.name}"')
         else:
             cmd_parts.append(f'-case "{case_p.name}"')
