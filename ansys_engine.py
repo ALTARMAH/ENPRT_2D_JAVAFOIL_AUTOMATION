@@ -248,6 +248,7 @@ def create_solved_startup_journal(
         f'/file/read-case-data "{cas_name}"\n'
         f'{view_cmd}\n'
         f'/display/views/auto-scale\n'
+        f'/display/objects/display contour-pressure\n'
         f'{force_y}\n'
         f'{force_x}\n'
         f'; Fluent is now ready in interactive GUI mode.\n'
