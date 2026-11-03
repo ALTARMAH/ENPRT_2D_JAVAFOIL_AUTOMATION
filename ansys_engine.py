@@ -367,8 +367,12 @@ def launch_fluent_gui(
 
     cmd = " ".join(cmd_parts)
 
+    env = os.environ.copy()
+    if not env.get("ANSYSLMD_LICENSE_FILE"):
+        env["ANSYSLMD_LICENSE_FILE"] = "1055@localhost"
+
     try:
-        subprocess.Popen(cmd, cwd=str(cwd_dir), shell=True)
+        subprocess.Popen(cmd, cwd=str(cwd_dir), env=env, shell=True)
         return True, f"Launched: {cmd}"
     except Exception as e:
         return False, f"Error launching Fluent: {e}"
@@ -806,7 +810,10 @@ class AnsysFluentEngine:
         cmd = [self.fluent_bin, "2ddp", "-g", f"-t{os.cpu_count() or 4}", "-i", jou_path]
         
         print(f"[ANSYS Fluent Batch] Running command: {' '.join(cmd)}")
-        result = subprocess.run(cmd, cwd=str(self.working_dir), capture_output=True, text=True)
+        env = os.environ.copy()
+        if not env.get("ANSYSLMD_LICENSE_FILE"):
+            env["ANSYSLMD_LICENSE_FILE"] = "1055@localhost"
+        result = subprocess.run(cmd, cwd=str(self.working_dir), env=env, capture_output=True, text=True)
         
         lift_file = self.working_dir / "fluent_forces.out_lift.txt"
         drag_file = self.working_dir / "fluent_forces.out_drag.txt"
