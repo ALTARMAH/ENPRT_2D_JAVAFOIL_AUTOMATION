@@ -87,7 +87,7 @@ def _apply_env():
 
 def launcher():
     p = argparse.ArgumentParser(prog="aero", description="aero_auto toolchain entry point")
-    p.add_argument("tool", nargs="?", default="ui", choices=["ui", "campaign", "report", "targets", "field", "wings-suite", "3d"])
+    p.add_argument("tool", nargs="?", default="ui", choices=["ui", "campaign", "report", "targets", "field", "wings-suite", "3d", "undertray"])
     p.add_argument("--version", action="version", version=f"aero_auto {A.VERSION}")
     args, rest = p.parse_known_args()
     _apply_env()
@@ -97,6 +97,28 @@ def launcher():
     elif args.tool in ("wings-suite", "3d"):
         import aero_auto_wings_suite
         aero_auto_wings_suite.run_wings_suite()
+    elif args.tool == "undertray":
+        import undertray_engine
+        engine = undertray_engine.UndertrayAerodynamicsEngine()
+        regs = engine.verify_regulations()
+        print("Scrutineering Check:", regs["scrutineering_verdict"])
+        for chk in regs["checks"]:
+            print(f"  [{chk['status']}] {chk['title']}: {chk['actual']} ({chk['limit']})")
+        res = engine.compute_aerodynamics()
+        print("\nBaseline Aerodynamics:")
+        print(f"  Downforce:   {res['downforce_N']} N (Cl*A = {res['ClA_m2']} m^2)")
+        print(f"  Drag:        {res['drag_N']} N (Cd*A = {res['CdA_m2']} m^2)")
+        print(f"  Efficiency:  L/D = {res['efficiency_L_D']}")
+        print(f"  CoP:         {res['cop_pct_wheelbase']}% wheelbase ({res['cop_x_mm']} mm aft of front axle)")
+        print(f"  Throat Spd:  {res['throat_velocity_mps']} m/s (min Cp = {res['min_cp']})")
+        if "--optimize" in rest or "-opt" in rest:
+            print("\nRunning Automated Optimization Sweep...")
+            opt = engine.optimize_undertray()
+            print(f"  Evaluations: {opt['evaluations_completed']}")
+            print(f"  Best Score:  {opt['best_fitness_score']}")
+            opt_res = opt["optimal_results"]
+            print(f"  Optimal Downforce:  {opt_res['downforce_N']} N (L/D = {opt_res['efficiency_L_D']})")
+            print(f"  Optimal CoP:        {opt_res['cop_pct_wheelbase']}% (target 47-49%)")
     elif args.tool == "campaign":
         sys.argv = ["aero_auto.py"] + rest
         A.main()

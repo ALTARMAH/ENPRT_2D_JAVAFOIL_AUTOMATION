@@ -24,14 +24,15 @@ journal = """; Test Fluent Journal
 /exit yes
 """
 
-with open("test_solve.jou", "w") as f:
-    f.write(journal)
+if __name__ == "__main__":
+    with open("test_solve.jou", "w") as f:
+        f.write(journal)
 
-cmd = [fluent_exe, "2ddp", "-g", "-t4", "-i", "test_solve.jou"]
-print("Running Fluent test solve...")
-res = subprocess.run(cmd, capture_output=True, text=True)
-print("Fluent exit code:", res.returncode)
-lines = res.stdout.splitlines()
-print("STDOUT tail:")
-for l in lines[-25:]:
-    print("  ", l)
+    cmd = [fluent_exe, "2ddp", "-g", "-t4", "-i", "test_solve.jou"]
+    print("Running Fluent test solve...")
+    res = subprocess.run(cmd, capture_output=True, text=True)
+    print("Fluent exit code:", res.returncode)
+    lines = res.stdout.splitlines()
+    print("STDOUT tail:")
+    for l in lines[-25:]:
+        print("  ", l)

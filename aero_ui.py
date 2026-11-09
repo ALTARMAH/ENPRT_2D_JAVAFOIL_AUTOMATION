@@ -74,6 +74,11 @@ try:
 except Exception:
     R = None
 
+try:
+    import undertray_engine as UT
+except Exception:
+    UT = None
+
 FW = "front wing"
 RW = "rear wing"
 CUSTOM = "custom"
@@ -175,6 +180,129 @@ ENPRT_PRESETS = [
             ["s1223", 31.0, -36.0, 138.15, 15.0],
             ["s1223", 28.0, -36.0, 168.5, 21.0]
         ]
+    }
+]
+
+ENPRT_UNDERTRAY_PRESETS = [
+    {
+        "id": "ENPRT_Baseline",
+        "name": "ENPRT Spaceframe Baseline (Chassis CAD Spec)",
+        "desc": "Calibrated directly to Chassis.STEP: 1530mm wheelbase, 50mm frame rail Z, 400mm splitter, 35mm throat, 4-channel raked diffuser with 12mm Gurney flap.",
+        "config": {
+            "name": "ENPRT_Chassis_Baseline_Undertray",
+            "speed_ms": 15.0,
+            "air_density_kg_m3": 1.225,
+            "splitter_length_mm": 400.0,
+            "inlet_ground_height_mm": 55.0,
+            "inlet_width_mm": 1180.0,
+            "leading_edge_radius_mm": 8.0,
+            "throat_ground_height_mm": 35.0,
+            "throat_x_pos_mm": 420.0,
+            "floor_flat_length_mm": 950.0,
+            "floor_max_width_mm": 1220.0,
+            "chassis_rake_deg": 1.1,
+            "skirt_edge_height_mm": 32.0,
+            "diffuser_start_x_mm": 950.0,
+            "diffuser_length_mm": 750.0,
+            "kick_up_radius_mm": 400.0,
+            "diffuser_angle_center_deg": 13.5,
+            "diffuser_angle_outer_deg": 17.5,
+            "diffuser_exit_height_mm": 215.0,
+            "diffuser_channels_count": 4,
+            "strake_edge_radius_mm": 3.5,
+            "gurney_flap_height_mm": 12.0,
+            "vortex_sealing_enabled": True
+        }
+    },
+    {
+        "id": "FSAE_Champ_High_Downforce",
+        "name": "FSAE Championship High-Downforce (AMZ / TUfast Style)",
+        "desc": "High-downforce configuration: 30mm minimum ground clearance, 1.4 deg rake, 500mm splitter, aggressive 18.5 deg outer channels, and 15mm Gurney flap.",
+        "config": {
+            "name": "ENPRT_Championship_High_Downforce_Undertray",
+            "speed_ms": 15.0,
+            "air_density_kg_m3": 1.225,
+            "splitter_length_mm": 500.0,
+            "inlet_ground_height_mm": 45.0,
+            "inlet_width_mm": 1200.0,
+            "leading_edge_radius_mm": 8.0,
+            "throat_ground_height_mm": 30.0,
+            "throat_x_pos_mm": 380.0,
+            "floor_flat_length_mm": 920.0,
+            "floor_max_width_mm": 1240.0,
+            "chassis_rake_deg": 1.4,
+            "skirt_edge_height_mm": 30.5,
+            "diffuser_start_x_mm": 900.0,
+            "diffuser_length_mm": 820.0,
+            "kick_up_radius_mm": 450.0,
+            "diffuser_angle_center_deg": 14.5,
+            "diffuser_angle_outer_deg": 18.5,
+            "diffuser_exit_height_mm": 240.0,
+            "diffuser_channels_count": 4,
+            "strake_edge_radius_mm": 3.5,
+            "gurney_flap_height_mm": 15.0,
+            "vortex_sealing_enabled": True
+        }
+    },
+    {
+        "id": "Monash_M17_Benchmark",
+        "name": "Monash M17 Benchmark Floor",
+        "desc": "Monash University M17 wind-tunnel validated benchmark: 3 channels, 38mm throat, balanced pitch sensitivity, 10mm Gurney flap.",
+        "config": {
+            "name": "Monash_M17_Benchmark_Undertray",
+            "speed_ms": 15.0,
+            "air_density_kg_m3": 1.225,
+            "splitter_length_mm": 350.0,
+            "inlet_ground_height_mm": 50.0,
+            "inlet_width_mm": 1150.0,
+            "leading_edge_radius_mm": 6.0,
+            "throat_ground_height_mm": 38.0,
+            "throat_x_pos_mm": 450.0,
+            "floor_flat_length_mm": 980.0,
+            "floor_max_width_mm": 1200.0,
+            "chassis_rake_deg": 0.8,
+            "skirt_edge_height_mm": 35.0,
+            "diffuser_start_x_mm": 980.0,
+            "diffuser_length_mm": 700.0,
+            "kick_up_radius_mm": 380.0,
+            "diffuser_angle_center_deg": 12.0,
+            "diffuser_angle_outer_deg": 15.0,
+            "diffuser_exit_height_mm": 190.0,
+            "diffuser_channels_count": 3,
+            "strake_edge_radius_mm": 3.5,
+            "gurney_flap_height_mm": 10.0,
+            "vortex_sealing_enabled": True
+        }
+    },
+    {
+        "id": "Low_Drag_Sprint",
+        "name": "Low-Drag Acceleration Sprint (Monza / Le Mans Spec)",
+        "desc": "Low-drag low-pitch configuration: 42mm throat clearance, 0.4 deg rake, 2 wide tunnels, zero Gurney flap for maximum top speed and energy efficiency.",
+        "config": {
+            "name": "Low_Drag_Sprint_Undertray",
+            "speed_ms": 15.0,
+            "air_density_kg_m3": 1.225,
+            "splitter_length_mm": 300.0,
+            "inlet_ground_height_mm": 60.0,
+            "inlet_width_mm": 1100.0,
+            "leading_edge_radius_mm": 10.0,
+            "throat_ground_height_mm": 42.0,
+            "throat_x_pos_mm": 500.0,
+            "floor_flat_length_mm": 1020.0,
+            "floor_max_width_mm": 1150.0,
+            "chassis_rake_deg": 0.4,
+            "skirt_edge_height_mm": 40.0,
+            "diffuser_start_x_mm": 1020.0,
+            "diffuser_length_mm": 650.0,
+            "kick_up_radius_mm": 350.0,
+            "diffuser_angle_center_deg": 9.5,
+            "diffuser_angle_outer_deg": 12.0,
+            "diffuser_exit_height_mm": 160.0,
+            "diffuser_channels_count": 2,
+            "strake_edge_radius_mm": 4.0,
+            "gurney_flap_height_mm": 0.0,
+            "vortex_sealing_enabled": False
+        }
     }
 ]
 
@@ -1247,6 +1375,7 @@ class App(tk.Tk):
         self.notebook = ttk.Notebook(self)
         self.notebook.pack(fill='both', expand=True)
         self.tab_cfg = ttk.Frame(self.notebook)
+        self.tab_undertray = ttk.Frame(self.notebook)
         self.tab_af = ttk.Frame(self.notebook)
         self.tab_comb = ttk.Frame(self.notebook)
         self.tab_famous = self.tab_comb
@@ -1258,6 +1387,7 @@ class App(tk.Tk):
         self.tab_opt = ttk.Frame(self.notebook)
         self.tab_set = ttk.Frame(self.notebook)
         self.notebook.add(self.tab_cfg, text="  Configure  ")
+        self.notebook.add(self.tab_undertray, text="  Undertray & Diffuser  ")
         self.notebook.add(self.tab_af, text="  Airfoils  ")
         self.notebook.add(self.tab_comb, text="  Famous Wings  ")
         self.notebook.add(self.tab_3d_wings, text="  3D Front Wings & Polars  ")
@@ -1268,6 +1398,7 @@ class App(tk.Tk):
         self.notebook.add(self.tab_opt, text="  Optimizer  ")
         self.notebook.add(self.tab_set, text="  Themes & Settings  ")
         self.build_configure()
+        self.build_undertray()
         self.build_airfoils()
         self.build_famous_wings()
         self.build_3d_wings_suite()
@@ -1304,6 +1435,7 @@ class App(tk.Tk):
         vm.add_separator()
         tabs = [
             ('Configure', self.tab_cfg),
+            ('Undertray & Diffuser', self.tab_undertray),
             ('Airfoils', self.tab_af),
             ('Famous Wings', self.tab_comb),
             ('3D Front Wings & Polars', self.tab_3d_wings),
@@ -1318,8 +1450,11 @@ class App(tk.Tk):
         m.add_cascade(label="View", menu=vm)
 
         ansys_m = tk.Menu(m, tearoff=0)
+        ansys_m.add_command(label="🛠️ Launch ANSYS Workbench (RunWB2 - Master Project)", command=self.on_launch_ansys_workbench)
+        ansys_m.add_separator()
         ansys_m.add_command(label="🏎️ Launch 3D Front Wing in ANSYS (Ground Effect, y+ ~ 1)", command=self.on_launch_3d_front_wing_gui)
         ansys_m.add_command(label="🏁 Launch 3D Rear Wing in ANSYS (Freestream, Upwash BOI)", command=self.on_launch_3d_rear_wing_gui)
+        ansys_m.add_command(label="🏎️ Launch 3D Undertray in ANSYS (Moving Ground, k-omega SST)", command=self.on_undertray_export_ansys)
         ansys_m.add_separator()
         ansys_m.add_command(label="🚀 Launch 2D in ANSYS GUI (Selected Wing)", command=self.on_launch_2d_ansys_gui)
         ansys_m.add_separator()
@@ -1367,8 +1502,9 @@ class App(tk.Tk):
         self.bind_all('<Control-Left>', lambda e=None: self.on_return_to_configure())
         self.bind_all('<F5>', lambda e=None: self._refresh_all())
         self.bind_all('<Control-q>', lambda e=None: self._on_close())
-        for i, tab in enumerate((self.tab_cfg, self.tab_af, self.tab_comb, self.tab_cam, self.tab_res, self.tab_gr, self.tab_opt, self.tab_set), start=1):
-            self.bind_all(f'<Alt-Key-{i}>', lambda e=None, t=tab: (tip_hide(), self.notebook.select(t)))
+        for i, tab in enumerate((self.tab_cfg, self.tab_undertray, self.tab_af, self.tab_comb, self.tab_3d_wings, self.tab_cam, self.tab_res, self.tab_gr, self.tab_opt, self.tab_set), start=1):
+            if i <= 9:
+                self.bind_all(f'<Alt-Key-{i}>', lambda e=None, t=tab: (tip_hide(), self.notebook.select(t)))
         for seq, step in (('<Control-Tab>', 1), ('<Control-Shift-Tab>', -1)):
             self.bind_all(seq, lambda e=None, s=step: self._cycle_tab(s))
 
@@ -3819,6 +3955,716 @@ class App(tk.Tk):
         ttk.Button(btn_frame, text="Cancel", command=on_cancel).pack(side='right', padx=5)
         self.wait_window(dialog)
         return result
+
+    # =========================================================================
+    # --- UNDERTRAY & DIFFUSER TAB ---
+    # =========================================================================
+    def build_undertray(self):
+        """
+        Builds the ENPRT Chassis Underbody, Venturi Floor & Diffuser Studio.
+        Structure matches Configure (Tab 1):
+        - Left: Scrollable controls (CAD spec, Splitter, Throat, Diffuser, Strakes,
+                Gurney, Scrutineering check, Aerodynamics calculation, 1-Click Optimizer,
+                CAD & ANSYS exports, Derived live telemetry)
+        - Right: Status & regulation compliance telemetry box + Interactive Matplotlib
+                 canvas with 4 multi-views (Longitudinal Elevation, Cp(x), Planform, Aero Map).
+        """
+        outer_ut = ttk.Frame(self.tab_undertray)
+        outer_ut.pack(side='left', fill='both', padx=6, pady=6)
+
+        # 1. Preset Toolbar (identical to Configure tab)
+        preset_bar = ttk.Frame(outer_ut)
+        preset_bar.pack(side='top', fill='x', pady=(0, 6))
+
+        btn_preset = ttk.Button(preset_bar, text="Load Preset...", command=self.on_undertray_preset_dialog)
+        btn_preset.pack(side='left', fill='x', expand=True, padx=(0, 2))
+        add_tooltip(btn_preset, "Load pre-validated ENPRT, Monash, or Championship undertray presets.")
+
+        btn_open_json = ttk.Button(preset_bar, text="Open JSON...", command=self.on_undertray_open_json)
+        btn_open_json.pack(side='left', fill='x', padx=(2, 2))
+        add_tooltip(btn_open_json, "Open an external undertray configuration JSON file.")
+
+        btn_save_json = ttk.Button(preset_bar, text="Save JSON...", command=self.on_undertray_save_json)
+        btn_save_json.pack(side='left', fill='x', padx=(2, 2))
+        add_tooltip(btn_save_json, "Save current undertray geometry and parameters to a JSON file.")
+
+        btn_reset_cad = ttk.Button(preset_bar, text="Reset CAD", command=self.on_undertray_reset_cad)
+        btn_reset_cad.pack(side='left', fill='x', padx=(2, 0))
+        add_tooltip(btn_reset_cad, "Reset all values to the baseline extracted from 01_SOLIDWORKS_CAD_VEHICLE/Chassis.STEP.")
+
+        # 2. Scrollable Canvas
+        ut_canvas = tk.Canvas(outer_ut, highlightthickness=0, width=440)
+        ut_vsb = ttk.Scrollbar(outer_ut, orient='vertical', command=ut_canvas.yview)
+        cfg = ttk.Frame(ut_canvas)
+        cfg.bind('<Configure>', lambda e: ut_canvas.configure(scrollregion=ut_canvas.bbox('all')))
+        ut_win = ut_canvas.create_window((0, 0), window=cfg, anchor='nw')
+        ut_canvas.configure(yscrollcommand=ut_vsb.set)
+        ut_canvas.pack(side='left', fill='both', expand=True)
+        ut_vsb.pack(side='right', fill='y')
+        bind_scrollable(ut_canvas)
+
+        self.ut_vars = {}
+
+        # Chassis CAD Spec Header Box (Card)
+        chassis_box = ttk.LabelFrame(cfg, text="Chassis Spaceframe CAD Reference (Chassis.STEP)")
+        chassis_box.grid(row=0, column=0, columnspan=2, sticky='we', pady=(0, 6))
+
+        cad_info = (
+            "• Wheelbase: 1530.0 mm  |  Front Track: 1200.0 mm  |  Rear Track: 1180.0 mm\n"
+            "• Lower Frame Rail: Z = 50.0 mm  |  Floor Space Bottom Width: 592.0 mm\n"
+            "• Static Weight Distribution: 47.0% Front  |  53.0% Rear"
+        )
+        cad_lbl = ttk.Label(chassis_box, text=cad_info, font=('TkDefaultFont', 8), justify='left', foreground='#38bdf8')
+        cad_lbl.pack(fill='x', padx=6, pady=4)
+
+        # Run / Floor Design Name
+        self.ut_vars['name'] = tk.StringVar(value="ENPRT_EVO_Floor_V1")
+        ttk.Label(cfg, text="Run / Floor Name").grid(row=1, column=0, sticky='w')
+        ut_name_entry = ttk.Entry(cfg, textvariable=self.ut_vars['name'])
+        ut_name_entry.grid(row=1, column=1, sticky='we', pady=2)
+        add_tooltip(ut_name_entry, "Design label for this undertray configuration (used in telemetry, CAD, and logs).")
+
+        # Freestream Speed & Air Density
+        ttk.Separator(cfg, orient='horizontal').grid(row=2, column=0, columnspan=2, sticky='we', pady=4)
+        ttk.Label(cfg, text="Operating Conditions", font=('TkDefaultFont', 9, 'bold')).grid(row=3, column=0, columnspan=2, sticky='w')
+
+        cond_fields = [
+            ('speed_ms', 'Freestream Speed (m/s)', 15.0, "Vehicle forward velocity in m/s (15 m/s = 54 km/h typical cornering/autocross speed)."),
+            ('air_density_kg_m3', 'Air Density (kg/m³)', 1.225, "ISA sea level air density in kg/m³ (dynamic pressure q = 0.5 * rho * V²).")
+        ]
+        for i, (k, lab, default, tip) in enumerate(cond_fields):
+            ttk.Label(cfg, text=lab).grid(row=4 + i, column=0, sticky='w')
+            v = tk.StringVar(value=str(default))
+            self.ut_vars[k] = v
+            ent = ttk.Entry(cfg, textvariable=v, width=12)
+            ent.grid(row=4 + i, column=1, sticky='we', pady=1)
+            add_tooltip(ent, tip)
+
+        # Front Splitter & Inflow
+        ttk.Separator(cfg, orient='horizontal').grid(row=6, column=0, columnspan=2, sticky='we', pady=4)
+        ttk.Label(cfg, text="Front Splitter & Inflow (Rule T8.2.1 & T8.3.1)", font=('TkDefaultFont', 9, 'bold')).grid(row=7, column=0, columnspan=2, sticky='w')
+
+        splitter_fields = [
+            ('splitter_length_mm', 'Splitter Length (mm)', 400.0, "Forward overhang of splitter from front axle (mm). Must be <= 700.0 mm (Rule T8.2.1)."),
+            ('inlet_ground_height_mm', 'Inlet Ground Height (mm)', 55.0, "Vertical height of splitter leading edge above the ground plane (mm)."),
+            ('inlet_width_mm', 'Inlet Width (mm)', 1180.0, "Span of splitter leading edge (mm). Inboard of front tires outer track."),
+            ('leading_edge_radius_mm', 'Leading Edge Radius (mm)', 8.0, "Minimum bullnose radius of splitter leading edge. Must be >= 5.0 mm (Rule T8.3.1).")
+        ]
+        for i, (k, lab, default, tip) in enumerate(splitter_fields):
+            ttk.Label(cfg, text=lab).grid(row=8 + i, column=0, sticky='w')
+            v = tk.StringVar(value=str(default))
+            self.ut_vars[k] = v
+            ent = ttk.Entry(cfg, textvariable=v, width=12)
+            ent.grid(row=8 + i, column=1, sticky='we', pady=1)
+            add_tooltip(ent, tip)
+
+        # Venturi Throat & Flat Floor
+        ttk.Separator(cfg, orient='horizontal').grid(row=12, column=0, columnspan=2, sticky='we', pady=4)
+        ttk.Label(cfg, text="Venturi Throat & Flat Floor (Rule T2.2 & T8.2.2)", font=('TkDefaultFont', 9, 'bold')).grid(row=13, column=0, columnspan=2, sticky='w')
+
+        floor_fields = [
+            ('throat_ground_height_mm', 'Throat Ground Height (mm)', 35.0, "Minimum throat ground clearance (mm). Must be >= 30.0 mm (Rule T2.2.1)."),
+            ('throat_x_pos_mm', 'Throat X Position (mm)', 420.0, "Longitudinal location of maximum flow contraction aft of front axle (mm)."),
+            ('floor_max_width_mm', 'Floor Max Width (mm)', 1220.0, "Total lateral width of underbody floor (mm). Must be <= 1250.0 mm (Rule T8.2.2)."),
+            ('chassis_rake_deg', 'Chassis Rake Angle (deg)', 1.1, "Pitch rake of car floor up towards rear axle (typical FSAE: 0.8° to 1.5°)."),
+            ('skirt_edge_height_mm', 'Side Skirt Clearance (mm)', 32.0, "Edge sealing skirt height above ground (mm). Must be >= 30.0 mm (Rule T2.2.1).")
+        ]
+        for i, (k, lab, default, tip) in enumerate(floor_fields):
+            ttk.Label(cfg, text=lab).grid(row=14 + i, column=0, sticky='w')
+            v = tk.StringVar(value=str(default))
+            self.ut_vars[k] = v
+            ent = ttk.Entry(cfg, textvariable=v, width=12)
+            ent.grid(row=14 + i, column=1, sticky='we', pady=1)
+            add_tooltip(ent, tip)
+
+        self.ut_vars['vortex_sealing_enabled'] = tk.BooleanVar(value=True)
+        skirt_cb = ttk.Checkbutton(cfg, text="Non-Contact Vortex Edge Sealing", variable=self.ut_vars['vortex_sealing_enabled'])
+        skirt_cb.grid(row=19, column=0, columnspan=2, sticky='w', pady=1)
+        add_tooltip(skirt_cb, "Enables aerodynamic edge vortices that prevent high-pressure ambient air leakage into underbody suction.")
+
+        # Multi-Channel Diffuser
+        ttk.Separator(cfg, orient='horizontal').grid(row=20, column=0, columnspan=2, sticky='we', pady=4)
+        ttk.Label(cfg, text="Rear Diffuser & Channels (Rule T8.2.3 & T8.3.2)", font=('TkDefaultFont', 9, 'bold')).grid(row=21, column=0, columnspan=2, sticky='w')
+
+        diff_fields = [
+            ('diffuser_start_x_mm', 'Kick-Up Line X (mm)', 950.0, "Start of diffuser expansion ramp aft of front axle (mm). Sits right under engine bay front."),
+            ('diffuser_length_mm', 'Diffuser Length (mm)', 750.0, "Diffuser expansion length (mm). Overhang past rear axle must be <= 450.0 mm (Rule T8.2.3)."),
+            ('kick_up_radius_mm', 'Kick-Up Blend Radius (mm)', 400.0, "Inflection curvature radius (mm). Smooth blend prevents adverse pressure shock separation."),
+            ('diffuser_angle_center_deg', 'Center Channel Angle (°)', 13.5, "Center channel ramp expansion angle (deg). Recommended 12° to 14° to prevent separation."),
+            ('diffuser_angle_outer_deg', 'Outer Channel Angle (°)', 17.5, "Outer vortex-energized tunnel angle (deg). Up to 18° energized by tire squirt vortices."),
+            ('diffuser_exit_height_mm', 'Exit Height (mm)', 215.0, "Diffuser trailing edge height above ground (mm). Controls area expansion ratio."),
+            ('strake_edge_radius_mm', 'Strake Edge Radius (mm)', 3.5, "Leading/exposed edge radius of vertical divider strakes (mm). Must be >= 3.0 mm (Rule T8.3.2)."),
+            ('gurney_flap_height_mm', 'Trailing Gurney Flap (mm)', 12.0, "Vertical flap height at diffuser exit (mm). Generates low-pressure base vortex pumping.")
+        ]
+        for i, (k, lab, default, tip) in enumerate(diff_fields):
+            ttk.Label(cfg, text=lab).grid(row=22 + i, column=0, sticky='w')
+            v = tk.StringVar(value=str(default))
+            self.ut_vars[k] = v
+            ent = ttk.Entry(cfg, textvariable=v, width=12)
+            ent.grid(row=22 + i, column=1, sticky='we', pady=1)
+            add_tooltip(ent, tip)
+
+        ttk.Label(cfg, text="Diffuser Channels (Tunnels)").grid(row=30, column=0, sticky='w')
+        self.ut_vars['diffuser_channels_count'] = tk.StringVar(value="4")
+        chan_cb = ttk.Combobox(cfg, textvariable=self.ut_vars['diffuser_channels_count'], values=["2", "3", "4", "5"], state='readonly', width=10)
+        chan_cb.grid(row=30, column=1, sticky='we', pady=1)
+        add_tooltip(chan_cb, "Number of isolated underbody flow tunnels separated by vertical strakes. 4 channels is standard for high-downforce FSAE.")
+
+        # Action Buttons
+        ttk.Separator(cfg, orient='horizontal').grid(row=31, column=0, columnspan=2, sticky='we', pady=4)
+
+        btn_chk = ttk.Button(cfg, text="🔍 Verify Regulations (Scrutineering)", command=self.on_undertray_verify_rules)
+        btn_chk.grid(row=32, column=0, columnspan=2, sticky='we', pady=2)
+        add_tooltip(btn_chk, "Checks all 6 official Formula Student rules (Ground clearance, max width, overhangs, radii) and prints exact margins.")
+
+        btn_calc = ttk.Button(cfg, text="⚡ Calculate Undertray Aerodynamics", command=self.on_undertray_calculate)
+        btn_calc.grid(row=33, column=0, columnspan=2, sticky='we', pady=2)
+        add_tooltip(btn_calc, "Executes viscous Navier-Stokes ground-effect flow model. Computes Fz, Fx, L/D, CoP, Cp(x), and updates charts.")
+
+        btn_opt = ttk.Button(cfg, text="🚀 1-Click Optimize Best Undertray (1200 iters)", command=self.on_undertray_optimize)
+        btn_opt.grid(row=34, column=0, columnspan=2, sticky='we', pady=2)
+        add_tooltip(btn_opt, "Multi-objective genetic optimizer: sweeps throat height, rake, kick-up, diffuser angles, and strakes to find the best 100% legal undertray!")
+
+        # CAD & ANSYS Export Frame
+        cad_frm = ttk.LabelFrame(cfg, text="CAD & ANSYS CFD Export")
+        cad_frm.grid(row=35, column=0, columnspan=2, sticky='we', pady=3)
+
+        btn_dxf = ttk.Button(cad_frm, text="Export DXF (2D)", command=self.on_undertray_export_dxf)
+        btn_dxf.pack(side='left', fill='x', expand=True, padx=2, pady=2)
+        add_tooltip(btn_dxf, "Export continuous 2D longitudinal elevation contour to AutoCAD DXF format.")
+
+        btn_ansys = ttk.Button(cad_frm, text="Setup ANSYS 3D", command=self.on_undertray_export_ansys)
+        btn_ansys.pack(side='left', fill='x', expand=True, padx=2, pady=2)
+        add_tooltip(btn_ansys, "Generate authentic ANSYS Fluent moving-ground 3D CFD automation journal.")
+
+        # Derived live telemetry text
+        self.ut_derive_state = tk.StringVar(value='')
+        self.ut_derive_lbl = ttk.Label(cfg, textvariable=self.ut_derive_state, wraplength=350, justify='left', foreground=MUTED)
+        self.ut_derive_lbl.grid(row=36, column=0, columnspan=2, sticky='w', pady=(6, 2))
+
+        # Trace variables for live telemetry
+        for k in ('speed_ms', 'throat_ground_height_mm', 'chassis_rake_deg', 'floor_max_width_mm'):
+            self.ut_vars[k].trace_add('write', lambda *_: self._update_undertray_derived())
+        self._update_undertray_derived()
+
+        # 3. Right Subframe: Preview & Plots (identical layout to Configure tab)
+        preview = ttk.Frame(self.tab_undertray)
+        preview.pack(side='left', fill='both', expand=True, padx=6, pady=6)
+
+        # Status / Telemetry Text Box
+        self.ut_status = tk.Text(preview, height=9, state='disabled', wrap='word',
+                                 font=('Consolas', 9), bg='#1e293b', fg='#f8fafc', relief='flat')
+        self.ut_status.pack(fill='x', pady=(0, 4))
+
+        # View Switcher Bar
+        view_bar = ttk.Frame(preview)
+        view_bar.pack(fill='x', pady=(0, 4))
+
+        ttk.Label(view_bar, text="View Mode: ", font=('TkDefaultFont', 9, 'bold')).pack(side='left', padx=(0, 4))
+        self.ut_view_var = tk.StringVar(value='elevation')
+
+        views = [
+            ('elevation', '📐 Longitudinal Elevation'),
+            ('cp', '📉 Centerline Suction Cp(x)'),
+            ('planform', '🏎️ 4-Channel Planform'),
+            ('aeromap', '🗺️ Dynamic Aero Map')
+        ]
+        for val, text in views:
+            rb = ttk.Radiobutton(view_bar, text=text, value=val, variable=self.ut_view_var, command=self.draw_undertray_view)
+            rb.pack(side='left', padx=3)
+
+        # Embedded Matplotlib Figure and Canvas
+        try:
+            import matplotlib
+            matplotlib.use('TkAgg')
+            from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
+            from matplotlib.figure import Figure
+            self.ut_figure = Figure(figsize=(6, 5), dpi=100, facecolor=PANEL2)
+            self.ut_ax = self.ut_figure.add_subplot(111)
+            self.ut_ax.set_facecolor(BG)
+            self.ut_canvas = FigureCanvasTkAgg(self.ut_figure, master=preview)
+            self.ut_canvas.get_tk_widget().configure(bg=BG, highlightthickness=0)
+            self.ut_canvas.get_tk_widget().pack(fill='both', expand=True)
+        except Exception as e:
+            self.ut_canvas = None
+            self.log(f"(undertray preview unavailable: {e})")
+
+        # Initial baseline calculation and plot render
+        self.after(100, self.on_undertray_calculate)
+
+    def _update_undertray_derived(self):
+        try:
+            v = float(self.ut_vars['speed_ms'].get())
+            rho = float(self.ut_vars['air_density_kg_m3'].get())
+            h_th = float(self.ut_vars['throat_ground_height_mm'].get())
+            rake = float(self.ut_vars['chassis_rake_deg'].get())
+            q = 0.5 * rho * (v ** 2)
+            u_th_approx = v * (55.0 / max(5.0, h_th)) * 0.72
+            self.ut_derive_state.set(
+                f"Derived:  q∞≈{q:.1f} Pa  ·  Contraction≈{55.0/max(1.0, h_th):.2f}:1  ·  "
+                f"Peak Throat Spd≈{u_th_approx:.1f} m/s  ·  Rake Slope={rake:.1f}°"
+            )
+        except Exception:
+            self.ut_derive_state.set("enter valid numerical values")
+
+    def get_undertray_config(self) -> dict:
+        cfg = {}
+        for k, var in self.ut_vars.items():
+            val = var.get()
+            if isinstance(val, bool):
+                cfg[k] = val
+            elif k in ('name', 'description'):
+                cfg[k] = str(val)
+            elif k == 'diffuser_channels_count':
+                try:
+                    cfg[k] = int(val)
+                except ValueError:
+                    cfg[k] = 4
+            else:
+                try:
+                    cfg[k] = float(val)
+                except ValueError:
+                    pass
+        return cfg
+
+    def set_undertray_config(self, cfg: dict):
+        for k, v in cfg.items():
+            if k in self.ut_vars:
+                if isinstance(self.ut_vars[k], tk.BooleanVar):
+                    self.ut_vars[k].set(bool(v))
+                else:
+                    self.ut_vars[k].set(str(v))
+        self._update_undertray_derived()
+
+    def on_undertray_reset_cad(self):
+        if UT is not None:
+            self.set_undertray_config(UT.DEFAULT_UNDERTRAY_CONFIG)
+            self.on_undertray_calculate()
+            self.log("Reset undertray to ENPRT Chassis CAD baseline.")
+
+    def on_undertray_preset_dialog(self):
+        dlg = tk.Toplevel(self)
+        dlg.title("ENPRT Formula Student Undertray Presets")
+        dlg.configure(bg="#0f172a")
+        dlg.transient(self)
+        dlg.geometry("740x520")
+        dlg.minsize(700, 480)
+
+        header = tk.Frame(dlg, bg="#0f172a", padx=16, pady=12)
+        header.pack(fill=tk.X)
+        tk.Label(header, text="ENPRT Undertray & Diffuser Architecture Presets",
+                 font=("Segoe UI", 12, "bold"), fg="#38bdf8", bg="#0f172a").pack(anchor="w")
+        tk.Label(header, text="Select a validated Formula Student underbody floor and diffuser package to load.",
+                 font=("Segoe UI", 9), fg="#94a3b8", bg="#0f172a").pack(anchor="w", pady=(2, 0))
+
+        body = tk.Frame(dlg, bg="#0f172a", padx=16, pady=4)
+        body.pack(fill=tk.BOTH, expand=True)
+
+        left_frm = tk.Frame(body, bg="#1e293b", bd=1, relief=tk.SOLID)
+        left_frm.pack(side=tk.LEFT, fill=tk.BOTH, expand=False, padx=(0, 8), pady=4)
+        tk.Label(left_frm, text="Available Presets", font=("Segoe UI", 9, "bold"),
+                 fg="#f8fafc", bg="#1e293b", padx=8, pady=6).pack(anchor="w")
+
+        lb = tk.Listbox(left_frm, font=("Segoe UI", 9), bg="#0f172a", fg="#f8fafc",
+                        selectbackground="#0284c7", selectforeground="#ffffff",
+                        highlightthickness=0, bd=0, width=32, height=14)
+        lb.pack(fill=tk.BOTH, expand=True, padx=6, pady=(0, 6))
+
+        for p in ENPRT_UNDERTRAY_PRESETS:
+            lb.insert(tk.END, f"  {p['name']}")
+
+        right_frm = tk.Frame(body, bg="#1e293b", bd=1, relief=tk.SOLID, padx=14, pady=12)
+        right_frm.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, pady=4)
+
+        lbl_p_name = tk.Label(right_frm, text="", font=("Segoe UI", 11, "bold"), fg="#38bdf8", bg="#1e293b")
+        lbl_p_name.pack(anchor="w", pady=(0, 4))
+
+        lbl_p_desc = tk.Label(right_frm, text="", font=("Segoe UI", 9), fg="#94a3b8", bg="#1e293b",
+                              wraplength=380, justify="left")
+        lbl_p_desc.pack(anchor="w", pady=(0, 8))
+
+        detail_text = tk.Text(right_frm, font=("Consolas", 8), bg="#0f172a", fg="#f8fafc",
+                              bd=0, relief=tk.FLAT, height=12, wrap=tk.WORD)
+        detail_text.pack(fill=tk.BOTH, expand=True, pady=(0, 10))
+
+        def _on_preset_select(event=None):
+            idx = lb.curselection()
+            if not idx:
+                return
+            p = ENPRT_UNDERTRAY_PRESETS[idx[0]]
+            lbl_p_name.configure(text=p["name"])
+            lbl_p_desc.configure(text=p["desc"])
+            cfg_items = p["config"]
+            lines = [f"Design ID: {p['id']}", "-" * 40]
+            lines.append(f"Splitter: Length {cfg_items['splitter_length_mm']} mm | Inlet H {cfg_items['inlet_ground_height_mm']} mm")
+            lines.append(f"Venturi Throat: Height {cfg_items['throat_ground_height_mm']} mm | Position X {cfg_items['throat_x_pos_mm']} mm")
+            lines.append(f"Main Floor: Width {cfg_items['floor_max_width_mm']} mm | Rake {cfg_items['chassis_rake_deg']} deg")
+            lines.append(f"Diffuser: Kick X {cfg_items['diffuser_start_x_mm']} mm | Length {cfg_items['diffuser_length_mm']} mm")
+            lines.append(f"Angles: Center {cfg_items['diffuser_angle_center_deg']}° | Outer {cfg_items['diffuser_angle_outer_deg']}°")
+            lines.append(f"Tunnels: {cfg_items['diffuser_channels_count']} channels | Gurney {cfg_items['gurney_flap_height_mm']} mm")
+            detail_text.configure(state=tk.NORMAL)
+            detail_text.delete("1.0", tk.END)
+            detail_text.insert(tk.END, "\n".join(lines))
+            detail_text.configure(state=tk.DISABLED)
+
+        lb.bind("<<ListboxSelect>>", _on_preset_select)
+        lb.selection_set(0)
+        _on_preset_select()
+
+        btn_bar = tk.Frame(dlg, bg="#0f172a", padx=16, pady=10)
+        btn_bar.pack(fill=tk.X)
+
+        def _on_load():
+            idx = lb.curselection()
+            if not idx:
+                return
+            p = ENPRT_UNDERTRAY_PRESETS[idx[0]]
+            self.set_undertray_config(p["config"])
+            self.on_undertray_calculate()
+            dlg.destroy()
+            self.log(f"Loaded undertray preset: {p['name']}")
+
+        ttk.Button(btn_bar, text="Load Preset into Undertray Tab", command=_on_load).pack(side=tk.RIGHT, padx=4)
+        ttk.Button(btn_bar, text="Cancel", command=dlg.destroy).pack(side=tk.RIGHT, padx=4)
+
+    def on_undertray_open_json(self):
+        cfg_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "configs")
+        f = filedialog.askopenfilename(
+            parent=self,
+            title="Open Undertray Configuration JSON",
+            filetypes=[("JSON files", "*.json"), ("All files", "*.*")],
+            initialdir=cfg_dir if os.path.isdir(cfg_dir) else os.getcwd()
+        )
+        if not f:
+            return
+        try:
+            with open(f, 'r', encoding='utf-8') as fp:
+                data = json.load(fp)
+            self.set_undertray_config(data)
+            self.on_undertray_calculate()
+            self.log(f"Loaded undertray config from {Path(f).name}")
+        except Exception as e:
+            messagebox.showerror("Load Failed", f"Could not load undertray config:\n{e}")
+
+    def on_undertray_save_json(self):
+        cfg = self.get_undertray_config()
+        cfg_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "configs")
+        os.makedirs(cfg_dir, exist_ok=True)
+        fname = f"{self.ut_vars['name'].get()}.json"
+        f = filedialog.asksaveasfilename(
+            parent=self,
+            title="Save Undertray Configuration JSON",
+            defaultextension=".json",
+            initialdir=cfg_dir,
+            initialfile=fname,
+            filetypes=[("JSON files", "*.json"), ("All files", "*.*")]
+        )
+        if not f:
+            return
+        try:
+            with open(f, 'w', encoding='utf-8') as fp:
+                json.dump(cfg, fp, indent=2)
+            self.log(f"Saved undertray config to {Path(f).name}")
+            messagebox.showinfo("Saved", f"Undertray configuration saved to:\n{f}")
+        except Exception as e:
+            messagebox.showerror("Save Failed", f"Could not save undertray config:\n{e}")
+
+    def on_undertray_verify_rules(self):
+        if UT is None:
+            messagebox.showerror("Engine Missing", "undertray_engine module could not be imported.")
+            return
+        eng = UT.UndertrayAerodynamicsEngine(self.get_undertray_config())
+        regs = eng.verify_regulations()
+
+        lines = [
+            "================================================================================",
+            f"   FORMULA STUDENT SCRUTINEERING VERDICT: {regs['scrutineering_verdict']}",
+            "================================================================================"
+        ]
+        for c in regs["checks"]:
+            lines.append(f"  [{c['status']}] {c['rule']}: {c['title']}")
+            lines.append(f"         Actual: {c['actual']}  |  Legal Limit: {c['limit']}  (Margin: {c['margin_mm']:+.1f} mm)")
+
+        lines.append("--------------------------------------------------------------------------------")
+        if regs["all_passed"]:
+            lines.append(">>> STATUS: 100% REGULATION COMPLIANT — APPROVED FOR COMPETITION SCRUTINEERING <<<")
+        else:
+            lines.append(">>> WARNING: NON-COMPLIANT GEOMETRY DETECTED — SCRUTINEERING REJECTION <<<")
+
+        self._append_log(self.ut_status, "\n".join(lines), cap=2000, follow=True)
+
+    def on_undertray_calculate(self):
+        if UT is None:
+            return
+        cfg = self.get_undertray_config()
+        eng = UT.UndertrayAerodynamicsEngine(cfg)
+        res = eng.compute_aerodynamics()
+        self._latest_undertray_res = res
+        self._latest_undertray_engine = eng
+
+        reg = res["regulations"]
+        v_status = "PASS (100% Legal)" if reg["all_passed"] else "FAIL (Scrutineering Violation)"
+
+        text_report = (
+            f"=== ENPRT UNDERBODY AERODYNAMICS & SCRUTINEERING TELEMETRY ===\n"
+            f"Design: {cfg.get('name', 'Undertray')}  |  Speed: {cfg.get('speed_ms', 15.0):.1f} m/s (54 km/h)  |  Rules: {v_status}\n"
+            f"--------------------------------------------------------------------------------\n"
+            f"DOWNFORCE Fz:  {res['downforce_N']:>6.1f} N   |  Cl*A:  {res['ClA_m2']:.3f} m²  |  Cl_floor: {res['cl_floor']:.3f}\n"
+            f"DRAG FORCE Fx: {res['drag_N']:>6.1f} N   |  Cd*A:  {res['CdA_m2']:.4f} m²  |  Cd_floor: {res['cd_floor']:.4f}\n"
+            f"EFFICIENCY:    L/D = {res['efficiency_L_D']:.2f}  |  Diffuser Pumping Efficiency eta: {res['diffuser_efficiency_eta']:.2f}\n"
+            f"AERO BALANCE:  CoP = {res['cop_x_mm']:.1f} mm aft of front axle  ({res['cop_pct_wheelbase']:.1f}% wheelbase)\n"
+            f"               (Chassis Static Mass Center: 47.0% Front / 53.0% Rear)\n"
+            f"FLOW CORE:     Throat Speed = {res['throat_velocity_mps']:.1f} m/s  |  Min Cp = {res['min_cp']:.3f}  |  Exit = {res['exit_velocity_mps']:.1f} m/s\n"
+            f"DIMENSIONS:    Contraction: {res['contraction_ratio']:.2f}:1  |  Expansion: {res['area_expansion_ratio']:.2f}:1  |  Planform Area: {res['planform_area_m2']:.3f} m²"
+        )
+        self._append_log(self.ut_status, text_report, cap=2000, follow=True)
+        self.draw_undertray_view()
+
+    def on_undertray_optimize(self):
+        if UT is None:
+            return
+        self._append_log(self.ut_status, ">>> Running Automated Multi-Objective Optimization Sweep (1,200 iterations)...", cap=2000, follow=True)
+        self.update()
+
+        eng = UT.UndertrayAerodynamicsEngine(self.get_undertray_config())
+        opt = eng.optimize_undertray()
+
+        self.set_undertray_config(opt["optimal_config"])
+        self.on_undertray_calculate()
+
+        opt_res = opt["optimal_results"]
+        summary = (
+            f"🚀 OPTIMIZATION COMPLETE (1,200 Configurations Evaluated)\n"
+            f"Optimal Solution: Downforce = {opt_res['downforce_N']} N (L/D = {opt_res['efficiency_L_D']})\n"
+            f"Optimal CoP: {opt_res['cop_pct_wheelbase']}% wheelbase (balanced to ENPRT chassis)\n"
+            f"Optimal Ground Clearance: {opt['optimal_config']['throat_ground_height_mm']} mm (100% Legal)\n"
+            f"Optimal Diffuser: Kick {opt['optimal_config']['diffuser_start_x_mm']} mm, Angles: C {opt['optimal_config']['diffuser_angle_center_deg']}° / O {opt['optimal_config']['diffuser_angle_outer_deg']}°"
+        )
+        self._append_log(self.ut_status, summary, cap=2000, follow=True)
+        messagebox.showinfo("Optimization Succeeded",
+                            f"Optimal 100% Regulation-Compliant Undertray found!\n\n"
+                            f"• Downforce: {opt_res['downforce_N']} N\n"
+                            f"• Efficiency L/D: {opt_res['efficiency_L_D']}\n"
+                            f"• Center of Pressure: {opt_res['cop_pct_wheelbase']}% wheelbase\n\n"
+                            f"All input parameters have been updated and re-rendered.")
+
+    def on_undertray_export_dxf(self):
+        if not hasattr(self, '_latest_undertray_engine') or self._latest_undertray_engine is None:
+            self.on_undertray_calculate()
+        cfg_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "configs")
+        os.makedirs(cfg_dir, exist_ok=True)
+        fname = f"{self.ut_vars['name'].get()}_profile.dxf"
+        f = filedialog.asksaveasfilename(
+            parent=self,
+            title="Export Undertray 2D DXF Profile",
+            defaultextension=".dxf",
+            initialdir=cfg_dir,
+            initialfile=fname,
+            filetypes=[("AutoCAD DXF files", "*.dxf"), ("All files", "*.*")]
+        )
+        if not f:
+            return
+        try:
+            self._latest_undertray_engine.export_cad_dxf(f)
+            self.log(f"Exported DXF profile to {Path(f).name}")
+            messagebox.showinfo("CAD Export Complete", f"Successfully exported 2D profile DXF to:\n{f}")
+        except Exception as e:
+            messagebox.showerror("Export Failed", f"Could not export DXF:\n{e}")
+
+    def on_undertray_export_ansys(self):
+        if not hasattr(self, '_latest_undertray_engine') or self._latest_undertray_engine is None:
+            self.on_undertray_calculate()
+        tests_dir = self.get_tests_dir() if hasattr(self, 'get_tests_dir') else Path(os.getcwd())
+        target_dir = tests_dir / "SUMMARY_AND_3D_ANALYSIS"
+        target_dir.mkdir(parents=True, exist_ok=True)
+        f = target_dir / "undertray_moving_ground_cfd.jou"
+        try:
+            self._latest_undertray_engine.export_ansys_fluent_journal(str(f))
+            self.log(f"Exported ANSYS Fluent journal to {f.name}")
+            msg = (
+                f"Generated ANSYS Fluent 2024 R1 Automation Journal:\n{f}\n\n"
+                f"• Solves k-omega SST with moving ground at {self.ut_vars['speed_ms'].get()} m/s\n"
+                f"• Sets pressure recovery outlet and hybrid initialization\n"
+                f"• Runs 1,200 iterations with 3D pressure contours and net wall forces."
+            )
+            messagebox.showinfo("ANSYS Fluent Journal Ready", msg)
+        except Exception as e:
+            messagebox.showerror("Export Failed", f"Could not export Fluent journal:\n{e}")
+
+    def draw_undertray_view(self):
+        if not hasattr(self, 'ut_canvas') or self.ut_canvas is None or not hasattr(self, '_latest_undertray_res'):
+            return
+        res = self._latest_undertray_res
+        pts = res.get("plot_data", {})
+        if not pts:
+            return
+
+        ax = self.ut_ax
+        ax.clear()
+        mode = self.ut_view_var.get()
+
+        # Consistent high-contrast dark theme styling
+        ax.set_facecolor('#0b1120')
+        self.ut_figure.patch.set_facecolor('#0f172a')
+        ax.tick_params(colors='#94a3b8', labelsize=8)
+        for spine in ax.spines.values():
+            spine.set_color('#334155')
+
+        xs = pts["xs_mm"]
+        zs = pts["heights_mm"]
+        ws = pts["widths_mm"]
+        cps = pts["cp_distribution"]
+        vels = pts["velocities_mps"]
+
+        if mode == 'elevation':
+            # --- VIEW 1: Longitudinal Elevation & Streamlines ---
+            ax.set_title("ENPRT Undertray Elevation Profile & Venturi Streamlines", color='#38bdf8', fontsize=10, pad=8, fontweight='bold')
+            ax.axhline(0, color='#64748b', linewidth=2.5, label='Road Surface (Moving Ground Z=0)')
+            ax.axhline(30, color='#ef4444', linestyle='--', linewidth=1.5, label='Rule T2.2 Min Clearance (30 mm)')
+
+            # Chassis Lower Tubes (Z=50 mm, X=0 to 1408 mm)
+            ax.plot([0, 1408], [50, 50], color='#cbd5e1', linewidth=4.5, solid_capstyle='round', label='Chassis Lower Rail (Z=50 mm)')
+
+            # Front and Rear Wheels (R=252.5 mm Hoosier 16x7.5-10)
+            from matplotlib.patches import Rectangle
+            front_tire = Rectangle((-100, 0), 200, 505, linewidth=1.5, edgecolor='#475569', facecolor='#1e293b', alpha=0.45, label='Front Wheel (X=0)')
+            rear_tire = Rectangle((1430, 0), 200, 505, linewidth=1.5, edgecolor='#475569', facecolor='#1e293b', alpha=0.45, label='Rear Wheel (X=1530)')
+            ax.add_patch(front_tire)
+            ax.add_patch(rear_tire)
+
+            # Undertray Floor Profile
+            ax.plot(xs, zs, color='#38bdf8', linewidth=2.8, label='Undertray Floor Line')
+
+            # Trailing Gurney Flap
+            hg = float(self.ut_vars['gurney_flap_height_mm'].get() or 0.0)
+            if hg > 0:
+                ax.plot([xs[-1], xs[-1]], [zs[-1], zs[-1] + hg], color='#f59e0b', linewidth=3.5, label=f'Gurney Flap ({hg:.0f} mm)')
+
+            # Streamtube Shading under floor (colored by flow acceleration)
+            v_inf = float(self.ut_vars['speed_ms'].get() or 15.0)
+            for i in range(len(xs) - 1):
+                u_ratio = vels[i] / max(1.0, v_inf)
+                # Cyan/blue for low speed, emerald for high suction speed
+                color = '#0284c7' if u_ratio > 1.3 else '#0ea5e9'
+                ax.fill_between([xs[i], xs[i+1]], 0, [zs[i], zs[i+1]], color=color, alpha=0.18)
+
+            # Center of Pressure (CoP) vector
+            cop_x = res["cop_x_mm"]
+            ax.annotate(f"CoP: {cop_x:.0f} mm ({res['cop_pct_wheelbase']:.1f}%)\nFz = {res['downforce_N']:.1f} N",
+                        xy=(cop_x, 35), xytext=(cop_x, 150),
+                        arrowprops=dict(facecolor='#10b981', edgecolor='#059669', width=2.5, headwidth=8),
+                        color='#10b981', fontsize=8, fontweight='bold', ha='center')
+
+            ax.set_xlabel("Longitudinal X Position [mm] (Front Axle = 0)", color='#94a3b8', fontsize=8)
+            ax.set_ylabel("Vertical Z Height [mm] (Road = 0)", color='#94a3b8', fontsize=8)
+            ax.set_ylim(-15, 320)
+            ax.grid(True, linestyle=':', alpha=0.25, color='#475569')
+            ax.legend(loc='upper right', facecolor='#1e293b', edgecolor='#334155', labelcolor='#f8fafc', fontsize=7)
+
+        elif mode == 'cp':
+            # --- VIEW 2: Centerline Pressure Distribution Cp(x) ---
+            ax.set_title("Underbody Centerline Pressure Distribution Cp(x) & Suction Peak", color='#38bdf8', fontsize=10, pad=8, fontweight='bold')
+            ax.axhline(0, color='#64748b', linestyle='--', linewidth=1.2, label='Freestream Ambient (Cp = 0.0)')
+
+            # Invert Cp so suction (negative Cp) is plotted UPWARDS (standard aero convention)
+            suction_cps = [-cp for cp in cps]
+            ax.plot(xs, suction_cps, color='#10b981', linewidth=2.5, label='Suction (-Cp)')
+            ax.fill_between(xs, 0, suction_cps, color='#10b981', alpha=0.15)
+
+            # Highlight Minimum Cp (Peak Suction)
+            min_cp = res["min_cp"]
+            i_min = cps.index(min_cp) if min_cp in cps else 0
+            ax.plot(xs[i_min], -min_cp, 'o', color='#f59e0b', markersize=7)
+            ax.annotate(f"Peak Suction: Cp = {min_cp:.3f}\n(Throat X = {xs[i_min]:.0f} mm)",
+                        xy=(xs[i_min], -min_cp), xytext=(xs[i_min] + 180, -min_cp - 0.2),
+                        arrowprops=dict(facecolor='#f59e0b', edgecolor='#d97706', width=1.5, headwidth=6),
+                        color='#f59e0b', fontsize=8, fontweight='bold')
+
+            # Kick-up line marker
+            x_kick = float(self.ut_vars['diffuser_start_x_mm'].get() or 950.0)
+            ax.axvline(x_kick, color='#a855f7', linestyle=':', linewidth=1.5, label=f'Diffuser Kick-Up (X={x_kick:.0f} mm)')
+
+            ax.set_xlabel("Longitudinal X Position [mm]", color='#94a3b8', fontsize=8)
+            ax.set_ylabel("Suction Coefficient -Cp [-] (Higher = More Downforce)", color='#94a3b8', fontsize=8)
+            ax.grid(True, linestyle=':', alpha=0.25, color='#475569')
+            ax.legend(loc='upper right', facecolor='#1e293b', edgecolor='#334155', labelcolor='#f8fafc', fontsize=7)
+
+        elif mode == 'planform':
+            # --- VIEW 3: 4-Channel Underbody Planform ---
+            ax.set_title("ENPRT 4-Channel Underbody Planform & Strake Architecture", color='#38bdf8', fontsize=10, pad=8, fontweight='bold')
+            ax.axhline(0, color='#64748b', linestyle='-.', linewidth=1.0, label='Vehicle Centerline (Y=0)')
+
+            half_w = [w / 2.0 for w in ws]
+            neg_half_w = [-w / 2.0 for w in ws]
+
+            # Floor outer perimeter
+            ax.plot(xs, half_w, color='#38bdf8', linewidth=2.0)
+            ax.plot(xs, neg_half_w, color='#38bdf8', linewidth=2.0)
+            ax.fill_between(xs, neg_half_w, half_w, color='#0284c7', alpha=0.15, label='Floor Planform')
+
+            # Chassis spaceframe lower tubes envelope (width 592 mm -> Y in [-296, 296] mm)
+            ax.plot([0, 1408, 1408, 0, 0], [-296, -296, 296, 296, -296], color='#cbd5e1', linewidth=2.0, linestyle='--', label='Chassis Bottom Frame (592 mm)')
+
+            # Wheel footprints (Hoosier 16x7.5-10, track: Front 1200mm, Rear 1180mm)
+            from matplotlib.patches import Rectangle
+            # Left and Right Front Wheels
+            ax.add_patch(Rectangle((-100, 500), 200, 200, edgecolor='#64748b', facecolor='#1e293b', alpha=0.6))
+            ax.add_patch(Rectangle((-100, -700), 200, 200, edgecolor='#64748b', facecolor='#1e293b', alpha=0.6))
+            # Left and Right Rear Wheels
+            ax.add_patch(Rectangle((1430, 490), 200, 200, edgecolor='#64748b', facecolor='#1e293b', alpha=0.6))
+            ax.add_patch(Rectangle((1430, -690), 200, 200, edgecolor='#64748b', facecolor='#1e293b', alpha=0.6))
+
+            # Diffuser divider strakes (dividing into 4 channels)
+            x_k = float(self.ut_vars['diffuser_start_x_mm'].get() or 950.0)
+            x_end = xs[-1]
+            n_ch = int(self.ut_vars['diffuser_channels_count'].get() or 4)
+            w_max = float(self.ut_vars['floor_max_width_mm'].get() or 1220.0)
+            for ch in range(1, n_ch):
+                y_strake = -w_max / 2.0 + ch * (w_max / n_ch)
+                ax.plot([x_k, x_end], [y_strake, y_strake], color='#a855f7', linewidth=2.5,
+                        label='Vertical Strake' if ch == 1 else "")
+
+            # Side Skirts (Rule T2.2 compliance)
+            ax.plot([0, x_k], [w_max / 2.0, w_max / 2.0], color='#f59e0b', linewidth=2.5, label='Vortex Side Skirt')
+            ax.plot([0, x_k], [-w_max / 2.0, -w_max / 2.0], color='#f59e0b', linewidth=2.5)
+
+            ax.set_xlabel("Longitudinal X Position [mm]", color='#94a3b8', fontsize=8)
+            ax.set_ylabel("Lateral Y Span [mm]", color='#94a3b8', fontsize=8)
+            ax.set_ylim(-750, 750)
+            ax.grid(True, linestyle=':', alpha=0.25, color='#475569')
+            ax.legend(loc='upper right', facecolor='#1e293b', edgecolor='#334155', labelcolor='#f8fafc', fontsize=7)
+
+        elif mode == 'aeromap':
+            # --- VIEW 4: Dynamic Aero Map (Sensitivity Map) ---
+            ax.set_title("Dynamic Ground-Effect Aero Map (Ride Height & Rake Sensitivity)", color='#38bdf8', fontsize=10, pad=8, fontweight='bold')
+            if hasattr(self, '_latest_undertray_engine') and self._latest_undertray_engine is not None:
+                amap = self._latest_undertray_engine.compute_aero_map()
+                rhs = amap["ride_heights_mm"]
+                rakes = amap["rakes_deg"]
+                fzs = amap["downforce_matrix_N"]
+
+                colors = ['#38bdf8', '#0ea5e9', '#0284c7', '#10b981', '#f59e0b', '#ef4444']
+                for idx, rk in enumerate(rakes):
+                    curve = [fzs[j][idx] for j in range(len(rhs))]
+                    ax.plot(rhs, curve, marker='o', linewidth=2.0, color=colors[idx % len(colors)], label=f'Rake {rk:.1f}°')
+
+                # Highlight operating point
+                curr_h = float(self.ut_vars['throat_ground_height_mm'].get() or 35.0)
+                curr_fz = res['downforce_N']
+                ax.plot(curr_h, curr_fz, '*', color='#fbbf24', markersize=14, label='Current Design Point')
+                ax.annotate(f"Operating Point\n{curr_h:.0f} mm | {curr_fz:.1f} N",
+                            xy=(curr_h, curr_fz), xytext=(curr_h + 3, curr_fz + 15),
+                            arrowprops=dict(facecolor='#fbbf24', edgecolor='#d97706', width=1.5, headwidth=6),
+                            color='#fbbf24', fontsize=8, fontweight='bold')
+
+            ax.axvline(30.0, color='#ef4444', linestyle='--', linewidth=1.5, label='Rule T2.2 Min Clearance (30 mm)')
+            ax.set_xlabel("Front Throat Ground Height [mm]", color='#94a3b8', fontsize=8)
+            ax.set_ylabel("Undertray Downforce Fz [N]", color='#94a3b8', fontsize=8)
+            ax.grid(True, linestyle=':', alpha=0.25, color='#475569')
+            ax.legend(loc='upper right', facecolor='#1e293b', edgecolor='#334155', labelcolor='#f8fafc', fontsize=7)
+
+        self.ut_figure.tight_layout()
+        self.ut_canvas.draw()
 
     # --- AIRFOILS TAB ---
     def build_airfoils(self):
@@ -11086,7 +11932,7 @@ class App(tk.Tk):
         add_tooltip(btn_3drw, "Open ANSYS Fluent with full 3D rear wing in freestream (calculations and graphs ready)")
 
         btn_box2 = ttk.Frame(left_pane)
-        btn_box2.pack(fill='x', padx=4, pady=(2, 4))
+        btn_box2.pack(fill='x', padx=4, pady=(2, 2))
         btn_2d = ttk.Button(btn_box2, text="🚀 2D ANSYS", width=10, command=self.on_launch_2d_ansys_gui)
         btn_2d.pack(side='left', padx=2)
         add_tooltip(btn_2d, "Open ANSYS Fluent for selected wing with pre-calculated 2D flowfield, pressure contours, and force monitors ready")
@@ -11099,6 +11945,21 @@ class App(tk.Tk):
         btn_plots = ttk.Button(btn_box2, text="📁 Plots", width=6, command=self._on_open_selected_wing_folder)
         btn_plots.pack(side='left', padx=2)
         add_tooltip(btn_plots, "Open folder containing CFD contours and polar curves for this wing")
+
+        btn_box3 = ttk.Frame(left_pane)
+        btn_box3.pack(fill='x', padx=4, pady=(2, 4))
+        btn_dash = ttk.Button(btn_box3, text="📊 Dashboard", width=12, command=self._on_open_master_dashboard)
+        btn_dash.pack(side='left', padx=2)
+        add_tooltip(btn_dash, "Open Master Interactive 3D Aerodynamics Dashboard (HTML5 + Chart.js) in web browser")
+        btn_anim = ttk.Button(btn_box3, text="🎬 Animations", width=12, command=self._on_open_animations)
+        btn_anim.pack(side='left', padx=2)
+        add_tooltip(btn_anim, "Open 3D streamline flowfield & dynamic pitch sweep CFD animations")
+        btn_rep = ttk.Button(btn_box3, text="📑 Report", width=9, command=self._on_open_selected_wing_report)
+        btn_rep.pack(side='left', padx=2)
+        add_tooltip(btn_rep, "Open comprehensive engineering report (.md) for selected wing")
+        btn_xl = ttk.Button(btn_box3, text="📈 Excel", width=8, command=self._on_open_fsae_excel)
+        btn_xl.pack(side='left', padx=2)
+        add_tooltip(btn_xl, "Open Master FSAE Front Wings 3D Verified & Optimized spreadsheet in Excel")
 
         # Right Pane: Visual Plot Viewer & Canvas
         right_pane = ttk.Frame(paned)
@@ -11147,7 +12008,22 @@ class App(tk.Tk):
         self.plot_canvas.bind("<Shift-MouseWheel>", _on_canvas_hscroll)
         self.plot_inner.bind("<Shift-MouseWheel>", _on_canvas_hscroll)
 
-        self.wing_plot_mode = tk.StringVar(value='ansys_3d_cl')
+        self.wing_plot_mode = tk.StringVar(value='dashboard')
+
+        # Row 0: 📊 Master Dashboards & Animations
+        r0 = ttk.Frame(self.plot_inner)
+        r0.pack(fill='x', padx=4, pady=2)
+        ttk.Label(r0, text="Master Telemetry & Animations:", font=('TkDefaultFont', 9, 'bold'), foreground='#ec4899').pack(side='left', padx=(2, 6))
+
+        dash_modes = [
+            ("📊 All-in-One Telemetry Dashboard", 'dashboard'),
+            ("🎬 Streamline Flowfield Animation", 'streamline_anim'),
+            ("🎬 Dynamic Pitch Sweep AoA Animation", 'pitch_sweep_anim'),
+            ("📑 Engineering Verification Report", 'report_summary'),
+        ]
+        for text, val in dash_modes:
+            rb = ttk.Radiobutton(r0, text=text, value=val, variable=self.wing_plot_mode, command=self._refresh_wing_plot)
+            rb.pack(side='left', padx=3)
 
         # Row 1: ANSYS 3D Graphs (Polars & 3D CFD)
         r1 = ttk.Frame(self.plot_inner)
@@ -11299,16 +12175,54 @@ class App(tk.Tk):
         w_dir = tests_dir / info['folder'] / "plots"
         sum_dir = tests_dir / "SUMMARY_AND_3D_ANALYSIS" / "plots"
 
-        if mode == 'ansys_fluent_df':
-            p = sum_dir / "ansys_polar_downforce_vs_alpha.png"
+        if mode == 'dashboard' or mode == 'report_summary':
+            p = w_dir / "dashboard.png"
+            if not p.exists():
+                p = tests_dir / info['folder'] / "dashboard.png"
+            if not p.exists():
+                p = sum_dir / "master_3d_downforce_and_efficiency_bars.png"
+        elif mode == 'streamline_anim':
+            p = w_dir / "streamline_velocity_animation.gif"
+            if not p.exists():
+                p = tests_dir / info['folder'] / "streamline_velocity_animation.gif"
+            if not p.exists():
+                p = sum_dir / "streamline_velocity_animation.gif"
+        elif mode == 'pitch_sweep_anim':
+            p = w_dir / "alpha_pitch_sweep_animation.gif"
+            if not p.exists():
+                p = tests_dir / info['folder'] / "alpha_pitch_sweep_animation.gif"
+            if not p.exists():
+                p = sum_dir / "alpha_pitch_sweep_animation.gif"
+        elif mode == 'ansys_fluent_df':
+            p = w_dir / "ansys_polar_downforce_vs_alpha.png"
+            if not p.exists():
+                p = w_dir / "polar_3d_downforce_n.png"
+            if not p.exists():
+                p = sum_dir / "ansys_polar_downforce_vs_alpha.png"
         elif mode == 'ansys_fluent_drag':
-            p = sum_dir / "ansys_polar_drag_vs_alpha.png"
+            p = w_dir / "ansys_polar_drag_vs_alpha.png"
+            if not p.exists():
+                p = w_dir / "polar_3d_drag_n.png"
+            if not p.exists():
+                p = sum_dir / "ansys_polar_drag_vs_alpha.png"
         elif mode == 'ansys_fluent_polar':
-            p = sum_dir / "ansys_drag_polar_cl_cd.png"
+            p = w_dir / "ansys_drag_polar_cl_cd.png"
+            if not p.exists():
+                p = w_dir / "polar_3d_drag_polar.png"
+            if not p.exists():
+                p = w_dir / "drag_polar_cl_cd.png"
+            if not p.exists():
+                p = sum_dir / "ansys_drag_polar_cl_cd.png"
         elif mode == 'ansys_fluent_cl_cd_alpha':
-            p = sum_dir / "ansys_polar_cl_cd_vs_alpha.png"
+            p = w_dir / "ansys_polar_cl_cd_vs_alpha.png"
+            if not p.exists():
+                p = w_dir / "polar_3d_cl_alpha.png"
+            if not p.exists():
+                p = sum_dir / "ansys_polar_cl_cd_vs_alpha.png"
         elif mode == 'ansys_3d_cl':
             p = w_dir / "polar_3d_cl_alpha.png"
+            if not p.exists():
+                p = w_dir / "polar_cl_alpha.png"
             if not p.exists():
                 p = sum_dir / "ansys_polar_cl_vs_alpha.png"
             if not p.exists():
@@ -11316,11 +12230,15 @@ class App(tk.Tk):
         elif mode == 'ansys_3d_cd':
             p = w_dir / "polar_3d_cd_alpha.png"
             if not p.exists():
+                p = w_dir / "polar_cd_alpha.png"
+            if not p.exists():
                 p = sum_dir / "ansys_polar_cd_vs_alpha.png"
             if not p.exists():
                 p = sum_dir / "master_polar_cd_alpha_comparison.png"
         elif mode == 'ansys_3d_downforce':
             p = w_dir / "polar_3d_downforce_n.png"
+            if not p.exists():
+                p = w_dir / "ansys_polar_downforce_vs_alpha.png"
             if not p.exists():
                 p = sum_dir / "ansys_polar_downforce_vs_alpha.png"
             if not p.exists():
@@ -11328,15 +12246,21 @@ class App(tk.Tk):
         elif mode == 'ansys_3d_drag':
             p = w_dir / "polar_3d_drag_n.png"
             if not p.exists():
+                p = w_dir / "ansys_polar_drag_vs_alpha.png"
+            if not p.exists():
                 p = sum_dir / "ansys_polar_drag_vs_alpha.png"
             if not p.exists():
                 p = sum_dir / "master_3d_drag_polar_comparison.png"
         elif mode == 'ansys_3d_ld':
             p = w_dir / "polar_3d_ld.png"
             if not p.exists():
+                p = w_dir / "polar_ld_alpha.png"
+            if not p.exists():
                 p = sum_dir / "ansys_polar_ld_vs_alpha.png"
         elif mode == 'ansys_3d_drag_polar':
             p = w_dir / "polar_3d_drag_polar.png"
+            if not p.exists():
+                p = w_dir / "drag_polar_cl_cd.png"
             if not p.exists():
                 p = sum_dir / "ansys_drag_polar_cl_cd.png"
         elif mode == 'ansys_3d_induced_drag':
@@ -11372,13 +12296,19 @@ class App(tk.Tk):
         elif mode == 'ansys_pressure_contour':
             p = w_dir / "pressure_contours.png"
             if not p.exists():
+                p = tests_dir / info.get('folder', '02_EVO2_4ELEMENT') / "plots" / "pressure_contours.png"
+            if not p.exists():
                 p = tests_dir / "01_EVO1_3ELEMENT" / "plots" / "pressure_contours.png"
         elif mode == 'ansys_turbulent_ke':
             p = w_dir / "turbulent_ke_contours.png"
             if not p.exists():
+                p = tests_dir / info.get('folder', '02_EVO2_4ELEMENT') / "plots" / "turbulent_ke_contours.png"
+            if not p.exists():
                 p = tests_dir / "01_EVO1_3ELEMENT" / "plots" / "turbulent_ke_contours.png"
         elif mode == 'ansys_wall_shear':
             p = w_dir / "wall_shear_stress.png"
+            if not p.exists():
+                p = tests_dir / info.get('folder', '02_EVO2_4ELEMENT') / "plots" / "wall_shear_stress.png"
             if not p.exists():
                 p = tests_dir / "01_EVO1_3ELEMENT" / "plots" / "wall_shear_stress.png"
         elif mode == 'ansys_residuals':
@@ -11468,7 +12398,7 @@ class App(tk.Tk):
 
         cas_file = None
         if case_dir.exists():
-            cas_list = list(case_dir.glob("*_solved.cas.h5")) or list(case_dir.glob("*.cas.h5"))
+            cas_list = list(case_dir.glob("*2d*.cas.h5")) or list(case_dir.glob("*_solved.cas.h5")) or list(case_dir.glob("*.cas.h5"))
             if cas_list:
                 cas_file = cas_list[0]
 
@@ -11499,10 +12429,79 @@ class App(tk.Tk):
         else:
             messagebox.showwarning("File Not Found", f"Launcher not found at:\n{bat_path}")
 
+    def on_launch_ansys_workbench(self):
+        try:
+            from ansys_engine import launch_workbench_gui, detect_workbench_executable
+            tests_dir = self.get_tests_dir()
+            wbpj_file = tests_dir / "ENPRT_FSAE_AERODYNAMICS.wbpj"
+            if not wbpj_file.exists():
+                desktop = Path.home() / "Desktop" / "tests" / "ENPRT_FSAE_AERODYNAMICS.wbpj"
+                if desktop.exists():
+                    wbpj_file = desktop
+
+            wb_exe = detect_workbench_executable()
+            if not wb_exe:
+                messagebox.showerror(
+                    "ANSYS Workbench Not Found",
+                    "ANSYS Workbench (RunWB2.exe) was not found in standard directories.\n"
+                    "Please verify your ANSYS installation or path."
+                )
+                return
+
+            ok, msg = launch_workbench_gui(wbpj_file)
+            if ok:
+                self.log(f"Launched ANSYS Workbench: {wbpj_file.name}")
+            else:
+                messagebox.showwarning("Workbench Launch Warning", msg)
+        except Exception as e:
+            messagebox.showerror("Error", f"Failed to launch ANSYS Workbench: {e}")
+
     def on_launch_3d_front_wing_gui(self):
+        sel = self.wings_tree.selection()
+        info = self._wings_info.get(sel[0]) if sel else None
+        target_folder = info['folder'] if info else getattr(self, 'last_selected_wing_folder', '02_EVO2_4ELEMENT')
+        target_id = info['id'] if info else getattr(self, 'last_selected_wing_id', 'ENPRT-FW-EVO2')
+
         tests_dir = self.get_tests_dir()
+        case_dir = tests_dir / target_folder / "fluent_case"
         sum_dir = tests_dir / "SUMMARY_AND_3D_ANALYSIS"
-        cas_file = sum_dir / "enprt_fw_3d_front_wing_solved.cas.h5"
+
+        clean_id = target_id.lower().replace("-", "_")
+        cas_file = None
+
+        # Search for exact 3D case for the selected wing
+        cas_candidates = [
+            case_dir / f"{clean_id}_3d_solved.cas.h5",
+            sum_dir / f"{clean_id}_3d_solved.cas.h5",
+            case_dir / f"{target_folder.lower()}_3d_solved.cas.h5",
+            sum_dir / f"{target_folder.lower()}_3d_solved.cas.h5",
+        ]
+        if "EVO2" in target_folder or "EVO2" in target_id:
+            cas_candidates.extend([
+                case_dir / "enprt_fw_evo2_3d_solved.cas.h5",
+                sum_dir / "enprt_fw_evo2_3d_solved.cas.h5",
+                sum_dir / "enprt_fw_3d_front_wing_solved.cas.h5",
+            ])
+        elif "EVO1" in target_folder or "EVO1" in target_id:
+            cas_candidates.extend([
+                case_dir / "enprt_fw_evo1_3d_solved.cas.h5",
+                sum_dir / "enprt_fw_evo1_3d_solved.cas.h5",
+            ])
+
+        for cand in cas_candidates:
+            if cand.exists():
+                cas_file = cand
+                break
+
+        # Check for any *3d*.cas.h5 in the selected wing case directory
+        if not cas_file and case_dir.exists():
+            c3d = list(case_dir.glob("*3d*.cas.h5"))
+            if c3d:
+                cas_file = c3d[0]
+
+        # Final fallbacks in summary directory
+        if not cas_file or not cas_file.exists():
+            cas_file = sum_dir / "enprt_fw_3d_front_wing_solved.cas.h5"
         if not cas_file.exists():
             cas_file = sum_dir / "enprt_fw_3d_solved.cas.h5"
 
@@ -11513,20 +12512,27 @@ class App(tk.Tk):
         load_solved = getattr(self, 'load_solved_cfd_var', None)
         load_solved_val = bool(load_solved.get()) if load_solved else True
 
-        if fluent_exe and os.path.exists(fluent_exe) and cas_file.exists():
+        working_directory = cas_file.parent if cas_file and cas_file.exists() else sum_dir
+
+        if fluent_exe and os.path.exists(fluent_exe) and cas_file and cas_file.exists():
             try:
                 from ansys_engine import launch_fluent_gui
-                ok, msg = launch_fluent_gui(cas_file, is_3d=True, custom_fluent_exe=fluent_exe, working_dir=sum_dir, load_solved_data=load_solved_val)
+                ok, msg = launch_fluent_gui(cas_file, is_3d=True, custom_fluent_exe=fluent_exe, working_dir=working_directory, load_solved_data=load_solved_val)
                 if ok:
                     mode_str = "Pre-Calculated Solution (Mesh, Calculations & Graphs Ready)" if load_solved_val else "Mesh Setup"
-                    self.log(f"Launched ANSYS Fluent 3D Front Wing ({mode_str}): {cas_file.name}")
+                    self.log(f"Launched ANSYS Fluent 3D Front Wing [{target_id}] ({mode_str}): {cas_file.name}")
                     return
             except Exception as e:
                 print(f"[warn] Failed to launch 3D Front Wing fluent directly: {e}")
 
-        bat_path = tests_dir / "LAUNCH_3D_FRONT_WING_GROUND_EFFECT.bat"
+        # Wing-specific or universal batch fallback
+        bat_path = tests_dir / target_folder / f"LAUNCH_{target_folder}_ANSYS_3D.bat"
+        if not bat_path.exists():
+            bat_path = tests_dir / f"LAUNCH_{target_folder}_ANSYS_3D.bat"
+        if not bat_path.exists():
+            bat_path = tests_dir / "LAUNCH_3D_FRONT_WING_GROUND_EFFECT.bat"
         if bat_path.exists():
-            subprocess_open(bat_path)
+            subprocess.Popen(f'"{bat_path}" "{target_folder}"', cwd=str(bat_path.parent), shell=True)
         else:
             messagebox.showwarning("File Not Found", f"Launcher not found at:\n{bat_path}")
 
@@ -12084,6 +13090,56 @@ class App(tk.Tk):
             subprocess_open(str(p))
         else:
             subprocess_open(str(tests_dir))
+
+    def _on_open_master_dashboard(self):
+        tests_dir = self.get_tests_dir()
+        html_p = tests_dir / "AERO_AUTO_MASTER_DASHBOARD.html"
+        if html_p.exists():
+            import webbrowser
+            webbrowser.open(str(html_p.resolve().as_uri()))
+            self.log(f"Opened Master Dashboard: {html_p.name}")
+        else:
+            messagebox.showinfo("Master Dashboard", f"Dashboard HTML not found at {html_p}")
+
+    def _on_open_animations(self):
+        tests_dir = self.get_tests_dir()
+        sel = self.wings_tree.selection()
+        folder = self._wings_info[sel[0]]['folder'] if sel and sel[0] in self._wings_info else "02_EVO2_4ELEMENT"
+        w_anim = tests_dir / folder / "plots" / "streamline_velocity_animation.gif"
+        if not w_anim.exists():
+            w_anim = tests_dir / folder / "streamline_velocity_animation.gif"
+        if not w_anim.exists():
+            w_anim = tests_dir / "SUMMARY_AND_3D_ANALYSIS" / "plots" / "streamline_velocity_animation.gif"
+        if w_anim.exists():
+            subprocess_open(str(w_anim))
+            self.log(f"Opened animation: {w_anim.name}")
+        else:
+            subprocess_open(str(tests_dir / folder))
+
+    def _on_open_selected_wing_report(self):
+        tests_dir = self.get_tests_dir()
+        sel = self.wings_tree.selection()
+        folder = self._wings_info[sel[0]]['folder'] if sel and sel[0] in self._wings_info else "02_EVO2_4ELEMENT"
+        rep_p = tests_dir / folder / f"REPORT_{folder}.md"
+        if not rep_p.exists():
+            rep_p = tests_dir / "MASTER_3D_AERODYNAMICS_REPORT.md"
+        if rep_p.exists():
+            subprocess_open(str(rep_p))
+            self.log(f"Opened engineering report: {rep_p.name}")
+        else:
+            messagebox.showinfo("Engineering Report", f"Report not found in {folder}")
+
+    def _on_open_fsae_excel(self):
+        tests_dir = self.get_tests_dir()
+        xl_p = tests_dir / "Front wings 3D Verified & Optimized.xlsx"
+        if not xl_p.exists():
+            desktop_dir = Path.home() / "Desktop"
+            xl_p = desktop_dir / "Front wings.xlsx"
+        if xl_p.exists():
+            subprocess_open(str(xl_p))
+            self.log(f"Opened FSAE Excel workbook: {xl_p.name}")
+        else:
+            messagebox.showinfo("FSAE Excel", f"Excel file not found at {xl_p}")
 
 
 def main():

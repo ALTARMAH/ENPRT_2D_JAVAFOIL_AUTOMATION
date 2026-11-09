@@ -1,11 +1,15 @@
 # -*- mode: python ; coding: utf-8 -*-
+import os
 
+spec_dir = os.path.dirname(os.path.abspath(SPEC))
+app_root = os.path.abspath(os.path.join(spec_dir, '..'))
+launcher_script = os.path.join(app_root, 'launcher.py')
 
 a = Analysis(
-    ['launcher.py'],
-    pathex=[],
+    [launcher_script],
+    pathex=[app_root],
     binaries=[],
-    datas=[('assets', 'assets'), ('docs', 'docs')],
+    datas=[(os.path.join(app_root, 'assets'), 'assets'), (os.path.join(app_root, 'docs'), 'docs')],
     hiddenimports=['PIL', 'PIL.ImageTk', 'ansys_engine', 'aero_auto_wings_suite', 'aero_3d_engine', 'scipy', 'matplotlib', 'gmsh'],
     hookspath=[],
     hooksconfig={},
@@ -32,7 +36,7 @@ exe = EXE(
     target_arch=None,
     codesign_identity=None,
     entitlements_file=None,
-    icon=['assets/icon.ico'],
+    icon=[os.path.join(app_root, 'assets', 'icon.ico')],
 )
 coll = COLLECT(
     exe,

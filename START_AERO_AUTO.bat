@@ -4,6 +4,19 @@ REM Aero Auto Launcher - High-Downforce Multi-Element Aerodynamic Suite
 REM ==============================================================================
 cd /d "%~dp0"
 
+REM 1. Prefer live Python execution for latest updates and instant debugging
+set PY_CMD=
+python --version >nul 2>&1 && set PY_CMD=python
+if not defined PY_CMD (
+    py --version >nul 2>&1 && set PY_CMD=py
+)
+
+if defined PY_CMD (
+    start "" %PY_CMD% launcher.py ui %*
+    exit /b 0
+)
+
+REM 2. Standalone compiled executable fallback
 if exist "dist\AeroAuto_GUI\AeroAuto_GUI.exe" (
     start "" "dist\AeroAuto_GUI\AeroAuto_GUI.exe"
     exit /b 0
@@ -31,18 +44,6 @@ if exist "dist\aero_ui_standalone.exe" (
 
 if exist "dist_win\aero_ui\aero_ui.exe" (
     start "" "dist_win\aero_ui\aero_ui.exe"
-    exit /b 0
-)
-
-REM Check if Python is available in PATH
-set PY_CMD=
-python --version >nul 2>&1 && set PY_CMD=python
-if not defined PY_CMD (
-    py --version >nul 2>&1 && set PY_CMD=py
-)
-
-if defined PY_CMD (
-    start "" %PY_CMD% launcher.py ui %*
     exit /b 0
 )
 

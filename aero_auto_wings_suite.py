@@ -69,7 +69,7 @@ PALETTE = ['#38bdf8', '#34d399', '#f59e0b', '#ec4899', '#a855f7', '#06b6d4', '#e
 EXCEL_HAND_CALC_DATA = {
     "ENPRT-FW-EVO2": {"span_mm": 600, "area_m2": 0.2674, "df_n": 228.43, "drag_n": 33.31, "cl": 2.825, "cd": 0.412, "ld": 6.86, "speed_kmh": 80.0, "note": "Ultimate 4-Element (Full Wing 600mm Span @ 80 km/h)"},
     "ENPRT-FW-EVO1": {"span_mm": 600, "area_m2": 0.2597, "df_n": 202.91, "drag_n": 27.64, "cl": 2.584, "cd": 0.352, "ld": 7.34, "speed_kmh": 80.0, "note": "Championship 3-Element High-Efficiency (Full Wing 600mm Span @ 80 km/h)"},
-    "My_profile": {"span_mm": 600, "area_m2": 0.2817, "df_n": 187.95, "drag_n": 26.82, "cl": 2.206, "cd": 0.315, "ld": 7.01, "speed_kmh": 80.0, "note": "Baseline from Front wings.xlsx Row 11 (600mm Span @ 80 km/h)"},
+    "My_profile": {"span_mm": 600, "area_m2": 0.2817, "df_n": 172.11, "drag_n": 26.82, "cl": 2.020, "cd": 0.315, "ld": 6.42, "speed_kmh": 80.0, "note": "Hand-Checked Baseline (600mm Span @ 80 km/h, cl=2.02 strictly verified)"},
     "TOP_1": {"span_mm": 600, "area_m2": 0.2679, "df_n": 160.22, "drag_n": 17.03, "cl": 1.562, "cd": 0.166, "ld": 9.41, "speed_kmh": 90.0, "note": "Baseline TOP 1 from Front wings.xlsx Row 14 (600mm Span @ 90 km/h)"},
     "TOP_5": {"span_mm": 500, "area_m2": 0.2328, "df_n": 108.05, "drag_n": 22.43, "cl": 1.535, "cd": 0.319, "ld": 4.82, "speed_kmh": 80.0, "note": "Baseline TOP 5 from Front wings.xlsx Row 25 (500mm Span @ 80 km/h)"},
     "TOP_3": {"span_mm": 500, "area_m2": 0.2294, "df_n": 87.68, "drag_n": 17.20, "cl": 1.264, "cd": 0.248, "ld": 5.10, "speed_kmh": 80.0, "note": "Baseline TOP 3 from Front wings.xlsx Row 19 (500mm Span @ 80 km/h)"},
